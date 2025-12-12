@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'chat_screen.dart';
 import 'new_request_screen.dart';
 import 'requests_store.dart';
-import 'chat_screen.dart';
 
 class BloodBankDashboardScreen extends StatelessWidget {
   final String bloodBankName;
@@ -47,8 +47,10 @@ class BloodBankDashboardScreen extends StatelessWidget {
               void goToNewRequest() {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) =>
-                        NewRequestScreen(bloodBankName: bloodBankName),
+                    builder: (_) => NewRequestScreen(
+                      bloodBankName: bloodBankName,
+                      initialHospitalLocation: location, // ✅ التعديل هون
+                    ),
                   ),
                 );
               }
@@ -67,67 +69,17 @@ class BloodBankDashboardScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
 
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children:
-                          [
-                            _StatCard(
-                              title: 'Total units',
-                              value: '$totalUnits',
-                              icon: Icons.bloodtype_outlined,
-                              iconBg: const Color(0xffe4edff),
-                              borderColor: const Color(0xff2962ff),
-                            ),
-                            _StatCard(
-                              title: 'Active requests',
-                              value: '$activeCount',
-                              icon: Icons.monitor_heart_outlined,
-                              iconBg: const Color(0xffffe3e6),
-                              borderColor: const Color(0xffe91e63),
-                            ),
-                            _StatCard(
-                              title: 'Urgent requests',
-                              value: '$urgentCount',
-                              icon: Icons.trending_up,
-                              iconBg: const Color(0xfffff1dd),
-                              borderColor: const Color(0xffff9800),
-                            ),
-                            _StatCard(
-                              title: 'Normal requests',
-                              value: '$normalCount',
-                              icon: Icons.check_circle_outline,
-                              iconBg: const Color(0xffe7f6ea),
-                              borderColor: const Color(0xff2e7d32),
-                            ),
-                            _StatCard(
-                              title: 'Urgent units',
-                              value: '$urgentUnits',
-                              icon: Icons.warning_amber_rounded,
-                              iconBg: const Color(0xfffff1dd),
-                              borderColor: const Color(0xffff9800),
-                            ),
-                            _StatCard(
-                              title: 'Normal units',
-                              value: '$normalUnits',
-                              icon: Icons.inventory_2_outlined,
-                              iconBg: const Color(0xffe7f6ea),
-                              borderColor: const Color(0xff2e7d32),
-                            ),
-                          ].map((card) {
-                            // نخلي كل كرت نص الشاشة تقريباً (عمودين)
-                            final w =
-                                (MediaQuery.of(context).size.width -
-                                    16 * 2 -
-                                    12) /
-                                2;
-                            return SizedBox(width: w, child: card);
-                          }).toList(),
+                    _StatsGrid(
+                      totalUnits: totalUnits,
+                      activeCount: activeCount,
+                      urgentCount: urgentCount,
+                      normalCount: normalCount,
+                      urgentUnits: urgentUnits,
+                      normalUnits: normalUnits,
                     ),
 
                     const SizedBox(height: 24),
 
-                    // Blood requests section (الزر موجود دائماً)
                     _BloodRequestsSection(
                       requests: requests,
                       onCreatePressed: goToNewRequest,
@@ -139,6 +91,92 @@ class BloodBankDashboardScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _StatsGrid extends StatelessWidget {
+  final int totalUnits;
+  final int activeCount;
+  final int urgentCount;
+  final int normalCount;
+  final int urgentUnits;
+  final int normalUnits;
+
+  const _StatsGrid({
+    required this.totalUnits,
+    required this.activeCount,
+    required this.urgentCount,
+    required this.normalCount,
+    required this.urgentUnits,
+    required this.normalUnits,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cardWidth = (MediaQuery.of(context).size.width - 16 * 2 - 12) / 2;
+
+    final cards = <_StatCard>[
+      const _StatCard(
+        title: 'Total units',
+        value: '',
+        icon: Icons.bloodtype_outlined,
+        iconBg: Color(0xffe4edff),
+        borderColor: Color(0xff2962ff),
+      ),
+      const _StatCard(
+        title: 'Active requests',
+        value: '',
+        icon: Icons.monitor_heart_outlined,
+        iconBg: Color(0xffffe3e6),
+        borderColor: Color(0xffe91e63),
+      ),
+      const _StatCard(
+        title: 'Urgent requests',
+        value: '',
+        icon: Icons.trending_up,
+        iconBg: Color(0xfffff1dd),
+        borderColor: Color(0xffff9800),
+      ),
+      const _StatCard(
+        title: 'Normal requests',
+        value: '',
+        icon: Icons.check_circle_outline,
+        iconBg: Color(0xffe7f6ea),
+        borderColor: Color(0xff2e7d32),
+      ),
+      const _StatCard(
+        title: 'Urgent units',
+        value: '',
+        icon: Icons.warning_amber_rounded,
+        iconBg: Color(0xfffff1dd),
+        borderColor: Color(0xffff9800),
+      ),
+      const _StatCard(
+        title: 'Normal units',
+        value: '',
+        icon: Icons.inventory_2_outlined,
+        iconBg: Color(0xffe7f6ea),
+        borderColor: Color(0xff2e7d32),
+      ),
+    ];
+
+    final values = <String>[
+      '$totalUnits',
+      '$activeCount',
+      '$urgentCount',
+      '$normalCount',
+      '$urgentUnits',
+      '$normalUnits',
+    ];
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: List.generate(cards.length, (i) {
+        final card = cards[i].copyWith(value: values[i]);
+        return SizedBox(width: cardWidth, child: card);
+      }),
     );
   }
 }
@@ -241,6 +279,16 @@ class _StatCard extends StatelessWidget {
     required this.borderColor,
   });
 
+  _StatCard copyWith({String? value}) {
+    return _StatCard(
+      title: title,
+      value: value ?? this.value,
+      icon: icon,
+      iconBg: iconBg,
+      borderColor: borderColor,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -299,8 +347,8 @@ class _BloodRequestsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: const [
+          const Row(
+            children: [
               Spacer(),
               Text(
                 'Blood requests',
@@ -308,7 +356,6 @@ class _BloodRequestsSection extends StatelessWidget {
               ),
             ],
           ),
-
           const SizedBox(height: 16),
 
           SizedBox(
@@ -333,45 +380,43 @@ class _BloodRequestsSection extends StatelessWidget {
 
           const SizedBox(height: 24),
 
-          if (requests.isEmpty) ...[
-            const SizedBox(height: 20),
+          if (requests.isEmpty)
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+              children: const [
+                SizedBox(height: 20),
                 CircleAvatar(
                   radius: 42,
-                  backgroundColor: const Color(0xffffe3e6),
-                  child: const Icon(
+                  backgroundColor: Color(0xffffe3e6),
+                  child: Icon(
                     Icons.favorite_border,
                     color: Color(0xffe60012),
                     size: 40,
                   ),
                 ),
-                const SizedBox(height: 20),
-                const Text(
+                SizedBox(height: 20),
+                Text(
                   'No blood requests yet',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(height: 8),
-                const Text(
+                SizedBox(height: 8),
+                Text(
                   'Create a new blood request to reach donors',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 14, color: Colors.black54),
                 ),
               ],
-            ),
-          ] else ...[
+            )
+          else
             ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: requests.length,
               separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
-                final r = requests[index];
-                return _RequestCard(request: r);
+                return _RequestCard(request: requests[index]);
               },
             ),
-          ],
         ],
       ),
     );
@@ -385,8 +430,8 @@ class _RequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasLocation = request.hospitalLocation.trim().isNotEmpty;
-    final hasDetails = request.details.trim().isNotEmpty;
+    final location = request.hospitalLocation.trim();
+    final details = request.details.trim();
 
     return Container(
       decoration: BoxDecoration(
@@ -422,7 +467,6 @@ class _RequestCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-
                 Text(
                   request.isUrgent ? 'Urgent' : 'Normal',
                   style: TextStyle(
@@ -430,15 +474,14 @@ class _RequestCard extends StatelessWidget {
                     color: request.isUrgent ? Colors.red : Colors.black54,
                   ),
                 ),
-
-                if (hasLocation) ...[
+                if (location.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Flexible(
                         child: Text(
-                          request.hospitalLocation,
+                          location,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.right,
@@ -457,11 +500,10 @@ class _RequestCard extends StatelessWidget {
                     ],
                   ),
                 ],
-
-                if (hasDetails) ...[
+                if (details.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
-                    request.details,
+                    details,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.right,

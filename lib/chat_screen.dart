@@ -8,8 +8,13 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  static const _listPadding = EdgeInsets.all(12);
+  static const _inputSidePadding = 12.0;
+  static const _bubbleRadius = 14.0;
+  static const _inputRadius = 24.0;
+
   final TextEditingController _controller = TextEditingController();
-  final List<String> _messages = [];
+  final List<String> _messages = <String>[];
 
   @override
   void dispose() {
@@ -22,15 +27,33 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.isEmpty) return;
 
     setState(() {
-      _messages.add(text);
+      // insert at start because list is reversed (keeps latest at bottom visually)
+      _messages.insert(0, text);
     });
 
     _controller.clear();
     FocusScope.of(context).unfocus();
   }
 
+  Widget _messageBubble(String msg) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xffffe3e6),
+          borderRadius: BorderRadius.circular(_bubbleRadius),
+        ),
+        child: Text(msg),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Messages')),
       body: SafeArea(
@@ -40,35 +63,21 @@ class _ChatScreenState extends State<ChatScreen> {
               child: _messages.isEmpty
                   ? const Center(child: Text('No messages yet'))
                   : ListView.builder(
-                      padding: const EdgeInsets.all(12),
+                      padding: _listPadding,
+                      reverse: true,
                       itemCount: _messages.length,
                       itemBuilder: (context, index) {
-                        final msg = _messages[index];
-                        return Align(
-                          alignment: Alignment.centerRight,
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xffffe3e6),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Text(msg),
-                          ),
-                        );
+                        return _messageBubble(_messages[index]);
                       },
                     ),
             ),
 
             Padding(
               padding: EdgeInsets.only(
-                left: 12,
-                right: 12,
-                bottom: 12 + MediaQuery.of(context).viewInsets.bottom,
+                left: _inputSidePadding,
+                right: _inputSidePadding,
                 top: 8,
+                bottom: _inputSidePadding + bottomInset,
               ),
               child: Row(
                 children: [
@@ -82,7 +91,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       decoration: InputDecoration(
                         hintText: 'Type a message...',
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
+                          borderRadius: BorderRadius.circular(_inputRadius),
                         ),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14,

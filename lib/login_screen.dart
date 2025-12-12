@@ -9,21 +9,25 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
+  static const _primaryColor = Color(0xffe60012);
+  static const _fieldFill = Color(0xfff8f9ff);
+
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
 
   @override
   void dispose() {
-    emailController.dispose();
-    passwordController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
   void _login() {
+    // TODO: Add real auth later
     // Navigator.of(context).pushReplacement(
-    //MaterialPageRoute(builder: (_) => const DonorDashboardScreen()),
+    //   MaterialPageRoute(builder: (_) => const DonorDashboardScreen()),
     // );
   }
 
@@ -31,6 +35,21 @@ class _LoginScreenState extends State<LoginScreen> {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const RegisterScreen()));
+  }
+
+  InputDecoration _decoration({
+    required String label,
+    required IconData prefixIcon,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(prefixIcon),
+      suffixIcon: suffixIcon,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      filled: true,
+      fillColor: _fieldFill,
+    );
   }
 
   @override
@@ -42,7 +61,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
+              Padding(
                 padding: const EdgeInsets.only(bottom: 24),
                 child: Column(
                   children: const [
@@ -51,7 +70,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       backgroundColor: Color(0xffffe3e6),
                       child: Icon(
                         Icons.favorite,
-                        color: Color(0xffe60012),
+                        color: _primaryColor,
                         size: 32,
                       ),
                     ),
@@ -59,7 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     Text(
                       'Hayat',
                       style: TextStyle(
-                        color: Color(0xffe60012),
+                        color: _primaryColor,
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                       ),
@@ -75,6 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               Container(
                 width: 420,
+                padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
@@ -86,7 +106,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                 ),
-                padding: const EdgeInsets.all(24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -103,28 +122,21 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 20),
 
                     TextField(
-                      controller: emailController,
+                      controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
-                      decoration: InputDecoration(
-                        labelText: 'Email',
-
-                        prefixIcon: const Icon(Icons.mail_outline),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        filled: true,
-                        fillColor: const Color(0xfff8f9ff),
+                      decoration: _decoration(
+                        label: 'Email',
+                        prefixIcon: Icons.mail_outline,
                       ),
                     ),
                     const SizedBox(height: 16),
 
                     TextField(
-                      controller: passwordController,
+                      controller: _passwordController,
                       obscureText: _obscurePassword,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-
-                        prefixIcon: const Icon(Icons.lock_outline),
+                      decoration: _decoration(
+                        label: 'Password',
+                        prefixIcon: Icons.lock_outline,
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscurePassword
@@ -132,16 +144,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : Icons.visibility,
                           ),
                           onPressed: () {
-                            setState(() {
-                              _obscurePassword = !_obscurePassword;
-                            });
+                            setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            );
                           },
                         ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        filled: true,
-                        fillColor: const Color(0xfff8f9ff),
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -150,7 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       height: 48,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xffe60012),
+                          backgroundColor: _primaryColor,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -175,7 +182,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               TextSpan(
                                 text: 'Create one',
                                 style: TextStyle(
-                                  color: Color(0xffe60012),
+                                  color: _primaryColor,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),

@@ -3,26 +3,41 @@ import 'requests_store.dart';
 
 class NewRequestScreen extends StatefulWidget {
   final String bloodBankName;
+  final String initialHospitalLocation;
 
-  const NewRequestScreen({super.key, required this.bloodBankName});
+  const NewRequestScreen({
+    super.key,
+    required this.bloodBankName,
+    required this.initialHospitalLocation,
+  });
 
   @override
   State<NewRequestScreen> createState() => _NewRequestScreenState();
 }
 
 class _NewRequestScreenState extends State<NewRequestScreen> {
-  String bloodType = 'A+';
-  int units = 1;
-  bool isUrgent = false;
+  static const _pagePadding = 16.0;
+  static const _fieldRadius = 12.0;
 
-  final TextEditingController detailsController = TextEditingController();
-  final TextEditingController hospitalLocationController =
+  String _bloodType = 'A+';
+  int _units = 1;
+  bool _isUrgent = false;
+
+  final TextEditingController _detailsController = TextEditingController();
+  final TextEditingController _hospitalLocationController =
       TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    // ✅ يعبّي اللوكيشن اللي انحط بالتسجيل
+    _hospitalLocationController.text = widget.initialHospitalLocation.trim();
+  }
+
+  @override
   void dispose() {
-    detailsController.dispose();
-    hospitalLocationController.dispose();
+    _detailsController.dispose();
+    _hospitalLocationController.dispose();
     super.dispose();
   }
 
@@ -30,15 +45,24 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
     final request = BloodRequest(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       bloodBankName: widget.bloodBankName,
-      bloodType: bloodType,
-      units: units,
-      isUrgent: isUrgent,
-      details: detailsController.text.trim(),
-      hospitalLocation: hospitalLocationController.text.trim(),
+      bloodType: _bloodType,
+      units: _units,
+      isUrgent: _isUrgent,
+      details: _detailsController.text.trim(),
+      hospitalLocation: _hospitalLocationController.text.trim(),
     );
 
     RequestsStore.instance.addRequest(request);
     Navigator.of(context).pop();
+  }
+
+  InputDecoration _decoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(_fieldRadius),
+      ),
+    );
   }
 
   @override
@@ -53,14 +77,19 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
         body: SafeArea(
           child: SingleChildScrollView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
+            padding: EdgeInsets.fromLTRB(
+              _pagePadding,
+              _pagePadding,
+              _pagePadding,
+              _pagePadding + bottomInset,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Blood type'),
                 const SizedBox(height: 8),
                 DropdownButton<String>(
-                  value: bloodType,
+                  value: _bloodType,
                   items: const [
                     DropdownMenuItem(value: 'A+', child: Text('A+')),
                     DropdownMenuItem(value: 'A-', child: Text('A-')),
@@ -72,10 +101,9 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                     DropdownMenuItem(value: 'AB-', child: Text('AB-')),
                   ],
                   onChanged: (v) {
-                    if (v != null) setState(() => bloodType = v);
+                    if (v != null) setState(() => _bloodType = v);
                   },
                 ),
-
                 const SizedBox(height: 16),
 
                 Row(
@@ -84,13 +112,13 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                     IconButton(
                       icon: const Icon(Icons.remove),
                       onPressed: () {
-                        if (units > 1) setState(() => units--);
+                        if (_units > 1) setState(() => _units--);
                       },
                     ),
-                    Text('$units'),
+                    Text('$_units'),
                     IconButton(
                       icon: const Icon(Icons.add),
-                      onPressed: () => setState(() => units++),
+                      onPressed: () => setState(() => _units++),
                     ),
                   ],
                 ),
@@ -98,42 +126,29 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Urgent request'),
-                  value: isUrgent,
-                  onChanged: (v) => setState(() => isUrgent = v),
+                  value: _isUrgent,
+                  onChanged: (v) => setState(() => _isUrgent = v),
                 ),
 
                 const SizedBox(height: 8),
-
                 const Text('Hospital location'),
                 const SizedBox(height: 8),
                 TextField(
-                  controller: hospitalLocationController,
-                  decoration: InputDecoration(
-                    hintText: 'Enter hospital location',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
+                  controller: _hospitalLocationController,
+                  decoration: _decoration('Enter hospital location'),
                   textInputAction: TextInputAction.next,
                 ),
 
                 const SizedBox(height: 16),
-
                 const Text('Details'),
                 const SizedBox(height: 8),
                 TextField(
-                  controller: detailsController,
+                  controller: _detailsController,
                   maxLines: 4,
-                  decoration: InputDecoration(
-                    hintText: 'Enter request details',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
+                  decoration: _decoration('Enter request details'),
                 ),
 
                 const SizedBox(height: 20),
-
                 SizedBox(
                   width: double.infinity,
                   height: 48,

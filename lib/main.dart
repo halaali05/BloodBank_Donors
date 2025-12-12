@@ -8,15 +8,19 @@ void main() {
 class HayatApp extends StatelessWidget {
   const HayatApp({super.key});
 
+  static const _primaryColor = Color(0xffe60012);
+  static const _bgColor = Color(0xfff5f6fb);
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Hayat',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primaryColor: const Color(0xffe60012),
-        scaffoldBackgroundColor: const Color(0xfff5f6fb),
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xffe60012)),
+        useMaterial3: true,
+        primaryColor: _primaryColor,
+        scaffoldBackgroundColor: _bgColor,
+        colorScheme: ColorScheme.fromSeed(seedColor: _primaryColor),
         fontFamily: 'Roboto',
       ),
       home: const LoginScreen(),
