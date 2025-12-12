@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'chat_screen.dart';
 import 'new_request_screen.dart';
 import 'requests_store.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // edited by sawsan
+import 'login_screen.dart'; // edited by sawsan
 
 class BloodBankDashboardScreen extends StatelessWidget {
   final String bloodBankName;
@@ -26,22 +28,14 @@ class BloodBankDashboardScreen extends StatelessWidget {
               final requests = RequestsStore.instance.requests;
 
               final urgentRequests = requests.where((r) => r.isUrgent).toList();
-              final normalRequests = requests
-                  .where((r) => !r.isUrgent)
-                  .toList();
+              final normalRequests = requests.where((r) => !r.isUrgent).toList();
 
               final urgentCount = urgentRequests.length;
               final normalCount = normalRequests.length;
               final activeCount = requests.length;
 
-              final urgentUnits = urgentRequests.fold<int>(
-                0,
-                (p, r) => p + r.units,
-              );
-              final normalUnits = normalRequests.fold<int>(
-                0,
-                (p, r) => p + r.units,
-              );
+              final urgentUnits = urgentRequests.fold<int>(0, (p, r) => p + r.units);
+              final normalUnits = normalRequests.fold<int>(0, (p, r) => p + r.units);
               final totalUnits = urgentUnits + normalUnits;
 
               void goToNewRequest() {
@@ -49,23 +43,27 @@ class BloodBankDashboardScreen extends StatelessWidget {
                   MaterialPageRoute(
                     builder: (_) => NewRequestScreen(
                       bloodBankName: bloodBankName,
-                      initialHospitalLocation: location, // ✅ التعديل هون
+                      initialHospitalLocation: location,
                     ),
                   ),
                 );
               }
 
               return SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Column(
                   children: [
                     _TopBar(
                       bloodBankName: bloodBankName,
                       location: location,
-                      onLogout: () => Navigator.of(context).pop(),
+                      onLogout: () async {
+                        await FirebaseAuth.instance.signOut(); // edited by sawsan
+                        if (!context.mounted) return; // edited by sawsan
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(builder: (_) => const LoginScreen()), // edited by sawsan
+                          (route) => false,
+                        );
+                      }, // edited by sawsan
                     ),
                     const SizedBox(height: 16),
 
@@ -184,7 +182,7 @@ class _StatsGrid extends StatelessWidget {
 class _TopBar extends StatelessWidget {
   final String bloodBankName;
   final String location;
-  final VoidCallback onLogout;
+  final Future<void> Function() onLogout; // edited by sawsan
 
   const _TopBar({
     required this.bloodBankName,
@@ -199,7 +197,7 @@ class _TopBar extends StatelessWidget {
         Row(
           children: [
             TextButton.icon(
-              onPressed: onLogout,
+              onPressed: () async => await onLogout(), // edited by sawsan
               icon: const Icon(Icons.logout),
               label: const Text('Logout'),
             ),
@@ -357,7 +355,6 @@ class _BloodRequestsSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-
           SizedBox(
             height: 48,
             child: ElevatedButton.icon(
@@ -370,16 +367,11 @@ class _BloodRequestsSection extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(24),
                 ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 28,
-                  vertical: 10,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 10),
               ),
             ),
           ),
-
           const SizedBox(height: 24),
-
           if (requests.isEmpty)
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -454,7 +446,6 @@ class _RequestCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 16),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -513,15 +504,12 @@ class _RequestCard extends StatelessWidget {
               ],
             ),
           ),
-
           const SizedBox(width: 8),
-
           IconButton(
             icon: const Icon(Icons.chat_bubble_outline),
             onPressed: () {
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
+              Navigator.of(context)
+                  .push(MaterialPageRoute(builder: (_) => const ChatScreen()));
             },
           ),
         ],

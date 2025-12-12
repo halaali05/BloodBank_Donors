@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // edited by sawsan
+import 'package:cloud_firestore/cloud_firestore.dart'; // edited by sawsan
+
 import 'blood_bank_dashboard_screen.dart';
 import 'donor_dashboard_screen.dart';
 
@@ -33,6 +36,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
+  bool _isLoading = false; // edited by sawsan
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -44,7 +49,49 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  void _submit() {
+  // edited by sawsan
+  bool _isValidEmail(String email) {
+    final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
+    return emailRegex.hasMatch(email);
+  }
+
+  Future<void> _submit() async {
+    // ===== Validations =====
+    final email = _emailController.text.trim(); // edited by sawsan
+    final password = _passwordController.text; // edited by sawsan
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter email and password'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // edited by sawsan
+    if (!_isValidEmail(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid email'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // edited by sawsan
+    if (password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password must be at least 6 characters'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -55,25 +102,118 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    if (_type == UserType.donor) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const DonorDashboardScreen()),
+    if (_type == UserType.donor && _nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter your full name'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => BloodBankDashboardScreen(
-          bloodBankName: _hospitalNameController.text.isEmpty
-              ? 'Blood bank'
-              : _hospitalNameController.text,
-          location: _locationController.text.isEmpty
-              ? 'Unknown'
-              : _locationController.text,
+    if (_type == UserType.bloodBank &&
+        _hospitalNameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter blood bank name'),
+          backgroundColor: Colors.red,
         ),
-      ),
-    );
+      );
+      return;
+    }
+
+    if (_type == UserType.bloodBank && _locationController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter location'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true); // edited by sawsan
+
+    try {
+      // 1) Create account in Firebase Auth
+      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      ); // edited by sawsan
+
+      final uid = cred.user!.uid; // edited by sawsan
+
+      // 2) Save user data in Firestore users/{uid}
+      final users =
+          FirebaseFirestore.instance.collection('users'); // edited by sawsan
+
+      if (_type == UserType.donor) {
+        final name = _nameController.text.trim();
+
+        await users.doc(uid).set({
+          'role': 'donor', // edited by sawsan
+          'name': name, // edited by sawsan
+          'email': email, // edited by sawsan
+          'createdAt': FieldValue.serverTimestamp(), // edited by sawsan
+        }); // edited by sawsan
+
+        if (!mounted) return;
+
+        // 3) Navigate to donor dashboard
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => DonorDashboardScreen(donorName: name),
+          ),
+          (route) => false,
+        );
+      } else {
+        final bloodBankName = _hospitalNameController.text.trim();
+        final location = _locationController.text.trim();
+
+        await users.doc(uid).set({
+          'role': 'hospital', // edited by sawsan
+          'bloodBankName': bloodBankName, // edited by sawsan
+          'location': location, // edited by sawsan
+          'email': email, // edited by sawsan
+          'createdAt': FieldValue.serverTimestamp(), // edited by sawsan
+        }); // edited by sawsan
+
+        if (!mounted) return;
+
+        // 3) Navigate to blood bank dashboard
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => BloodBankDashboardScreen(
+              bloodBankName: bloodBankName,
+              location: location,
+            ),
+          ),
+          (route) => false,
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      final msg = switch (e.code) {
+        'email-already-in-use' => 'Email already in use',
+        'invalid-email' => 'Invalid email',
+        'weak-password' => 'Weak password (min 6 chars)',
+        'operation-not-allowed' =>
+          'Email/Password is not enabled in Firebase Authentication', // edited by sawsan
+        _ => 'Sign up failed: ${e.code}',
+      };
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: Colors.red),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false); // edited by sawsan
+    }
   }
 
   InputDecoration _decoration({
@@ -317,7 +457,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                             ),
                             IconButton(
-                              onPressed: () {},
+                              onPressed: () {}, // upload later
                               icon: const Icon(Icons.upload_file_outlined),
                             ),
                           ],
@@ -338,11 +478,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        onPressed: _submit,
-                        child: const Text(
-                          'Create account',
-                          style: TextStyle(fontSize: 16),
-                        ),
+                        onPressed: _isLoading ? null : _submit, // edited by sawsan
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text(
+                                'Create account',
+                                style: TextStyle(fontSize: 16),
+                              ),
                       ),
                     ),
                   ],

@@ -43,3 +43,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase (DO NOT COMMIT)
+android/app/google-services.json
+lib/firebase_options.dart
+firebase.json
+
+# Generated
+web/
+.metadata

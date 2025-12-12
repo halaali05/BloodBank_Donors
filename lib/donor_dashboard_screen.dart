@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // edited by sawsan
+
 import 'chat_screen.dart';
 import 'login_screen.dart';
 import 'requests_store.dart';
@@ -40,7 +42,10 @@ class DonorDashboardScreen extends StatelessWidget {
           ),
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () {
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut(); // edited by sawsan
+              if (!context.mounted) return; // edited by sawsan
+
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const LoginScreen()),
                 (route) => false,
@@ -158,8 +163,6 @@ class _DonorRequestPost extends StatelessWidget {
                     color: request.isUrgent ? Colors.red : Colors.black54,
                   ),
                 ),
-
-                // ✅ يظهر الموقع عند المتبرع
                 if (location.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Row(
@@ -184,8 +187,6 @@ class _DonorRequestPost extends StatelessWidget {
                     ],
                   ),
                 ],
-
-                // ✅ تظهر التفاصيل عند المتبرع
                 if (details.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
@@ -195,7 +196,6 @@ class _DonorRequestPost extends StatelessWidget {
                     style: const TextStyle(fontSize: 13, color: Colors.black54),
                   ),
                 ],
-
                 const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerRight,
