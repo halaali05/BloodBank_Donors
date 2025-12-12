@@ -1,5 +1,10 @@
+import 'package:bloodbank_donors/blood_bank_dashboard_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // edited by sawsan
+import 'package:cloud_firestore/cloud_firestore.dart'; // edited by sawsan
+
 import 'register_screen.dart';
+import 'donor_dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
+  bool _isLoading = false; // edited by sawsan
 
   @override
   void dispose() {
@@ -24,17 +30,95 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _login() {
-    // TODO: Add real auth later
-    // Navigator.of(context).pushReplacement(
-    //   MaterialPageRoute(builder: (_) => const DonorDashboardScreen()),
-    // );
+  Future<void> _login() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter email and password')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true); // edited by sawsan
+
+    try {
+      // 1) Login via Firebase Auth
+      final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      ); // edited by sawsan
+
+      final uid = cred.user!.uid; // edited by sawsan
+
+      // 2) Get user data from Firestore: users/{uid}
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get(); // edited by sawsan
+
+      final data = doc.data(); // edited by sawsan
+      final role = (data?['role'] ?? '') as String; // edited by sawsan
+
+      if (!mounted) return;
+
+      // 3) Redirect based on role
+      if (role == 'donor') {
+        final name = (data?['name'] ?? 'Donor') as String; // edited by sawsan
+
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => DonorDashboardScreen(donorName: name),
+          ),
+          (route) => false,
+        );
+      } else if (role == 'hospital') {
+        // لازم نمرّر required parameters للـ BloodBankDashboardScreen
+        final bloodBankName =
+            (data?['bloodBankName'] ?? data?['name'] ?? 'Blood Bank') as String; // edited by sawsan
+        final location =
+            (data?['location'] ?? 'Unknown') as String; // edited by sawsan
+
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => BloodBankDashboardScreen(
+              bloodBankName: bloodBankName, // edited by sawsan
+              location: location, // edited by sawsan
+            ),
+          ),
+          (route) => false,
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Role not found in database')),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      final msg = switch (e.code) {
+        'user-not-found' => 'This email is not registered',
+        'wrong-password' => 'Wrong password',
+        'invalid-email' => 'Invalid email',
+        'too-many-requests' => 'Too many attempts, try again later',
+        _ => 'Login failed: ${e.code}',
+      };
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false); // edited by sawsan
+    }
   }
 
   void _goToRegister() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const RegisterScreen()));
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+    );
   }
 
   InputDecoration _decoration({
@@ -91,7 +175,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
               ),
-
               Container(
                 width: 420,
                 padding: const EdgeInsets.all(24),
@@ -120,7 +203,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
-
                     TextField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
@@ -130,7 +212,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-
                     TextField(
                       controller: _passwordController,
                       obscureText: _obscurePassword,
@@ -144,15 +225,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : Icons.visibility,
                           ),
                           onPressed: () {
-                            setState(
-                              () => _obscurePassword = !_obscurePassword,
-                            );
+                            setState(() => _obscurePassword = !_obscurePassword);
                           },
                         ),
                       ),
                     ),
                     const SizedBox(height: 24),
-
                     SizedBox(
                       height: 48,
                       child: ElevatedButton(
@@ -162,21 +240,26 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        onPressed: _login,
-                        child: const Text(
-                          'Login',
-                          style: TextStyle(fontSize: 16),
-                        ),
+                        onPressed: _isLoading ? null : _login, // edited by sawsan
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text(
+                                'Login',
+                                style: TextStyle(fontSize: 16),
+                              ),
                       ),
                     ),
                     const SizedBox(height: 16),
-
                     Center(
                       child: GestureDetector(
                         onTap: _goToRegister,
                         child: const Text.rich(
                           TextSpan(
-                            text: "Don\'t have an account? ",
+                            text: "Don't have an account? ",
                             style: TextStyle(fontSize: 13),
                             children: [
                               TextSpan(
