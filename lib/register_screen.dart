@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // edited by sawsan
-import 'package:cloud_firestore/cloud_firestore.dart'; // edited by sawsan
-
-import 'blood_bank_dashboard_screen.dart';
-import 'donor_dashboard_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum UserType { donor, bloodBank }
 
@@ -35,8 +32,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-
-  bool _isLoading = false; // edited by sawsan
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -49,43 +45,39 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  // edited by sawsan
   bool _isValidEmail(String email) {
-    final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
-    return emailRegex.hasMatch(email);
+    final emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+    return emailRegex.hasMatch(email.trim());
   }
 
   Future<void> _submit() async {
-    // ===== Validations =====
-    final email = _emailController.text.trim(); // edited by sawsan
-    final password = _passwordController.text; // edited by sawsan
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter email and password'),
+          content: Text('Please enter email and password.'),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    // edited by sawsan
     if (!_isValidEmail(email)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter a valid email'),
+          content: Text('Please enter a valid email address.'),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    // edited by sawsan
     if (password.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Password must be at least 6 characters'),
+          content: Text('Password must be at least 6 characters.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -95,7 +87,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Passwords do not match'),
+          content: Text('Passwords do not match.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -105,7 +97,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (_type == UserType.donor && _nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter your full name'),
+          content: Text('Please enter your full name.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -116,7 +108,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _hospitalNameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter blood bank name'),
+          content: Text('Please enter blood bank name.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -126,79 +118,76 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (_type == UserType.bloodBank && _locationController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter location'),
+          content: Text('Please enter location.'),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    setState(() => _isLoading = true); // edited by sawsan
+    setState(() => _isLoading = true);
 
     try {
       // 1) Create account in Firebase Auth
       final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email,
         password: password,
-      ); // edited by sawsan
+      );
 
-      final uid = cred.user!.uid; // edited by sawsan
+      final user = cred.user!;
+      final uid = user.uid;
 
-      // 2) Save user data in Firestore users/{uid}
-      final users =
-          FirebaseFirestore.instance.collection('users'); // edited by sawsan
+      // 2) Send email verification
+      await user.sendEmailVerification();
+
+      // 3) Save user data in Firestore users/{uid}
+      final users = FirebaseFirestore.instance.collection('users');
 
       if (_type == UserType.donor) {
         final name = _nameController.text.trim();
-
         await users.doc(uid).set({
-          'role': 'donor', // edited by sawsan
-          'name': name, // edited by sawsan
-          'email': email, // edited by sawsan
-          'createdAt': FieldValue.serverTimestamp(), // edited by sawsan
-        }); // edited by sawsan
-
-        if (!mounted) return;
-
-        // 3) Navigate to donor dashboard
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) => DonorDashboardScreen(donorName: name),
-          ),
-          (route) => false,
-        );
+          'role': 'donor',
+          'name': name,
+          'email': email,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
       } else {
         final bloodBankName = _hospitalNameController.text.trim();
         final location = _locationController.text.trim();
-
         await users.doc(uid).set({
-          'role': 'hospital', // edited by sawsan
-          'bloodBankName': bloodBankName, // edited by sawsan
-          'location': location, // edited by sawsan
-          'email': email, // edited by sawsan
-          'createdAt': FieldValue.serverTimestamp(), // edited by sawsan
-        }); // edited by sawsan
-
-        if (!mounted) return;
-
-        // 3) Navigate to blood bank dashboard
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) => BloodBankDashboardScreen(
-              bloodBankName: bloodBankName,
-              location: location,
-            ),
-          ),
-          (route) => false,
-        );
+          'role': 'hospital',
+          'bloodBankName': bloodBankName,
+          'location': location,
+          'email': email,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
       }
+
+      if (!mounted) return;
+
+      // 4) Block dashboard until verification
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Account created successfully.\n'
+            'A verification email has been sent. Please verify your email and then log in.',
+          ),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 5),
+        ),
+      );
+
+      // 5) Sign out and return to Login
+      await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pop();
     } on FirebaseAuthException catch (e) {
       final msg = switch (e.code) {
-        'email-already-in-use' => 'Email already in use',
-        'invalid-email' => 'Invalid email',
-        'weak-password' => 'Weak password (min 6 chars)',
+        'email-already-in-use' => 'This email is already in use.',
+        'invalid-email' => 'Invalid email address.',
+        'weak-password' => 'Password must be at least 6 characters.',
         'operation-not-allowed' =>
-          'Email/Password is not enabled in Firebase Authentication', // edited by sawsan
+          'Email/Password sign-in is not enabled in Firebase Authentication.',
         _ => 'Sign up failed: ${e.code}',
       };
 
@@ -212,7 +201,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
     } finally {
-      if (mounted) setState(() => _isLoading = false); // edited by sawsan
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -432,41 +421,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const SizedBox(height: 12),
                     ],
 
-                    if (_type == UserType.donor) ...[
-                      const Text(
-                        'Medical report (optional)',
-                        style: TextStyle(fontSize: 14, color: Colors.black54),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        height: 56,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xfffdfdfd),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xffd7d9e0)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Attach medical report',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.black54,
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: () {}, // upload later
-                              icon: const Icon(Icons.upload_file_outlined),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ] else ...[
-                      const SizedBox(height: 20),
-                    ],
+                    const SizedBox(height: 20),
 
                     SizedBox(
                       width: double.infinity,
@@ -478,7 +433,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        onPressed: _isLoading ? null : _submit, // edited by sawsan
+                        onPressed: _isLoading ? null : _submit,
                         child: _isLoading
                             ? const SizedBox(
                                 width: 22,

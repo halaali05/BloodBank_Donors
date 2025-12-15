@@ -1,10 +1,10 @@
-import 'package:bloodbank_donors/blood_bank_dashboard_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // edited by sawsan
-import 'package:cloud_firestore/cloud_firestore.dart'; // edited by sawsan
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'register_screen.dart';
 import 'donor_dashboard_screen.dart';
+import 'blood_bank_dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,7 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
-  bool _isLoading = false; // edited by sawsan
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -30,42 +30,129 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  // Resend verification: signs in temporarily, sends email, then signs out.
+  Future<void> _resendVerification() async {
+    try {
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
+
+      if (email.isEmpty || password.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Enter your email and password first.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      final user = cred.user!;
+      await user.sendEmailVerification();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Verification email sent again. Please check your inbox.',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      await FirebaseAuth.instance.signOut();
+    } on FirebaseAuthException catch (e) {
+      final msg = switch (e.code) {
+        'user-not-found' => 'This email is not registered.',
+        'wrong-password' => 'Incorrect password.',
+        'invalid-email' => 'Invalid email address.',
+        _ => 'Could not resend: ${e.code}',
+      };
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   Future<void> _login() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter email and password')),
+        const SnackBar(
+          content: Text('Please enter email and password.'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
-    setState(() => _isLoading = true); // edited by sawsan
+    setState(() => _isLoading = true);
 
     try {
       // 1) Login via Firebase Auth
       final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
-      ); // edited by sawsan
+      );
 
-      final uid = cred.user!.uid; // edited by sawsan
+      // 2) Verify email
+      final user = cred.user!;
+      await user.reload();
+      final refreshedUser = FirebaseAuth.instance.currentUser;
 
-      // 2) Get user data from Firestore: users/{uid}
+      if (refreshedUser == null || !refreshedUser.emailVerified) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please verify your email before logging in.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+
+        await FirebaseAuth.instance.signOut();
+        return;
+      }
+
+      // 3) Get user data from Firestore
       final doc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(uid)
-          .get(); // edited by sawsan
+          .doc(user.uid)
+          .get();
 
-      final data = doc.data(); // edited by sawsan
-      final role = (data?['role'] ?? '') as String; // edited by sawsan
+      if (!doc.exists || doc.data() == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('User data not found. Please contact support.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        await FirebaseAuth.instance.signOut();
+        return;
+      }
+
+      final data = doc.data()!;
+      final role = (data['role'] ?? '') as String;
 
       if (!mounted) return;
 
-      // 3) Redirect based on role
+      // 4) Navigate based on role
       if (role == 'donor') {
-        final name = (data?['name'] ?? 'Donor') as String; // edited by sawsan
+        final name = (data['name'] ?? 'Donor') as String;
 
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
@@ -74,51 +161,55 @@ class _LoginScreenState extends State<LoginScreen> {
           (route) => false,
         );
       } else if (role == 'hospital') {
-        // لازم نمرّر required parameters للـ BloodBankDashboardScreen
         final bloodBankName =
-            (data?['bloodBankName'] ?? data?['name'] ?? 'Blood Bank') as String; // edited by sawsan
-        final location =
-            (data?['location'] ?? 'Unknown') as String; // edited by sawsan
+            (data['bloodBankName'] ?? data['name'] ?? 'Blood Bank') as String;
+        final location = (data['location'] ?? 'Unknown') as String;
 
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (_) => BloodBankDashboardScreen(
-              bloodBankName: bloodBankName, // edited by sawsan
-              location: location, // edited by sawsan
+              bloodBankName: bloodBankName,
+              location: location,
             ),
           ),
           (route) => false,
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Role not found in database')),
+          const SnackBar(
+            content: Text('Role not found in database.'),
+            backgroundColor: Colors.red,
+          ),
         );
+        await FirebaseAuth.instance.signOut();
       }
     } on FirebaseAuthException catch (e) {
       final msg = switch (e.code) {
-        'user-not-found' => 'This email is not registered',
-        'wrong-password' => 'Wrong password',
-        'invalid-email' => 'Invalid email',
-        'too-many-requests' => 'Too many attempts, try again later',
+        'user-not-found' => 'This email is not registered.',
+        'wrong-password' => 'Incorrect password.',
+        'invalid-email' => 'Invalid email address.',
+        'too-many-requests' => 'Too many attempts. Please try again later.',
         _ => 'Login failed: ${e.code}',
       };
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
     } finally {
-      if (mounted) setState(() => _isLoading = false); // edited by sawsan
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   void _goToRegister() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RegisterScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const RegisterScreen()));
   }
 
   InputDecoration _decoration({
@@ -225,7 +316,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : Icons.visibility,
                           ),
                           onPressed: () {
-                            setState(() => _obscurePassword = !_obscurePassword);
+                            setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            );
                           },
                         ),
                       ),
@@ -240,18 +333,25 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        onPressed: _isLoading ? null : _login, // edited by sawsan
+                        onPressed: _isLoading ? null : _login,
                         child: _isLoading
                             ? const SizedBox(
                                 width: 22,
                                 height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Text(
                                 'Login',
                                 style: TextStyle(fontSize: 16),
                               ),
                       ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: _isLoading ? null : _resendVerification,
+                      child: const Text('Resend verification email'),
                     ),
                     const SizedBox(height: 16),
                     Center(
