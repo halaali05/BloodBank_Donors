@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_functions/cloud_functions.dart';
-
 import 'verify_reset_code_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -14,7 +12,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _emailController = TextEditingController();
   bool _loading = false;
 
-  Future<void> _sendCode() async {
+  Future<void> _sendCodeUiOnly() async {
     final email = _emailController.text.trim();
     if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -27,39 +25,23 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     }
 
     setState(() => _loading = true);
-    try {
-      final callable = FirebaseFunctions.instance.httpsCallable(
-        'sendResetCode',
-      );
-      await callable.call({'email': email});
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Code sent. Check your email.'),
-          backgroundColor: Colors.green,
-        ),
-      );
+    // ✅ UI ONLY (simulate)
+    await Future.delayed(const Duration(milliseconds: 600));
 
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => VerifyResetCodeScreen(email: email)),
-      );
-    } on FirebaseFunctionsException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.message ?? e.code),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Code sent (UI only).'),
+        backgroundColor: Colors.green,
+      ),
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => VerifyResetCodeScreen(email: email)),
+    );
+
+    if (mounted) setState(() => _loading = false);
   }
 
   @override
@@ -86,7 +68,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               height: 48,
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _loading ? null : _sendCode,
+                onPressed: _loading ? null : _sendCodeUiOnly,
                 child: _loading
                     ? const CircularProgressIndicator()
                     : const Text('Send code'),

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   final String email;
@@ -20,7 +19,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final _pass2 = TextEditingController();
   bool _loading = false;
 
-  Future<void> _reset() async {
+  Future<void> _resetUiOnly() async {
     final p1 = _pass1.text;
     final p2 = _pass2.text;
 
@@ -44,40 +43,20 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     }
 
     setState(() => _loading = true);
-    try {
-      final callable = FirebaseFunctions.instance.httpsCallable(
-        'resetPasswordWithCode',
-      );
-      await callable.call({
-        'email': widget.email,
-        'code': widget.code,
-        'newPassword': p1,
-      });
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Password updated.'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      Navigator.of(context).popUntil((route) => route.isFirst);
-    } on FirebaseFunctionsException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.message ?? e.code),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    // ✅ UI ONLY
+    await Future.delayed(const Duration(milliseconds: 600));
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Password updated (UI only).'),
+        backgroundColor: Colors.green,
+      ),
+    );
+    Navigator.of(context).popUntil((route) => route.isFirst);
+
+    if (mounted) setState(() => _loading = false);
   }
 
   @override
@@ -113,7 +92,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               height: 48,
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _loading ? null : _reset,
+                onPressed: _loading ? null : _resetUiOnly,
                 child: _loading
                     ? const CircularProgressIndicator()
                     : const Text('Update password'),
