@@ -6,6 +6,9 @@ import 'register_screen.dart';
 import 'donor_dashboard_screen.dart';
 import 'blood_bank_dashboard_screen.dart';
 
+// ✅ NEW
+import 'forgot_password_screen.dart';
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -353,6 +356,21 @@ class _LoginScreenState extends State<LoginScreen> {
                       onPressed: _isLoading ? null : _resendVerification,
                       child: const Text('Resend verification email'),
                     ),
+
+                    // ✅ NEW: Forgot password
+                    TextButton(
+                      onPressed: _isLoading
+                          ? null
+                          : () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ForgotPasswordScreen(),
+                                ),
+                              );
+                            },
+                      child: const Text('Forgot password?'),
+                    ),
+
                     const SizedBox(height: 16),
                     Center(
                       child: GestureDetector(
