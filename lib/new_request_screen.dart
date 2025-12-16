@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'requests_store.dart';
+import 'requests_service.dart'; // لاستدعاء RequestsService class by Rand
+import 'requests_store.dart'; // لاستدعاء BloodRequest class from requests-store by Rand
+import 'package:firebase_auth/firebase_auth.dart'; // لاستدعاء uid by rand
 
 class NewRequestScreen extends StatefulWidget {
   final String bloodBankName;
@@ -41,9 +43,11 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
     final request = BloodRequest(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
+      bloodBankId: uid, // by rand
       bloodBankName: widget.bloodBankName,
       bloodType: _bloodType,
       units: _units,
@@ -52,7 +56,9 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
       hospitalLocation: _hospitalLocationController.text.trim(),
     );
 
-    RequestsStore.instance.addRequest(request);
+    //RequestsStore.instance.addRequest(request); edit to use Requests service by Rand
+    // Navigator.of(context).pop();
+    await RequestsService.instance.addRequest(request);
     Navigator.of(context).pop();
   }
 

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // edited by sawsan
-
+import 'package:cloud_firestore/cloud_firestore.dart'; // edited by Rand
 import 'chat_screen.dart';
 import 'login_screen.dart';
 import 'requests_store.dart';
@@ -54,11 +54,39 @@ class DonorDashboardScreen extends StatelessWidget {
           ),
         ],
       ),
+      // استبدال animatedBuilder to streamBuilder by Rand
       body: SafeArea(
-        child: AnimatedBuilder(
-          animation: RequestsStore.instance,
-          builder: (context, _) {
-            final requests = RequestsStore.instance.requests;
+        child: StreamBuilder(
+          stream: FirebaseFirestore.instance
+              .collection('requests')
+              .orderBy('createdAt', descending: true)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return const Center(
+                child: Text(
+                  'No blood requests yet.',
+                  style: TextStyle(color: Colors.black54),
+                ),
+              );
+            }
+            final requests = snapshot.data!.docs.map((doc) {
+              final data = doc.data();
+              ;
+              return BloodRequest(
+                id: doc.id,
+                bloodBankId: data['bloodBankId'] ?? '', // by rand
+                bloodBankName: data['bloodBankName'] ?? '',
+                bloodType: data['bloodType'] ?? '',
+                units: data['units'] ?? 0,
+                isUrgent: data['isUrgent'] ?? false,
+                details: data['details'] ?? '',
+                hospitalLocation: data['hospitalLocation'] ?? '',
+              );
+            }).toList();
 
             return Padding(
               padding: const EdgeInsets.all(16),

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 @immutable
 class BloodRequest {
   final String id;
+  final String bloodBankId; // by rand
   final String bloodBankName;
   final String bloodType;
   final int units;
@@ -12,6 +13,7 @@ class BloodRequest {
 
   const BloodRequest({
     required this.id,
+    required this.bloodBankId, // by rand
     required this.bloodBankName,
     required this.bloodType,
     required this.units,

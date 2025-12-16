@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'chat_screen.dart';
 import 'new_request_screen.dart';
-import 'requests_store.dart';
+import 'requests_service.dart'; // edited by rand
 import 'package:firebase_auth/firebase_auth.dart'; // edited by sawsan
 import 'login_screen.dart'; // edited by sawsan
+import 'requests_store.dart'; // لاستدعاء BloodRequest class from requests-store
 
 class BloodBankDashboardScreen extends StatelessWidget {
   final String bloodBankName;
@@ -22,20 +23,45 @@ class BloodBankDashboardScreen extends StatelessWidget {
       child: Scaffold(
         backgroundColor: const Color(0xfff5f6fb),
         body: SafeArea(
-          child: AnimatedBuilder(
-            animation: RequestsStore.instance,
-            builder: (context, _) {
-              final requests = RequestsStore.instance.requests;
+          child: StreamBuilder<List<BloodRequest>>(
+            // edited by rand
+            stream: RequestsService.instance.getRequestsStream(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Center(child: Text('No requests'));
+              }
+              final allRequests = snapshot.data!;
+              final uid = FirebaseAuth.instance.currentUser!.uid;
 
-              final urgentRequests = requests.where((r) => r.isUrgent).toList();
-              final normalRequests = requests.where((r) => !r.isUrgent).toList();
+              final requests = allRequests
+                  .where((r) => r.bloodBankId == uid)
+                  .toList();
+
+              final urgentRequests = requests
+                  .where((r) => r.isUrgent == true)
+                  .toList();
+
+              final normalRequests = requests
+                  .where((r) => r.isUrgent != true)
+                  .toList();
 
               final urgentCount = urgentRequests.length;
               final normalCount = normalRequests.length;
               final activeCount = requests.length;
 
-              final urgentUnits = urgentRequests.fold<int>(0, (p, r) => p + r.units);
-              final normalUnits = normalRequests.fold<int>(0, (p, r) => p + r.units);
+              final urgentUnits = urgentRequests.fold<int>(
+                0,
+                (sum, r) => sum + r.units,
+              );
+
+              final normalUnits = normalRequests.fold<int>(
+                0,
+                (sum, r) => sum + r.units,
+              );
+
               final totalUnits = urgentUnits + normalUnits;
 
               void goToNewRequest() {
@@ -50,17 +76,23 @@ class BloodBankDashboardScreen extends StatelessWidget {
               }
 
               return SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 child: Column(
                   children: [
                     _TopBar(
                       bloodBankName: bloodBankName,
                       location: location,
                       onLogout: () async {
-                        await FirebaseAuth.instance.signOut(); // edited by sawsan
+                        await FirebaseAuth.instance
+                            .signOut(); // edited by sawsan
                         if (!context.mounted) return; // edited by sawsan
                         Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(builder: (_) => const LoginScreen()), // edited by sawsan
+                          MaterialPageRoute(
+                            builder: (_) => const LoginScreen(),
+                          ), // edited by sawsan
                           (route) => false,
                         );
                       }, // edited by sawsan
@@ -367,7 +399,10 @@ class _BloodRequestsSection extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(24),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 10,
+                ),
               ),
             ),
           ),
@@ -508,8 +543,9 @@ class _RequestCard extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.chat_bubble_outline),
             onPressed: () {
-              Navigator.of(context)
-                  .push(MaterialPageRoute(builder: (_) => const ChatScreen()));
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
             },
           ),
         ],
