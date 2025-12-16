@@ -22,3 +22,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/heart_outline.png
+    - assets/heart_filled.png
+    - assets/heart_flowers.png

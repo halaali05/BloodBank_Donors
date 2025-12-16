@@ -47,34 +47,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  /// Validates an email address format
-  ///
-  /// Checks if the provided email matches a valid email pattern
-  /// using a regular expression.
-  ///
-  /// Parameters:
-  /// - [email]: The email address to validate
-  ///
-  /// Returns:
-  /// - [true] if the email format is valid, [false] otherwise
   bool _isValidEmail(String email) {
     final emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
     return emailRegex.hasMatch(email.trim());
   }
 
-  /// Handles user registration form submission
-  ///
-  /// Performs comprehensive validation of all form fields:
-  /// - Email and password presence
-  /// - Email format validation
-  /// - Password length (minimum 6 characters)
-  /// - Password confirmation match
-  /// - Role-specific required fields (name for donors, blood bank name and location for hospitals)
-  ///
-  /// Creates the appropriate user account (donor or blood bank) via AuthService
-  /// and shows success/error messages. Navigates back to login on success.
-  ///
-  /// Sets loading state during the registration process.
   Future<void> _submit() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
@@ -156,12 +133,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     try {
       if (_type == UserType.donor) {
         final name = _nameController.text.trim();
-        final bloodType = _bloodTypeController.text.trim().isNotEmpty
-            ? _bloodTypeController.text.trim()
-            : 'A+';
-        final location = _locationController.text.trim().isNotEmpty
-            ? _locationController.text.trim()
-            : 'Unknown';
+
+        // بما إننا شلنا blood type و location من واجهة المتبرع
+        // منبعت قيم افتراضية بسيطة
+        const String bloodType = 'A+';
+        const String location = 'Unknown';
 
         await _authService.signUpDonor(
           fullName: name,
@@ -212,18 +188,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  /// Creates a standardized input decoration for text fields
-  ///
-  /// Returns a consistent [InputDecoration] with the app's styling
-  /// for use in TextField widgets.
-  ///
-  /// Parameters:
-  /// - [label]: The label text to display
-  /// - [icon]: Optional icon to show before the input
-  /// - [suffixIcon]: Optional widget to show after the input
-  ///
-  /// Returns:
-  /// - An [InputDecoration] configured with the app's theme
   InputDecoration _decoration({
     required String label,
     IconData? icon,
@@ -239,12 +203,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  /// Builds the header section of the registration screen
-  ///
-  /// Creates a visual header with the app logo (heart icon) and app name.
-  ///
-  /// Returns:
-  /// - A [Column] widget containing the header elements
   Widget _buildHeader() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -272,13 +230,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  /// Builds the user type toggle widget
-  ///
-  /// Creates a toggle switch that allows users to select between
-  /// "Donor" and "Blood bank" registration types.
-  ///
-  /// Returns:
-  /// - A [Container] widget with toggle buttons for user type selection
   Widget _buildToggle() {
     return Container(
       decoration: BoxDecoration(
@@ -342,19 +293,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  /// Creates a reusable text field widget
-  ///
-  /// Builds a standardized TextField with consistent styling and behavior.
-  ///
-  /// Parameters:
-  /// - [label]: The label text for the field
-  /// - [controller]: The TextEditingController for the field
-  /// - [icon]: Optional icon to display before the input
-  /// - [obscure]: Whether the text should be obscured (for passwords)
-  /// - [suffixIcon]: Optional widget to display after the input
-  ///
-  /// Returns:
-  /// - A [TextField] widget configured with the provided parameters
   Widget _textField({
     required String label,
     required TextEditingController controller,
@@ -394,6 +332,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     _buildToggle(),
                     const SizedBox(height: 20),
 
+                    // --------- Donor fields ---------
                     if (_type == UserType.donor) ...[
                       _textField(
                         label: 'Full name',
@@ -401,20 +340,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         icon: Icons.person_outline,
                       ),
                       const SizedBox(height: 12),
-                      _textField(
-                        label: 'Blood type (optional)',
-                        controller: _bloodTypeController,
-                        icon: Icons.bloodtype,
-                      ),
-                      const SizedBox(height: 12),
-                      _textField(
-                        label: 'Location (optional)',
-                        controller: _locationController,
-                        icon: Icons.location_on_outlined,
-                      ),
-                      const SizedBox(height: 12),
                     ],
 
+                    // --------- Blood bank fields ---------
                     if (_type == UserType.bloodBank) ...[
                       _textField(
                         label: 'Blood bank name',
@@ -424,6 +352,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const SizedBox(height: 12),
                     ],
 
+                    // --------- Common fields ---------
                     _textField(
                       label: 'Email',
                       controller: _emailController,
@@ -469,6 +398,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     const SizedBox(height: 12),
 
+                    // Location فقط للبنك
                     if (_type == UserType.bloodBank) ...[
                       _textField(
                         label: 'Location',

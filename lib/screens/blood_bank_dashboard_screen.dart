@@ -21,101 +21,143 @@ class BloodBankDashboardScreen extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: const Color(0xfff5f6fb),
-        body: SafeArea(
-          child: StreamBuilder<List<BloodRequest>>(
-            stream: RequestsService.instance.getRequestsStream(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Center(child: Text('No requests'));
-              }
-              final allRequests = snapshot.data!;
-              final uid = FirebaseAuth.instance.currentUser!.uid;
+        backgroundColor: Colors.white,
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xfffff1f3), Color(0xfffde6eb)],
+              begin: Alignment.topRight,
+              end: Alignment.bottomLeft,
+            ),
+          ),
+          child: SafeArea(
+            child: StreamBuilder<List<BloodRequest>>(
+              stream: RequestsService.instance.getRequestsStream(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-              final requests = allRequests
-                  .where((r) => r.bloodBankId == uid)
-                  .toList();
-
-              final urgentRequests = requests
-                  .where((r) => r.isUrgent == true)
-                  .toList();
-
-              final normalRequests = requests
-                  .where((r) => r.isUrgent != true)
-                  .toList();
-
-              final urgentCount = urgentRequests.length;
-              final normalCount = normalRequests.length;
-              final activeCount = requests.length;
-
-              final urgentUnits = urgentRequests.fold<int>(
-                0,
-                (sum, r) => sum + r.units,
-              );
-
-              final normalUnits = normalRequests.fold<int>(
-                0,
-                (sum, r) => sum + r.units,
-              );
-
-              final totalUnits = urgentUnits + normalUnits;
-
-              void goToNewRequest() {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => NewRequestScreen(
-                      bloodBankName: bloodBankName,
-                      initialHospitalLocation: location,
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        CircleAvatar(
+                          radius: 40,
+                          backgroundColor: Color(0xffffc2cc),
+                          child: Icon(
+                            Icons.bloodtype_outlined,
+                            color: Color(0xffb00020),
+                            size: 34,
+                          ),
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          'No requests yet',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xff4a131c),
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          'Start by creating your first blood request\nand connect with donors on Hayat.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: Colors.black54),
+                        ),
+                      ],
                     ),
+                  );
+                }
+
+                final allRequests = snapshot.data!;
+                final uid = FirebaseAuth.instance.currentUser!.uid;
+
+                final requests = allRequests
+                    .where((r) => r.bloodBankId == uid)
+                    .toList();
+
+                final urgentRequests = requests
+                    .where((r) => r.isUrgent == true)
+                    .toList();
+
+                final normalRequests = requests
+                    .where((r) => r.isUrgent != true)
+                    .toList();
+
+                final urgentCount = urgentRequests.length;
+                final normalCount = normalRequests.length;
+                final activeCount = requests.length;
+
+                final urgentUnits = urgentRequests.fold<int>(
+                  0,
+                  (sum, r) => sum + r.units,
+                );
+
+                final normalUnits = normalRequests.fold<int>(
+                  0,
+                  (sum, r) => sum + r.units,
+                );
+
+                final totalUnits = urgentUnits + normalUnits;
+
+                void goToNewRequest() {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => NewRequestScreen(
+                        bloodBankName: bloodBankName,
+                        initialHospitalLocation: location,
+                      ),
+                    ),
+                  );
+                }
+
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  child: Column(
+                    children: [
+                      _TopBar(
+                        bloodBankName: bloodBankName,
+                        location: location,
+                        onLogout: () async {
+                          await FirebaseAuth.instance.signOut();
+                          if (!context.mounted) return;
+                          Navigator.of(context).pushAndRemoveUntil(
+                            MaterialPageRoute(
+                              builder: (_) => const LoginScreen(),
+                            ),
+                            (route) => false,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      _StatsGrid(
+                        totalUnits: totalUnits,
+                        activeCount: activeCount,
+                        urgentCount: urgentCount,
+                        normalCount: normalCount,
+                        urgentUnits: urgentUnits,
+                        normalUnits: normalUnits,
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // شلنا _HayatBanner من هون
+                      _BloodRequestsSection(
+                        requests: requests,
+                        onCreatePressed: goToNewRequest,
+                      ),
+                    ],
                   ),
                 );
-              }
-
-              return SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                child: Column(
-                  children: [
-                    _TopBar(
-                      bloodBankName: bloodBankName,
-                      location: location,
-                      onLogout: () async {
-                        await FirebaseAuth.instance.signOut();
-                        if (!context.mounted) return;
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(
-                            builder: (_) => const LoginScreen(),
-                          ),
-                          (route) => false,
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    _StatsGrid(
-                      totalUnits: totalUnits,
-                      activeCount: activeCount,
-                      urgentCount: urgentCount,
-                      normalCount: normalCount,
-                      urgentUnits: urgentUnits,
-                      normalUnits: normalUnits,
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    _BloodRequestsSection(
-                      requests: requests,
-                      onCreatePressed: goToNewRequest,
-                    ),
-                  ],
-                ),
-              );
-            },
+              },
+            ),
           ),
         ),
       ),
@@ -142,50 +184,53 @@ class _StatsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardWidth = (MediaQuery.of(context).size.width - 16 * 2 - 12) / 2;
+    const maxWidth = 650.0;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final usableWidth = screenWidth < maxWidth ? screenWidth - 32 : maxWidth;
+    final cardWidth = (usableWidth - 12) / 2;
 
     final cards = <_StatCard>[
       const _StatCard(
         title: 'Total units',
         value: '',
         icon: Icons.bloodtype_outlined,
-        iconBg: Color(0xffe4edff),
-        borderColor: Color(0xff2962ff),
+        iconBg: Color(0xffe3f2fd),
+        borderColor: Color(0xff1976d2),
       ),
       const _StatCard(
         title: 'Active requests',
         value: '',
         icon: Icons.monitor_heart_outlined,
-        iconBg: Color(0xffffe3e6),
-        borderColor: Color(0xffe91e63),
+        iconBg: Color(0xffffebee),
+        borderColor: Color(0xffc2185b),
       ),
       const _StatCard(
         title: 'Urgent requests',
         value: '',
         icon: Icons.trending_up,
-        iconBg: Color(0xfffff1dd),
-        borderColor: Color(0xffff9800),
+        iconBg: Color(0xfffff3e0),
+        borderColor: Color(0xffef6c00),
       ),
       const _StatCard(
         title: 'Normal requests',
         value: '',
         icon: Icons.check_circle_outline,
-        iconBg: Color(0xffe7f6ea),
+        iconBg: Color(0xffe8f5e9),
         borderColor: Color(0xff2e7d32),
       ),
       const _StatCard(
         title: 'Urgent units',
         value: '',
         icon: Icons.warning_amber_rounded,
-        iconBg: Color(0xfffff1dd),
-        borderColor: Color(0xffff9800),
+        iconBg: Color(0xfffff3e0),
+        borderColor: Color(0xffef5350),
       ),
       const _StatCard(
         title: 'Normal units',
         value: '',
         icon: Icons.inventory_2_outlined,
-        iconBg: Color(0xffe7f6ea),
-        borderColor: Color(0xff2e7d32),
+        iconBg: Color(0xffe8f5e9),
+        borderColor: Color(0xff388e3c),
       ),
     ];
 
@@ -198,13 +243,18 @@ class _StatsGrid extends StatelessWidget {
       '$normalUnits',
     ];
 
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: List.generate(cards.length, (i) {
-        final card = cards[i].copyWith(value: values[i]);
-        return SizedBox(width: cardWidth, child: card);
-      }),
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: maxWidth),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: List.generate(cards.length, (i) {
+            final card = cards[i].copyWith(value: values[i]);
+            return SizedBox(width: cardWidth, child: card);
+          }),
+        ),
+      ),
     );
   }
 }
@@ -228,8 +278,11 @@ class _TopBar extends StatelessWidget {
           children: [
             TextButton.icon(
               onPressed: () async => await onLogout(),
-              icon: const Icon(Icons.logout),
-              label: const Text('Logout'),
+              icon: const Icon(Icons.logout, color: Color(0xffb00020)),
+              label: const Text(
+                'Logout',
+                style: TextStyle(color: Color(0xffb00020)),
+              ),
             ),
             const Spacer(),
           ],
@@ -246,6 +299,7 @@ class _TopBar extends StatelessWidget {
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
+                    color: Color(0xff3b0f18),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -274,12 +328,12 @@ class _TopBar extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: const Color(0xffffe3e6),
+                color: const Color(0xffffc2cc),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: const Icon(
                 Icons.favorite,
-                color: Color(0xffe60012),
+                color: Color(0xffb00020),
                 size: 26,
               ),
             ),
@@ -322,31 +376,38 @@ class _StatCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: borderColor.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: borderColor.withOpacity(0.5)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          ),
+        ],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 40,
-            height: 40,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               color: iconBg,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, size: 22),
+            child: Icon(icon, size: 18),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             title,
-            style: const TextStyle(fontSize: 14, color: Colors.black54),
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
           ),
           Text(
             value,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
         ],
       ),
@@ -365,84 +426,92 @@ class _BloodRequestsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Row(
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 650),
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Spacer(),
-              Text(
-                'Blood requests',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              const Row(
+                children: [
+                  Spacer(),
+                  Text(
+                    'Blood requests',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: onCreatePressed,
-              icon: const Icon(Icons.add),
-              label: const Text('Create new request'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xffe60012),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 28,
-                  vertical: 10,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          if (requests.isEmpty)
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                SizedBox(height: 20),
-                CircleAvatar(
-                  radius: 42,
-                  backgroundColor: Color(0xffffe3e6),
-                  child: Icon(
-                    Icons.favorite_border,
-                    color: Color(0xffe60012),
-                    size: 40,
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 44,
+                child: ElevatedButton.icon(
+                  onPressed: onCreatePressed,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Create new request'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xffe60012),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 8,
+                    ),
                   ),
                 ),
-                SizedBox(height: 20),
-                Text(
-                  'No blood requests yet',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 20),
+              if (requests.isEmpty)
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    SizedBox(height: 16),
+                    CircleAvatar(
+                      radius: 38,
+                      backgroundColor: Color(0xffffe3e6),
+                      child: Icon(
+                        Icons.favorite_border,
+                        color: Color(0xffe60012),
+                        size: 34,
+                      ),
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      'No blood requests yet',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      'Create a new blood request to reach donors',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: Colors.black54),
+                    ),
+                  ],
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: requests.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    return _RequestCard(request: requests[index]);
+                  },
                 ),
-                SizedBox(height: 8),
-                Text(
-                  'Create a new blood request to reach donors',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: Colors.black54),
-                ),
-              ],
-            )
-          else
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: requests.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                return _RequestCard(request: requests[index]);
-              },
-            ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -458,95 +527,137 @@ class _RequestCard extends StatelessWidget {
     final location = request.hospitalLocation.trim();
     final details = request.details.trim();
 
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xfffdfdfd),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xffe6e9f0)),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: const Color(0xffffe3e6),
-            child: Text(
-              request.bloodType,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Color(0xffe60012),
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xfffdfdfd),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xffe6e9f0)),
+        ),
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: const Color(0xffffe3e6),
+              child: Text(
+                request.bloodType,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: Color(0xffe60012),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '${request.units} units • ${request.bloodBankName}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  request.isUrgent ? 'Urgent' : 'Normal',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: request.isUrgent ? Colors.red : Colors.black54,
-                  ),
-                ),
-                if (location.isNotEmpty) ...[
-                  const SizedBox(height: 8),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Flexible(
+                      Expanded(
                         child: Text(
-                          location,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.right,
+                          '${request.units} units needed',
                           style: const TextStyle(
-                            fontSize: 13,
-                            color: Colors.black87,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      const Icon(
-                        Icons.location_on_outlined,
-                        size: 16,
-                        color: Colors.black54,
-                      ),
+                      if (request.isUrgent)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xffffebee),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text(
+                            'Urgent',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xffc62828),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
-                ],
-                if (details.isNotEmpty) ...[
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
-                    details,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.right,
+                    'Blood bank: ${request.bloodBankName}',
                     style: const TextStyle(fontSize: 13, color: Colors.black54),
                   ),
+                  if (location.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on_outlined,
+                          size: 16,
+                          color: Colors.black54,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            location,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (details.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      details,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const ChatScreen()),
+                        );
+                      },
+                      icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                      label: const Text(
+                        'Messages',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ),
                 ],
-              ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(Icons.chat_bubble_outline),
-            onPressed: () {
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
-            },
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
