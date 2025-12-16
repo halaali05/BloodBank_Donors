@@ -1,5 +1,5 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../services/password_reset_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -10,44 +10,47 @@ class ForgotPasswordScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _email = TextEditingController();
+  final _passwordResetService = PasswordResetService();
   bool _loading = false;
 
+  /// Sends a password reset email to the user
+  ///
+  /// Validates the email input and calls the password reset service
+  /// to send a password reset link. Shows success/error messages via SnackBar.
+  /// Navigates back to the previous screen on success.
+  ///
+  /// Sets loading state during the operation.
   Future<void> _sendResetEmail() async {
     final email = _email.text.trim();
 
     if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('enter email'), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text('Please enter your email address.'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
     setState(() => _loading = true);
-    try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('reset password link sent to email'),
-          backgroundColor: Colors.green,
-        ),
-      );
+    final result = await _passwordResetService.sendPasswordResetEmail(email);
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        backgroundColor: result.success ? Colors.green : Colors.red,
+      ),
+    );
+
+    if (result.success) {
       Navigator.pop(context);
-    } on FirebaseAuthException catch (e) {
-      final msg = switch (e.code) {
-        'user-not-found' => 'no account with this email',
-        'invalid-email' => 'invalid email',
-        'too-many-requests' => 'many requests. try again later',
-        _ => e.message ?? 'error'
-      };
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), backgroundColor: Colors.red),
-      );
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
+
+    setState(() => _loading = false);
   }
 
   @override
@@ -67,7 +70,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             TextField(
               controller: _email,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'email'),
+              decoration: const InputDecoration(labelText: 'Email'),
             ),
             const SizedBox(height: 16),
             SizedBox(
@@ -77,7 +80,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 onPressed: _loading ? null : _sendResetEmail,
                 child: _loading
                     ? const CircularProgressIndicator()
-                    : const Text('sent reset link'),
+                    : const Text('Send Reset Link'),
               ),
             ),
           ],

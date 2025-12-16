@@ -22,6 +22,13 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  /// Sends a message in the chat
+  ///
+  /// Adds the message text to the messages list and clears the input field.
+  /// Messages are inserted at the start of the list because the ListView
+  /// is reversed (newest messages appear at the bottom).
+  ///
+  /// Does nothing if the message text is empty.
   void _send() {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
@@ -35,6 +42,17 @@ class _ChatScreenState extends State<ChatScreen> {
     FocusScope.of(context).unfocus();
   }
 
+  /// Builds a message bubble widget
+  ///
+  /// Creates a styled container for displaying a chat message.
+  /// Messages are aligned to the right with rounded corners and
+  /// the app's primary color scheme.
+  ///
+  /// Parameters:
+  /// - [msg]: The message text to display
+  ///
+  /// Returns:
+  /// - An [Align] widget containing a styled message bubble
   Widget _messageBubble(String msg) {
     return Align(
       alignment: Alignment.centerRight,

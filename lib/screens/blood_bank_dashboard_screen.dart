@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'chat_screen.dart';
 import 'new_request_screen.dart';
-import 'requests_service.dart'; // edited by rand
-import 'package:firebase_auth/firebase_auth.dart'; // edited by sawsan
-import 'login_screen.dart'; // edited by sawsan
-import 'requests_store.dart'; // لاستدعاء BloodRequest class from requests-store
+import '../services/requests_service.dart';
+import '../models/blood_request_model.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'login_screen.dart';
 
 class BloodBankDashboardScreen extends StatelessWidget {
   final String bloodBankName;
@@ -24,7 +24,6 @@ class BloodBankDashboardScreen extends StatelessWidget {
         backgroundColor: const Color(0xfff5f6fb),
         body: SafeArea(
           child: StreamBuilder<List<BloodRequest>>(
-            // edited by rand
             stream: RequestsService.instance.getRequestsStream(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
@@ -86,16 +85,15 @@ class BloodBankDashboardScreen extends StatelessWidget {
                       bloodBankName: bloodBankName,
                       location: location,
                       onLogout: () async {
-                        await FirebaseAuth.instance
-                            .signOut(); // edited by sawsan
-                        if (!context.mounted) return; // edited by sawsan
+                        await FirebaseAuth.instance.signOut();
+                        if (!context.mounted) return;
                         Navigator.of(context).pushAndRemoveUntil(
                           MaterialPageRoute(
                             builder: (_) => const LoginScreen(),
-                          ), // edited by sawsan
+                          ),
                           (route) => false,
                         );
-                      }, // edited by sawsan
+                      },
                     ),
                     const SizedBox(height: 16),
 
@@ -214,7 +212,7 @@ class _StatsGrid extends StatelessWidget {
 class _TopBar extends StatelessWidget {
   final String bloodBankName;
   final String location;
-  final Future<void> Function() onLogout; // edited by sawsan
+  final Future<void> Function() onLogout;
 
   const _TopBar({
     required this.bloodBankName,
@@ -229,7 +227,7 @@ class _TopBar extends StatelessWidget {
         Row(
           children: [
             TextButton.icon(
-              onPressed: () async => await onLogout(), // edited by sawsan
+              onPressed: () async => await onLogout(),
               icon: const Icon(Icons.logout),
               label: const Text('Logout'),
             ),

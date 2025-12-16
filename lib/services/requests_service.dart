@@ -1,15 +1,25 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'requests_store.dart'; // لاستدعاء BloodRequest class from requests-store
+import '../models/blood_request_model.dart';
 
+/// Service class for managing blood requests
+/// Handles creating, retrieving, and notifying about blood requests
 class RequestsService {
   RequestsService._internal();
   static final RequestsService instance = RequestsService._internal();
-  final db = FirebaseFirestore.instance;
-  // to store blood requests in firestore
+
   final CollectionReference _requestsCollection = FirebaseFirestore.instance
       .collection('requests');
 
+  /// Adds a new blood request to Firestore
+  ///
+  /// Creates a new blood request in the Firestore database and sends
+  /// notifications to all donors if the request is marked as urgent.
+  ///
+  /// Parameters:
+  /// - [request]: The [BloodRequest] object containing all request details
+  ///
+  /// Throws [FirebaseException] if the request fails to save
   Future<void> addRequest(BloodRequest request) async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
 
@@ -29,27 +39,37 @@ class RequestsService {
     }
   }
 
+  /// Gets a stream of all blood requests ordered by creation date
+  ///
+  /// Returns a real-time stream of all blood requests from Firestore,
+  /// ordered by creation date (newest first). The stream automatically
+  /// updates whenever requests are added, modified, or deleted.
+  ///
+  /// Returns:
+  /// - A [Stream] of [List<BloodRequest>] that emits whenever the data changes
   Stream<List<BloodRequest>> getRequestsStream() {
     return _requestsCollection
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map(
           (snapshot) => snapshot.docs.map((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            return BloodRequest(
-              id: doc.id,
-              bloodBankId: data['bloodBankId'] ?? '', // by rand
-              bloodBankName: data['bloodBankName'] ?? '',
-              bloodType: data['bloodType'] ?? '',
-              units: data['units'] ?? 1,
-              isUrgent: data['isUrgent'] ?? false,
-              details: data['details'] ?? '',
-              hospitalLocation: data['hospitalLocation'] ?? '',
+            return BloodRequest.fromMap(
+              doc.data() as Map<String, dynamic>,
+              doc.id,
             );
           }).toList(),
         );
   }
 
+  /// Sends notifications to all donors for urgent requests
+  ///
+  /// Private method that creates notification documents in Firestore for
+  /// all registered donors when an urgent blood request is created.
+  ///
+  /// Parameters:
+  /// - [request]: The urgent [BloodRequest] that triggered the notifications
+  ///
+  /// Note: This is called automatically when a request with [isUrgent] = true is added
   Future<void> _sendNotificationToDonors(BloodRequest request) async {
     final donorsSnapshot = await FirebaseFirestore.instance
         .collection('users')

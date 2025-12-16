@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/auth_service.dart';
 
 enum UserType { donor, bloodBank }
 
@@ -20,6 +19,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     offset: Offset(0, 4),
   );
 
+  final _authService = AuthService();
   UserType _type = UserType.donor;
 
   final TextEditingController _nameController = TextEditingController();
@@ -29,6 +29,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _confirmPasswordController =
       TextEditingController();
   final TextEditingController _locationController = TextEditingController();
+  final TextEditingController _bloodTypeController = TextEditingController();
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -42,14 +43,38 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _locationController.dispose();
+    _bloodTypeController.dispose();
     super.dispose();
   }
 
+  /// Validates an email address format
+  ///
+  /// Checks if the provided email matches a valid email pattern
+  /// using a regular expression.
+  ///
+  /// Parameters:
+  /// - [email]: The email address to validate
+  ///
+  /// Returns:
+  /// - [true] if the email format is valid, [false] otherwise
   bool _isValidEmail(String email) {
     final emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
     return emailRegex.hasMatch(email.trim());
   }
 
+  /// Handles user registration form submission
+  ///
+  /// Performs comprehensive validation of all form fields:
+  /// - Email and password presence
+  /// - Email format validation
+  /// - Password length (minimum 6 characters)
+  /// - Password confirmation match
+  /// - Role-specific required fields (name for donors, blood bank name and location for hospitals)
+  ///
+  /// Creates the appropriate user account (donor or blood bank) via AuthService
+  /// and shows success/error messages. Navigates back to login on success.
+  ///
+  /// Sets loading state during the registration process.
   Future<void> _submit() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
@@ -115,7 +140,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    if (_type == UserType.bloodBank && _locationController.text.trim().isEmpty) {
+    if (_type == UserType.bloodBank &&
+        _locationController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter location.'),
@@ -128,44 +154,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // 1) Create account in Firebase Auth
-      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      final user = cred.user!;
-      final uid = user.uid;
-
-      // 2) Send email verification
-      await user.sendEmailVerification();
-
-      // 3) Save user data in Firestore users/{uid}
-      final users = FirebaseFirestore.instance.collection('users');
-
       if (_type == UserType.donor) {
         final name = _nameController.text.trim();
-        await users.doc(uid).set({
-          'role': 'donor',
-          'name': name,
-          'email': email,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+        final bloodType = _bloodTypeController.text.trim().isNotEmpty
+            ? _bloodTypeController.text.trim()
+            : 'A+';
+        final location = _locationController.text.trim().isNotEmpty
+            ? _locationController.text.trim()
+            : 'Unknown';
+
+        await _authService.signUpDonor(
+          fullName: name,
+          email: email,
+          password: password,
+          bloodType: bloodType,
+          location: location,
+        );
       } else {
         final bloodBankName = _hospitalNameController.text.trim();
         final location = _locationController.text.trim();
-        await users.doc(uid).set({
-          'role': 'hospital',
-          'bloodBankName': bloodBankName,
-          'location': location,
-          'email': email,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+
+        await _authService.signUpBloodBank(
+          bloodBankName: bloodBankName,
+          email: email,
+          password: password,
+          location: location,
+        );
       }
 
       if (!mounted) return;
 
-      // 4) Block dashboard until verification
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -177,34 +195,35 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       );
 
-      // 5) Sign out and return to Login
-      await FirebaseAuth.instance.signOut();
+      await _authService.logout();
       if (!mounted) return;
       Navigator.of(context).pop();
-    } on FirebaseAuthException catch (e) {
-      final msg = switch (e.code) {
-        'email-already-in-use' => 'This email is already in use.',
-        'invalid-email' => 'Invalid email address.',
-        'weak-password' => 'Password must be at least 6 characters.',
-        'operation-not-allowed' =>
-          'Email/Password sign-in is not enabled in Firebase Authentication.',
-        _ => 'Sign up failed: ${e.code}',
-      };
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), backgroundColor: Colors.red),
-      );
     } catch (e) {
+      final msg = e.toString();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Sign up failed: $msg'),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  /// Creates a standardized input decoration for text fields
+  ///
+  /// Returns a consistent [InputDecoration] with the app's styling
+  /// for use in TextField widgets.
+  ///
+  /// Parameters:
+  /// - [label]: The label text to display
+  /// - [icon]: Optional icon to show before the input
+  /// - [suffixIcon]: Optional widget to show after the input
+  ///
+  /// Returns:
+  /// - An [InputDecoration] configured with the app's theme
   InputDecoration _decoration({
     required String label,
     IconData? icon,
@@ -220,6 +239,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  /// Builds the header section of the registration screen
+  ///
+  /// Creates a visual header with the app logo (heart icon) and app name.
+  ///
+  /// Returns:
+  /// - A [Column] widget containing the header elements
   Widget _buildHeader() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -247,6 +272,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  /// Builds the user type toggle widget
+  ///
+  /// Creates a toggle switch that allows users to select between
+  /// "Donor" and "Blood bank" registration types.
+  ///
+  /// Returns:
+  /// - A [Container] widget with toggle buttons for user type selection
   Widget _buildToggle() {
     return Container(
       decoration: BoxDecoration(
@@ -310,6 +342,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  /// Creates a reusable text field widget
+  ///
+  /// Builds a standardized TextField with consistent styling and behavior.
+  ///
+  /// Parameters:
+  /// - [label]: The label text for the field
+  /// - [controller]: The TextEditingController for the field
+  /// - [icon]: Optional icon to display before the input
+  /// - [obscure]: Whether the text should be obscured (for passwords)
+  /// - [suffixIcon]: Optional widget to display after the input
+  ///
+  /// Returns:
+  /// - A [TextField] widget configured with the provided parameters
   Widget _textField({
     required String label,
     required TextEditingController controller,
@@ -354,6 +399,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         label: 'Full name',
                         controller: _nameController,
                         icon: Icons.person_outline,
+                      ),
+                      const SizedBox(height: 12),
+                      _textField(
+                        label: 'Blood type (optional)',
+                        controller: _bloodTypeController,
+                        icon: Icons.bloodtype,
+                      ),
+                      const SizedBox(height: 12),
+                      _textField(
+                        label: 'Location (optional)',
+                        controller: _locationController,
+                        icon: Icons.location_on_outlined,
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -438,7 +495,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ? const SizedBox(
                                 width: 22,
                                 height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Text(
                                 'Create account',

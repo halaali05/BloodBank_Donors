@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-
+import '../services/auth_service.dart';
+import '../models/user_model.dart' as models;
 import 'register_screen.dart';
 import 'donor_dashboard_screen.dart';
 import 'blood_bank_dashboard_screen.dart';
-
-// ✅ NEW
 import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -22,6 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final _authService = AuthService();
 
   bool _obscurePassword = true;
   bool _isLoading = false;
@@ -33,7 +31,13 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // Resend verification: signs in temporarily, sends email, then signs out.
+  /// Resends email verification to the user
+  ///
+  /// Temporarily signs in the user, sends a verification email, then signs out.
+  /// This allows users to request a new verification email if they didn't receive
+  /// the original one.
+  ///
+  /// Shows error messages via SnackBar if the operation fails.
   Future<void> _resendVerification() async {
     try {
       final email = _emailController.text.trim();
@@ -49,13 +53,8 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      final user = cred.user!;
-      await user.sendEmailVerification();
+      await _authService.login(email: email, password: password);
+      await _authService.resendEmailVerification();
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -67,27 +66,27 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
 
-      await FirebaseAuth.instance.signOut();
-    } on FirebaseAuthException catch (e) {
-      final msg = switch (e.code) {
-        'user-not-found' => 'This email is not registered.',
-        'wrong-password' => 'Incorrect password.',
-        'invalid-email' => 'Invalid email address.',
-        _ => 'Could not resend: ${e.code}',
-      };
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+      await _authService.logout();
     } catch (e) {
+      final msg = e.toString();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text('Error: $msg'), backgroundColor: Colors.red),
       );
     }
   }
 
+  /// Handles user login process
+  ///
+  /// Performs the following steps:
+  /// 1. Validates email and password are not empty
+  /// 2. Attempts to login via Firebase Authentication
+  /// 3. Verifies the user's email is verified
+  /// 4. Retrieves user data from Firestore
+  /// 5. Navigates to the appropriate dashboard based on user role
+  ///
+  /// Shows error messages via SnackBar if any step fails.
+  /// Sets loading state during the process.
   Future<void> _login() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
@@ -106,17 +105,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       // 1) Login via Firebase Auth
-      final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      await _authService.login(email: email, password: password);
 
       // 2) Verify email
-      final user = cred.user!;
-      await user.reload();
-      final refreshedUser = FirebaseAuth.instance.currentUser;
+      final isVerified = await _authService.isEmailVerified();
 
-      if (refreshedUser == null || !refreshedUser.emailVerified) {
+      if (!isVerified) {
         if (!mounted) return;
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -126,17 +120,13 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         );
 
-        await FirebaseAuth.instance.signOut();
+        await _authService.logout();
         return;
       }
 
       // 3) Get user data from Firestore
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-
-      if (!doc.exists || doc.data() == null) {
+      final user = _authService.currentUser;
+      if (user == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -144,18 +134,28 @@ class _LoginScreenState extends State<LoginScreen> {
             backgroundColor: Colors.red,
           ),
         );
-        await FirebaseAuth.instance.signOut();
+        await _authService.logout();
         return;
       }
 
-      final data = doc.data()!;
-      final role = (data['role'] ?? '') as String;
+      final userData = await _authService.getUserData(user.uid);
+      if (userData == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('User data not found. Please contact support.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        await _authService.logout();
+        return;
+      }
 
       if (!mounted) return;
 
       // 4) Navigate based on role
-      if (role == 'donor') {
-        final name = (data['name'] ?? 'Donor') as String;
+      if (userData.role == models.UserRole.donor) {
+        final name = userData.fullName ?? 'Donor';
 
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
@@ -163,10 +163,9 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           (route) => false,
         );
-      } else if (role == 'hospital') {
-        final bloodBankName =
-            (data['bloodBankName'] ?? data['name'] ?? 'Blood Bank') as String;
-        final location = (data['location'] ?? 'Unknown') as String;
+      } else if (userData.role == models.UserRole.hospital) {
+        final bloodBankName = userData.bloodBankName ?? 'Blood Bank';
+        final location = userData.location ?? 'Unknown';
 
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
@@ -184,37 +183,43 @@ class _LoginScreenState extends State<LoginScreen> {
             backgroundColor: Colors.red,
           ),
         );
-        await FirebaseAuth.instance.signOut();
+        await _authService.logout();
       }
-    } on FirebaseAuthException catch (e) {
-      final msg = switch (e.code) {
-        'user-not-found' => 'This email is not registered.',
-        'wrong-password' => 'Incorrect password.',
-        'invalid-email' => 'Invalid email address.',
-        'too-many-requests' => 'Too many attempts. Please try again later.',
-        _ => 'Login failed: ${e.code}',
-      };
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
     } catch (e) {
+      final msg = e.toString();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Login failed: $msg'),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  /// Navigates to the registration screen
+  ///
+  /// Opens the [RegisterScreen] so users can create a new account.
   void _goToRegister() {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const RegisterScreen()));
   }
 
+  /// Creates a standardized input decoration for text fields
+  ///
+  /// Returns a consistent [InputDecoration] with the app's styling
+  /// for use in TextField widgets.
+  ///
+  /// Parameters:
+  /// - [label]: The label text to display
+  /// - [prefixIcon]: The icon to show before the input
+  /// - [suffixIcon]: Optional widget to show after the input (e.g., password visibility toggle)
+  ///
+  /// Returns:
+  /// - An [InputDecoration] configured with the app's theme
   InputDecoration _decoration({
     required String label,
     required IconData prefixIcon,
@@ -357,7 +362,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: const Text('Resend verification email'),
                     ),
 
-                    // ✅ NEW: Forgot password
+                    // Forgot password
                     TextButton(
                       onPressed: _isLoading
                           ? null

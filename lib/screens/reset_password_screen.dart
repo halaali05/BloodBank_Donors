@@ -19,6 +19,16 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final _pass2 = TextEditingController();
   bool _loading = false;
 
+  /// Handles password reset (UI only - not connected to backend)
+  ///
+  /// Validates that both password fields are filled and that they match.
+  /// Currently this is a UI-only implementation that simulates the reset process.
+  ///
+  /// Shows error messages via SnackBar if validation fails.
+  /// On success, navigates back to the first screen in the navigation stack.
+  ///
+  /// Note: This is a placeholder implementation and should be connected
+  /// to Firebase Auth's password reset functionality in production.
   Future<void> _resetUiOnly() async {
     final p1 = _pass1.text;
     final p2 = _pass2.text;

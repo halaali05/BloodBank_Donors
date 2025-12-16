@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // edited by sawsan
-import 'package:cloud_firestore/cloud_firestore.dart'; // edited by Rand
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'chat_screen.dart';
 import 'login_screen.dart';
-import 'requests_store.dart';
+import '../models/blood_request_model.dart';
 
 class DonorDashboardScreen extends StatelessWidget {
   const DonorDashboardScreen({super.key, this.donorName = 'Donor'});
@@ -43,8 +43,8 @@ class DonorDashboardScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
-              await FirebaseAuth.instance.signOut(); // edited by sawsan
-              if (!context.mounted) return; // edited by sawsan
+              await FirebaseAuth.instance.signOut();
+              if (!context.mounted) return;
 
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -54,7 +54,6 @@ class DonorDashboardScreen extends StatelessWidget {
           ),
         ],
       ),
-      // استبدال animatedBuilder to streamBuilder by Rand
       body: SafeArea(
         child: StreamBuilder(
           stream: FirebaseFirestore.instance
@@ -75,16 +74,9 @@ class DonorDashboardScreen extends StatelessWidget {
             }
             final requests = snapshot.data!.docs.map((doc) {
               final data = doc.data();
-              ;
-              return BloodRequest(
-                id: doc.id,
-                bloodBankId: data['bloodBankId'] ?? '', // by rand
-                bloodBankName: data['bloodBankName'] ?? '',
-                bloodType: data['bloodType'] ?? '',
-                units: data['units'] ?? 0,
-                isUrgent: data['isUrgent'] ?? false,
-                details: data['details'] ?? '',
-                hospitalLocation: data['hospitalLocation'] ?? '',
+              return BloodRequest.fromMap(
+                Map<String, dynamic>.from(data),
+                doc.id,
               );
             }).toList();
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'requests_service.dart'; // لاستدعاء RequestsService class by Rand
-import 'requests_store.dart'; // لاستدعاء BloodRequest class from requests-store by Rand
-import 'package:firebase_auth/firebase_auth.dart'; // لاستدعاء uid by rand
+import '../services/requests_service.dart';
+import '../models/blood_request_model.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class NewRequestScreen extends StatefulWidget {
   final String bloodBankName;
@@ -32,7 +32,6 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
   @override
   void initState() {
     super.initState();
-    // ✅ يعبّي اللوكيشن اللي انحط بالتسجيل
     _hospitalLocationController.text = widget.initialHospitalLocation.trim();
   }
 
@@ -43,11 +42,18 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
     super.dispose();
   }
 
+  /// Submits a new blood request
+  ///
+  /// Creates a [BloodRequest] object from the form data and saves it
+  /// to Firestore via the RequestsService. The request ID is generated
+  /// using the current timestamp.
+  ///
+  /// After successful submission, navigates back to the previous screen.
   Future<void> _submit() async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     final request = BloodRequest(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      bloodBankId: uid, // by rand
+      bloodBankId: uid,
       bloodBankName: widget.bloodBankName,
       bloodType: _bloodType,
       units: _units,
@@ -56,12 +62,21 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
       hospitalLocation: _hospitalLocationController.text.trim(),
     );
 
-    //RequestsStore.instance.addRequest(request); edit to use Requests service by Rand
-    // Navigator.of(context).pop();
     await RequestsService.instance.addRequest(request);
+    if (!mounted) return;
     Navigator.of(context).pop();
   }
 
+  /// Creates a standardized input decoration for text fields
+  ///
+  /// Returns a consistent [InputDecoration] with rounded borders
+  /// for use in TextField widgets.
+  ///
+  /// Parameters:
+  /// - [hint]: The hint text to display in the field
+  ///
+  /// Returns:
+  /// - An [InputDecoration] configured with the app's styling
   InputDecoration _decoration(String hint) {
     return InputDecoration(
       hintText: hint,
