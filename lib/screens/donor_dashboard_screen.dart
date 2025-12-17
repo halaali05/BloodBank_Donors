@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'chat_screen.dart';
 import 'login_screen.dart';
 import '../models/blood_request_model.dart';
+import 'notifications_screen.dart';
 
 class DonorDashboardScreen extends StatelessWidget {
   const DonorDashboardScreen({super.key, this.donorName = 'Donor'});
@@ -13,7 +14,9 @@ class DonorDashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const hasNotifications = true;
+    final currentUser = FirebaseAuth
+        .instance
+        .currentUser; // to get usr id for notification by rand
 
     return Scaffold(
       backgroundColor: const Color(0xfff5f6fb),
@@ -23,28 +26,47 @@ class DonorDashboardScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
         actions: [
-          IconButton(
-            onPressed: () {},
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.notifications_none),
-                if (hasNotifications)
-                  Positioned(
-                    right: 0,
-                    top: 4,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
+          //notification icon with red dot by rand
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('notifications')
+                .where('userId', isEqualTo: currentUser?.uid)
+                .where('isRead', isEqualTo: false)
+                .snapshots(),
+            builder: (context, snapshot) {
+              final hasUnread =
+                  snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+              return IconButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const NotificationsScreen(),
                     ),
-                  ),
-              ],
-            ),
+                  );
+                },
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.notifications_none),
+                    if (hasUnread)
+                      Positioned(
+                        right: 0,
+                        top: 4,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
           ),
+
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {

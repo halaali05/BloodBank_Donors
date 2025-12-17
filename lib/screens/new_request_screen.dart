@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/requests_service.dart';
 import '../models/blood_request_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/notification_service.dart';
 
 class NewRequestScreen extends StatefulWidget {
   final String bloodBankName;
@@ -61,8 +63,22 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
       details: _detailsController.text.trim(),
       hospitalLocation: _hospitalLocationController.text.trim(),
     );
-
+    // adding request and getting donors to notify by rand
     await RequestsService.instance.addRequest(request);
+    final donorsSnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('role', isEqualTo: 'donor')
+        .get();
+
+    // making notification by rand
+    for (final donor in donorsSnapshot.docs) {
+      await NotificationService.instance.createNotification(
+        userId: donor.id,
+        requestId: request.id,
+        title: 'New blood request',
+        body: '${request.bloodType} - ${request.units} units needed',
+      );
+    }
     if (!mounted) return;
     Navigator.of(context).pop();
   }

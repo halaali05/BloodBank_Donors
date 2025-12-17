@@ -33,7 +33,7 @@ class RequestsService {
       'hospitalLocation': request.hospitalLocation,
       'createdAt': FieldValue.serverTimestamp(),
     });
-
+    // send notification for urgent request by rand
     if (request.isUrgent) {
       await _sendNotificationToDonors(request);
     }
