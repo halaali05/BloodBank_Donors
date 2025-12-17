@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:awesome_dialog/awesome_dialog.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   final String email;
@@ -34,21 +35,43 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     final p2 = _pass2.text;
 
     if (p1.isEmpty || p2.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Enter both fields'),
-          backgroundColor: Colors.red,
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.warning,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.orange,
+          child: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
         ),
-      );
+        title: 'Missing passwords',
+        desc: 'Please fill in both password fields.',
+        btnOkOnPress: () {},
+      ).show();
       return;
     }
     if (p1 != p2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Passwords do not match'),
-          backgroundColor: Colors.red,
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.warning,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.orange,
+          child: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
         ),
-      );
+        title: 'Password mismatch',
+        desc: 'The passwords do not match. Please try again.',
+        btnOkOnPress: () {},
+      ).show();
       return;
     }
 
@@ -58,13 +81,21 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     await Future.delayed(const Duration(milliseconds: 600));
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Password updated (UI only).'),
+    AwesomeDialog(
+      context: context,
+      dialogType: DialogType.success,
+      animType: AnimType.bottomSlide,
+      customHeader: CircleAvatar(
+        radius: 30,
         backgroundColor: Colors.green,
+        child: const Icon(Icons.check_circle, color: Colors.white, size: 30),
       ),
-    );
-    Navigator.of(context).popUntil((route) => route.isFirst);
+      title: 'Password updated',
+      desc: 'Your password has been updated.',
+      btnOkOnPress: () {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      },
+    ).show();
 
     if (mounted) setState(() => _loading = false);
   }

@@ -37,9 +37,9 @@ class PasswordResetService {
       final message = _getErrorMessage(e.code);
       return PasswordResetResult(success: false, message: message);
     } catch (e) {
-      return PasswordResetResult(
+      return const PasswordResetResult(
         success: false,
-        message: 'An error occurred: ${e.toString()}',
+        message: 'Something went wrong. Please try again.',
       );
     }
   }

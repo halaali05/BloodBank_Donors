@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:awesome_dialog/awesome_dialog.dart';
 import 'reset_password_screen.dart';
 
 class VerifyResetCodeScreen extends StatefulWidget {
@@ -15,12 +16,23 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen> {
   void _verifyUiOnly() {
     final code = _codeController.text.trim();
     if (code.length != 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Enter 6-digit code'),
-          backgroundColor: Colors.red,
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.warning,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.orange,
+          child: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
         ),
-      );
+        title: 'Invalid code',
+        desc: 'Please enter the 6 digit code we sent to your email.',
+        btnOkOnPress: () {},
+      ).show();
       return;
     }
 

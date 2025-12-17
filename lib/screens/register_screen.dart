@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:awesome_dialog/awesome_dialog.dart';
 import '../services/auth_service.dart';
 
 enum UserType { donor, bloodBank }
@@ -57,74 +58,151 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter email and password.'),
-          backgroundColor: Colors.red,
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.warning,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.orange,
+          child: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
         ),
-      );
+        title: 'Missing information',
+        desc: 'Please enter both email and password.',
+        btnOkOnPress: () {},
+      ).show();
       return;
     }
 
     if (!_isValidEmail(email)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid email address.'),
-          backgroundColor: Colors.red,
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.warning,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.orange,
+          child: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
         ),
-      );
+        title: 'Invalid email',
+        desc: 'Please enter a valid email address.',
+        btnOkOnPress: () {},
+      ).show();
       return;
     }
 
     if (password.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Password must be at least 6 characters.'),
-          backgroundColor: Colors.red,
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.warning,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.orange,
+          child: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
         ),
-      );
+        title: 'Weak password',
+        desc: 'Password must be at least 6 characters.',
+        btnOkOnPress: () {},
+      ).show();
       return;
     }
 
     if (_passwordController.text != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Passwords do not match.'),
-          backgroundColor: Colors.red,
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.warning,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.orange,
+          child: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
         ),
-      );
+        title: 'Password mismatch',
+        desc: 'The passwords do not match. Please try again.',
+        btnOkOnPress: () {},
+      ).show();
       return;
     }
 
     if (_type == UserType.donor && _nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter your full name.'),
-          backgroundColor: Colors.red,
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.warning,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.orange,
+          child: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
         ),
-      );
+        title: 'Missing name',
+        desc: 'Please enter your full name.',
+        btnOkOnPress: () {},
+      ).show();
       return;
     }
 
     if (_type == UserType.bloodBank &&
         _hospitalNameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter blood bank name.'),
-          backgroundColor: Colors.red,
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.warning,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.orange,
+          child: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
         ),
-      );
+        title: 'Missing blood bank name',
+        desc: 'Please enter blood bank name.',
+        btnOkOnPress: () {},
+      ).show();
       return;
     }
 
     if (_type == UserType.bloodBank &&
         _locationController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter location.'),
-          backgroundColor: Colors.red,
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.warning,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.orange,
+          child: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
         ),
-      );
+        title: 'Missing location',
+        desc: 'Please enter location.',
+        btnOkOnPress: () {},
+      ).show();
       return;
     }
 
@@ -160,29 +238,40 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Account created successfully.\n'
-            'A verification email has been sent. Please verify your email and then log in.',
-          ),
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.success,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
           backgroundColor: Colors.green,
-          duration: Duration(seconds: 5),
+          child: const Icon(Icons.check_circle, color: Colors.white, size: 30),
         ),
-      );
-
-      await _authService.logout();
-      if (!mounted) return;
-      Navigator.of(context).pop();
+        title: 'Account created',
+        desc:
+            'Your account has been created. We sent you a verification email. Please check your inbox, then log in.',
+        btnOkOnPress: () async {
+          await _authService.logout();
+          if (!mounted) return;
+          Navigator.of(context).pop();
+        },
+      ).show();
     } catch (e) {
-      final msg = e.toString();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Sign up failed: $msg'),
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.error,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
           backgroundColor: Colors.red,
+          child: const Icon(Icons.error_outline, color: Colors.white, size: 30),
         ),
-      );
+        title: 'Sign up failed',
+        desc:
+            'Something went wrong while creating your account. Please try again.',
+        btnOkOnPress: () {},
+      ).show();
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

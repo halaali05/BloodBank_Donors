@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:awesome_dialog/awesome_dialog.dart';
 import '../services/auth_service.dart';
 import '../models/user_model.dart' as models;
 import 'register_screen.dart';
@@ -39,12 +40,23 @@ class _LoginScreenState extends State<LoginScreen> {
       final password = _passwordController.text;
 
       if (email.isEmpty || password.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Enter your email and password first.'),
-            backgroundColor: Colors.red,
+        AwesomeDialog(
+          context: context,
+          dialogType: DialogType.warning,
+          animType: AnimType.bottomSlide,
+          customHeader: CircleAvatar(
+            radius: 30,
+            backgroundColor: Colors.orange,
+            child: const Icon(
+              Icons.warning_amber_rounded,
+              color: Colors.white,
+              size: 30,
+            ),
           ),
-        );
+          title: 'Missing information',
+          desc: 'Please enter your email and password first.',
+          btnOkOnPress: () {},
+        ).show();
         return;
       }
 
@@ -52,22 +64,37 @@ class _LoginScreenState extends State<LoginScreen> {
       await _authService.resendEmailVerification();
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Verification email sent again. Please check your inbox.',
-          ),
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.success,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
           backgroundColor: Colors.green,
+          child: const Icon(Icons.check_circle, color: Colors.white, size: 30),
         ),
-      );
+        title: 'Verification email sent',
+        desc: 'We sent you a new verification email. Please check your inbox.',
+        btnOkOnPress: () {},
+      ).show();
 
       await _authService.logout();
     } catch (e) {
-      final msg = e.toString();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $msg'), backgroundColor: Colors.red),
-      );
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.error,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.red,
+          child: const Icon(Icons.error_outline, color: Colors.white, size: 30),
+        ),
+        title: 'Error',
+        desc:
+            'Something went wrong while sending the verification email. Please try again.',
+        btnOkOnPress: () {},
+      ).show();
     }
   }
 
@@ -78,12 +105,23 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter email and password.'),
-          backgroundColor: Colors.red,
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.warning,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.orange,
+          child: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
         ),
-      );
+        title: 'Missing information',
+        desc: 'Please enter both email and password.',
+        btnOkOnPress: () {},
+      ).show();
       return;
     }
 
@@ -99,12 +137,23 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!isVerified) {
         if (!mounted) return;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please verify your email before logging in.'),
+        AwesomeDialog(
+          context: context,
+          dialogType: DialogType.warning,
+          animType: AnimType.bottomSlide,
+          customHeader: CircleAvatar(
+            radius: 30,
             backgroundColor: Colors.orange,
+            child: const Icon(
+              Icons.warning_amber_rounded,
+              color: Colors.white,
+              size: 30,
+            ),
           ),
-        );
+          title: 'Email not verified',
+          desc: 'Please verify your email before logging in.',
+          btnOkOnPress: () {},
+        ).show();
 
         await _authService.logout();
         return;
@@ -114,12 +163,23 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = _authService.currentUser;
       if (user == null) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('User data not found. Please contact support.'),
+        AwesomeDialog(
+          context: context,
+          dialogType: DialogType.error,
+          animType: AnimType.bottomSlide,
+          customHeader: CircleAvatar(
+            radius: 30,
             backgroundColor: Colors.red,
+            child: const Icon(
+              Icons.error_outline,
+              color: Colors.white,
+              size: 30,
+            ),
           ),
-        );
+          title: 'Error',
+          desc: 'We could not load your account information. Please try again.',
+          btnOkOnPress: () {},
+        ).show();
         await _authService.logout();
         return;
       }
@@ -127,12 +187,24 @@ class _LoginScreenState extends State<LoginScreen> {
       final userData = await _authService.getUserData(user.uid);
       if (userData == null) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('User data not found. Please contact support.'),
+        AwesomeDialog(
+          context: context,
+          dialogType: DialogType.error,
+          animType: AnimType.bottomSlide,
+          customHeader: CircleAvatar(
+            radius: 30,
             backgroundColor: Colors.red,
+            child: const Icon(
+              Icons.error_outline,
+              color: Colors.white,
+              size: 30,
+            ),
           ),
-        );
+          title: 'Error',
+          desc:
+              'We could not load your account information. Please try again or contact support.',
+          btnOkOnPress: () {},
+        ).show();
         await _authService.logout();
         return;
       }
@@ -163,23 +235,41 @@ class _LoginScreenState extends State<LoginScreen> {
           (route) => false,
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Role not found in database.'),
+        AwesomeDialog(
+          context: context,
+          dialogType: DialogType.error,
+          animType: AnimType.bottomSlide,
+          customHeader: CircleAvatar(
+            radius: 30,
             backgroundColor: Colors.red,
+            child: const Icon(
+              Icons.error_outline,
+              color: Colors.white,
+              size: 30,
+            ),
           ),
-        );
+          title: 'Account issue',
+          desc:
+              'Your account type is not set up correctly. Please contact support.',
+          btnOkOnPress: () {},
+        ).show();
         await _authService.logout();
       }
     } catch (e) {
-      final msg = e.toString();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Login failed: $msg'),
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.error,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
           backgroundColor: Colors.red,
+          child: const Icon(Icons.error_outline, color: Colors.white, size: 30),
         ),
-      );
+        title: 'Login failed',
+        desc: 'Something went wrong while logging you in. Please try again.',
+        btnOkOnPress: () {},
+      ).show();
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

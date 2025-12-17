@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:awesome_dialog/awesome_dialog.dart';
 import '../services/password_reset_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -24,12 +25,23 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final email = _email.text.trim();
 
     if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter your email address.'),
-          backgroundColor: Colors.red,
+      AwesomeDialog(
+        context: context,
+        dialogType: DialogType.warning,
+        animType: AnimType.bottomSlide,
+        customHeader: CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.orange,
+          child: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
         ),
-      );
+        title: 'Missing email',
+        desc: 'Please enter your email address.',
+        btnOkOnPress: () {},
+      ).show();
       return;
     }
 
@@ -39,16 +51,27 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(result.message),
+    AwesomeDialog(
+      context: context,
+      dialogType: result.success ? DialogType.success : DialogType.error,
+      animType: AnimType.bottomSlide,
+      customHeader: CircleAvatar(
+        radius: 30,
         backgroundColor: result.success ? Colors.green : Colors.red,
+        child: Icon(
+          result.success ? Icons.check_circle : Icons.error_outline,
+          color: Colors.white,
+          size: 30,
+        ),
       ),
-    );
-
-    if (result.success) {
-      Navigator.pop(context);
-    }
+      title: result.success ? 'Email sent' : 'Reset failed',
+      desc: result.message,
+      btnOkOnPress: () {
+        if (result.success) {
+          Navigator.pop(context);
+        }
+      },
+    ).show();
 
     setState(() => _loading = false);
   }
