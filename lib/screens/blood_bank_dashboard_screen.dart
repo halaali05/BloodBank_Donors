@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'chat_screen.dart';
 import 'new_request_screen.dart';
-import '../services/requests_service.dart';
-import '../models/blood_request_model.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'login_screen.dart';
+import '../models/blood_request_model.dart';
 
 class BloodBankDashboardScreen extends StatelessWidget {
   final String bloodBankName;
@@ -15,6 +16,69 @@ class BloodBankDashboardScreen extends StatelessWidget {
     required this.bloodBankName,
     required this.location,
   });
+
+  // ✅ دالة حذف الطلب + كل إشعاراته
+  Future<void> _deleteRequestWithNotifications(
+    BuildContext context,
+    BloodRequest request,
+  ) async {
+    try {
+      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+
+      // تأكيد إنو اللي بحذف هو صاحب الطلب (البنك)
+      if (currentUid == null || request.bloodBankId != currentUid) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You are not allowed to delete this request.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final requestId = request.id;
+
+      // 1) مرجع الطلب
+      final reqRef = FirebaseFirestore.instance
+          .collection('requests')
+          .doc(requestId);
+
+      // 2) كل الإشعارات اللي إلها نفس requestId
+      final notifSnap = await FirebaseFirestore.instance
+          .collection('notifications')
+          .where('requestId', isEqualTo: requestId)
+          .get();
+
+      final batch = FirebaseFirestore.instance.batch();
+
+      // حذف الطلب نفسه
+      batch.delete(reqRef);
+
+      // حذف كل الإشعارات المرتبطة
+      for (final doc in notifSnap.docs) {
+        batch.delete(doc.reference);
+      }
+
+      await batch.commit();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Request and its notifications deleted.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting request: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,58 +95,44 @@ class BloodBankDashboardScreen extends StatelessWidget {
             ),
           ),
           child: SafeArea(
-            child: StreamBuilder<List<BloodRequest>>(
-              stream: RequestsService.instance.getRequestsStream(),
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection('requests')
+                  .orderBy('createdAt', descending: true)
+                  .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                if (snapshot.hasError) {
                   return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        CircleAvatar(
-                          radius: 40,
-                          backgroundColor: Color(0xffffc2cc),
-                          child: Icon(
-                            Icons.bloodtype_outlined,
-                            color: Color(0xffb00020),
-                            size: 34,
-                          ),
-                        ),
-                        SizedBox(height: 16),
-                        Text(
-                          'No requests yet',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xff4a131c),
-                          ),
-                        ),
-                        SizedBox(height: 6),
-                        Text(
-                          'Start by creating your first blood request\nand connect with donors on Hayat.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 13, color: Colors.black54),
-                        ),
-                      ],
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        'Error loading requests:\n${snapshot.error}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.red),
+                      ),
                     ),
                   );
                 }
 
-                final allRequests = snapshot.data!;
-                final uid = FirebaseAuth.instance.currentUser!.uid;
+                final docs = snapshot.data?.docs ?? [];
 
-                final requests = allRequests
-                    .where((r) => r.bloodBankId == uid)
-                    .toList();
+                // كل الطلبات الموجودة
+                final requests = docs.map((doc) {
+                  final data = doc.data();
+                  return BloodRequest.fromMap(
+                    Map<String, dynamic>.from(data),
+                    doc.id,
+                  );
+                }).toList();
 
+                // إحصائيات
                 final urgentRequests = requests
                     .where((r) => r.isUrgent == true)
                     .toList();
-
                 final normalRequests = requests
                     .where((r) => r.isUrgent != true)
                     .toList();
@@ -95,12 +145,10 @@ class BloodBankDashboardScreen extends StatelessWidget {
                   0,
                   (sum, r) => sum + r.units,
                 );
-
                 final normalUnits = normalRequests.fold<int>(
                   0,
                   (sum, r) => sum + r.units,
                 );
-
                 final totalUnits = urgentUnits + normalUnits;
 
                 void goToNewRequest() {
@@ -148,10 +196,12 @@ class BloodBankDashboardScreen extends StatelessWidget {
 
                       const SizedBox(height: 16),
 
-                      // شلنا _HayatBanner من هون
                       _BloodRequestsSection(
                         requests: requests,
                         onCreatePressed: goToNewRequest,
+                        // ✅ نمرّر كولباك الحذف
+                        onDeleteRequest: (request) =>
+                            _deleteRequestWithNotifications(context, request),
                       ),
                     ],
                   ),
@@ -164,6 +214,8 @@ class BloodBankDashboardScreen extends StatelessWidget {
     );
   }
 }
+
+/* -------------------- الإحصائيات -------------------- */
 
 class _StatsGrid extends StatelessWidget {
   final int totalUnits;
@@ -415,13 +467,17 @@ class _StatCard extends StatelessWidget {
   }
 }
 
+/* -------------------- قسم البوستات -------------------- */
+
 class _BloodRequestsSection extends StatelessWidget {
   final List<BloodRequest> requests;
   final VoidCallback onCreatePressed;
+  final Future<void> Function(BloodRequest request) onDeleteRequest;
 
   const _BloodRequestsSection({
     required this.requests,
     required this.onCreatePressed,
+    required this.onDeleteRequest,
   });
 
   @override
@@ -506,7 +562,40 @@ class _BloodRequestsSection extends StatelessWidget {
                   itemCount: requests.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
-                    return _RequestCard(request: requests[index]);
+                    final request = requests[index];
+                    return _RequestCard(
+                      request: request,
+                      onDelete: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (_) => AlertDialog(
+                            title: const Text('Delete request?'),
+                            content: const Text(
+                              'This will delete the request and its notifications.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(false),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(true),
+                                child: const Text(
+                                  'Delete',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirm == true) {
+                          await onDeleteRequest(request);
+                        }
+                      },
+                    );
                   },
                 ),
             ],
@@ -519,13 +608,18 @@ class _BloodRequestsSection extends StatelessWidget {
 
 class _RequestCard extends StatelessWidget {
   final BloodRequest request;
+  final VoidCallback onDelete;
 
-  const _RequestCard({required this.request});
+  const _RequestCard({required this.request, required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
     final location = request.hospitalLocation.trim();
     final details = request.details.trim();
+
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    final bool canDelete =
+        currentUid != null && request.bloodBankId == currentUid;
 
     return Directionality(
       textDirection: TextDirection.ltr,
@@ -586,6 +680,19 @@ class _RequestCard extends StatelessWidget {
                             ),
                           ),
                         ),
+                      if (canDelete) ...[
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.close,
+                            size: 18,
+                            color: Colors.red,
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          onPressed: onDelete,
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 4),

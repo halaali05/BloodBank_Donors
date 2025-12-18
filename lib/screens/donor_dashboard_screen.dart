@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'chat_screen.dart';
 import 'login_screen.dart';
 import '../models/blood_request_model.dart';
+import '../services/requests_service.dart';
 import 'notifications_screen.dart';
 
 class DonorDashboardScreen extends StatelessWidget {
@@ -14,9 +15,7 @@ class DonorDashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = FirebaseAuth
-        .instance
-        .currentUser; // to get usr id for notification by rand
+    final currentUser = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
       backgroundColor: const Color(0xfff5f6fb),
@@ -26,46 +25,58 @@ class DonorDashboardScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
         actions: [
-          //notification icon with red dot by rand
-          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection('notifications')
-                .where('userId', isEqualTo: currentUser?.uid)
-                .where('isRead', isEqualTo: false)
-                .snapshots(),
-            builder: (context, snapshot) {
-              final hasUnread =
-                  snapshot.hasData && snapshot.data!.docs.isNotEmpty;
-              return IconButton(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const NotificationsScreen(),
-                    ),
-                  );
-                },
-                icon: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    const Icon(Icons.notifications_none),
-                    if (hasUnread)
-                      Positioned(
-                        right: 0,
-                        top: 4,
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
+          // أيقونة الإشعارات مع نقطة حمراء لو في إشعار جديد
+          if (currentUser != null)
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection('notifications')
+                  .where('userId', isEqualTo: currentUser.uid)
+                  .where('isRead', isEqualTo: false)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final hasUnread =
+                    snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+                return IconButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const NotificationsScreen(),
+                      ),
+                    );
+                  },
+                  icon: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(Icons.notifications_none),
+                      if (hasUnread)
+                        Positioned(
+                          right: 0,
+                          top: 4,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              );
-            },
-          ),
+                    ],
+                  ),
+                );
+              },
+            )
+          else
+            IconButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationsScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.notifications_none),
+            ),
 
           IconButton(
             icon: const Icon(Icons.logout),
@@ -82,17 +93,30 @@ class DonorDashboardScreen extends StatelessWidget {
         ],
       ),
       body: SafeArea(
-        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('requests')
-              .orderBy('createdAt', descending: true)
-              .snapshots(),
+        child: StreamBuilder<List<BloodRequest>>(
+          // 👈 نفس الـ stream اللي البنك بيستخدمه
+          stream: RequestsService.instance.getRequestsStream(),
           builder: (context, snapshot) {
+            // لو في error من Firestore (مثلاً permissions)
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'Error loading requests:\n${snapshot.error}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ),
+              );
+            }
+
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            // لو مافي داتا أو القائمة فاضية
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
               return Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -109,14 +133,7 @@ class DonorDashboardScreen extends StatelessWidget {
               );
             }
 
-            final requests = snapshot.data!.docs.map((doc) {
-              final data = doc.data();
-              return BloodRequest.fromMap(
-                Map<String, dynamic>.from(data),
-                doc.id,
-              );
-            }).toList();
-
+            final requests = snapshot.data!;
             final urgentCount = requests
                 .where((r) => r.isUrgent == true)
                 .length;
@@ -163,7 +180,6 @@ class DonorDashboardScreen extends StatelessWidget {
                           const Divider(height: 1),
                           const SizedBox(height: 12),
 
-                          // list
                           Expanded(
                             child: ListView.separated(
                               itemCount: requests.length,
@@ -239,9 +255,9 @@ class _DonorHeaderCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
+                const Text(
                   'Thank you for being a blood donor 💉',
-                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                  style: TextStyle(fontSize: 13, color: Colors.black54),
                 ),
               ],
             ),
@@ -361,7 +377,6 @@ class _DonorRequestPost extends StatelessWidget {
   Widget build(BuildContext context) {
     final location = request.hospitalLocation.trim();
     final details = request.details.trim();
-
     final bool isUrgent = request.isUrgent;
 
     final Color cardBg = isUrgent

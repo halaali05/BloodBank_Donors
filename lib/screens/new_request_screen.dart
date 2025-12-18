@@ -21,7 +21,7 @@ class NewRequestScreen extends StatefulWidget {
 
 class _NewRequestScreenState extends State<NewRequestScreen> {
   static const _pagePadding = 16.0;
-  static const _fieldRadius = 12.0;
+  static const _fieldRadius = 14.0;
 
   String _bloodType = 'A+';
   int _units = 1;
@@ -44,15 +44,16 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
     super.dispose();
   }
 
-  /// Submits a new blood request
-  ///
-  /// Creates a [BloodRequest] object from the form data and saves it
-  /// to Firestore via the RequestsService. The request ID is generated
-  /// using the current timestamp.
-  ///
-  /// After successful submission, navigates back to the previous screen.
   Future<void> _submit() async {
+    if (_hospitalLocationController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter hospital location')),
+      );
+      return;
+    }
+
     final uid = FirebaseAuth.instance.currentUser!.uid;
+
     final request = BloodRequest(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       bloodBankId: uid,
@@ -63,14 +64,14 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
       details: _detailsController.text.trim(),
       hospitalLocation: _hospitalLocationController.text.trim(),
     );
-    // adding request and getting donors to notify by rand
+
     await RequestsService.instance.addRequest(request);
+
     final donorsSnapshot = await FirebaseFirestore.instance
         .collection('users')
         .where('role', isEqualTo: 'donor')
         .get();
 
-    // making notification by rand
     for (final donor in donorsSnapshot.docs) {
       await NotificationService.instance.createNotification(
         userId: donor.id,
@@ -79,26 +80,35 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
         body: '${request.bloodType} - ${request.units} units needed',
       );
     }
+
     if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Request created successfully')),
+    );
+
     Navigator.of(context).pop();
   }
 
-  /// Creates a standardized input decoration for text fields
-  ///
-  /// Returns a consistent [InputDecoration] with rounded borders
-  /// for use in TextField widgets.
-  ///
-  /// Parameters:
-  /// - [hint]: The hint text to display in the field
-  ///
-  /// Returns:
-  /// - An [InputDecoration] configured with the app's styling
-  InputDecoration _decoration(String hint) {
+  InputDecoration _decoration(String label) {
     return InputDecoration(
-      hintText: hint,
+      labelText: label,
+      filled: true,
+      fillColor: const Color(0xfff8f9ff),
+      labelStyle: const TextStyle(fontSize: 13, color: Colors.black54),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(_fieldRadius),
+        borderSide: const BorderSide(color: Color(0xffd0d4f0)),
       ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(_fieldRadius),
+        borderSide: const BorderSide(color: Color(0xffd0d4f0)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(_fieldRadius),
+        borderSide: const BorderSide(color: Color(0xffe60012), width: 1.4),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
     );
   }
 
@@ -109,96 +119,269 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
     return Directionality(
       textDirection: TextDirection.ltr,
       child: Scaffold(
-        resizeToAvoidBottomInset: true,
-        appBar: AppBar(title: const Text('New blood request')),
-        body: SafeArea(
-          child: SingleChildScrollView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.fromLTRB(
-              _pagePadding,
-              _pagePadding,
-              _pagePadding,
-              _pagePadding + bottomInset,
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: const Text('New blood request'),
+          backgroundColor: const Color(0xffe60012),
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xfffff1f3), Color(0xfffde6eb)],
+              begin: Alignment.topRight,
+              end: Alignment.bottomLeft,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Blood type'),
-                const SizedBox(height: 8),
-                DropdownButton<String>(
-                  value: _bloodType,
-                  items: const [
-                    DropdownMenuItem(value: 'A+', child: Text('A+')),
-                    DropdownMenuItem(value: 'A-', child: Text('A-')),
-                    DropdownMenuItem(value: 'B+', child: Text('B+')),
-                    DropdownMenuItem(value: 'B-', child: Text('B-')),
-                    DropdownMenuItem(value: 'O+', child: Text('O+')),
-                    DropdownMenuItem(value: 'O-', child: Text('O-')),
-                    DropdownMenuItem(value: 'AB+', child: Text('AB+')),
-                    DropdownMenuItem(value: 'AB-', child: Text('AB-')),
-                  ],
-                  onChanged: (v) {
-                    if (v != null) setState(() => _bloodType = v);
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                Row(
-                  children: [
-                    const Text('Units:'),
-                    IconButton(
-                      icon: const Icon(Icons.remove),
-                      onPressed: () {
-                        if (_units > 1) setState(() => _units--);
-                      },
+          ),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(
+                _pagePadding,
+                _pagePadding,
+                _pagePadding,
+                _pagePadding + bottomInset,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 650),
+                  child: Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x14000000),
+                          blurRadius: 10,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    Text('$_units'),
-                    IconButton(
-                      icon: const Icon(Icons.add),
-                      onPressed: () => setState(() => _units++),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // header
+                        Row(
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: const Color(0xffffe3e6),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: const Icon(
+                                Icons.bloodtype,
+                                color: Color(0xffe60012),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text(
+                                'Fill the details to create a new blood request.',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        // Blood type
+                        const Text(
+                          'Blood type',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          value: _bloodType,
+                          decoration: _decoration(
+                            'Choose the required blood type',
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'A+', child: Text('A+')),
+                            DropdownMenuItem(value: 'A-', child: Text('A-')),
+                            DropdownMenuItem(value: 'B+', child: Text('B+')),
+                            DropdownMenuItem(value: 'B-', child: Text('B-')),
+                            DropdownMenuItem(value: 'O+', child: Text('O+')),
+                            DropdownMenuItem(value: 'O-', child: Text('O-')),
+                            DropdownMenuItem(value: 'AB+', child: Text('AB+')),
+                            DropdownMenuItem(value: 'AB-', child: Text('AB-')),
+                          ],
+                          onChanged: (v) {
+                            if (v != null) setState(() => _bloodType = v);
+                          },
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Units (سطر لحال)
+                        const Text(
+                          'Units needed',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: const Color(0xfff8f9ff),
+                            borderRadius: BorderRadius.circular(_fieldRadius),
+                            border: const BorderSide(
+                              color: Color(0xffd0d4f0),
+                            ).toBorderSide(),
+                          ),
+                          child: Row(
+                            children: [
+                              const Text(
+                                'Units',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                              const Spacer(),
+                              IconButton(
+                                icon: const Icon(Icons.remove, size: 20),
+                                splashRadius: 18,
+                                onPressed: () {
+                                  if (_units > 1) {
+                                    setState(() => _units--);
+                                  }
+                                },
+                              ),
+                              Text(
+                                '$_units',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add, size: 20),
+                                splashRadius: 18,
+                                onPressed: () => setState(() => _units++),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Urgent (سطر تحت الوحدات)
+                        const Text(
+                          'Urgency',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          height: 56,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xfffdf4f5),
+                            borderRadius: BorderRadius.circular(_fieldRadius),
+                            border: Border.all(
+                              color: _isUrgent
+                                  ? const Color(0xffe60012)
+                                  : const Color(0xfff3c6cc),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.warning_amber_rounded,
+                                size: 20,
+                                color: Color(0xffc62828),
+                              ),
+                              const SizedBox(width: 6),
+                              const Expanded(
+                                child: Text(
+                                  'Mark as urgent request',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ),
+                              Switch(
+                                value: _isUrgent,
+                                onChanged: (v) => setState(() => _isUrgent = v),
+                                activeColor: Colors.white,
+                                activeTrackColor: const Color(0xffe60012),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        // Hospital location
+                        TextField(
+                          controller: _hospitalLocationController,
+                          decoration: _decoration('Hospital location'),
+                          textInputAction: TextInputAction.next,
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Details
+                        TextField(
+                          controller: _detailsController,
+                          maxLines: 4,
+                          decoration: _decoration('Extra details (optional)'),
+                        ),
+
+                        const SizedBox(height: 22),
+
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton(
+                            onPressed: _submit,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xffe60012),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              elevation: 1,
+                            ),
+                            child: const Text(
+                              'Create request',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Urgent request'),
-                  value: _isUrgent,
-                  onChanged: (v) => setState(() => _isUrgent = v),
-                ),
-
-                const SizedBox(height: 8),
-                const Text('Hospital location'),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _hospitalLocationController,
-                  decoration: _decoration('Enter hospital location'),
-                  textInputAction: TextInputAction.next,
-                ),
-
-                const SizedBox(height: 16),
-                const Text('Details'),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _detailsController,
-                  maxLines: 4,
-                  decoration: _decoration('Enter request details'),
-                ),
-
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _submit,
-                    child: const Text('Create request'),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
+}
+
+extension on BorderSide {
+  Border toBorderSide() => Border.all(color: color, width: width);
 }
