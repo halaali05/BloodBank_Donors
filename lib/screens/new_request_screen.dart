@@ -202,7 +202,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                         ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          value: _bloodType,
+                          initialValue: _bloodType,
                           decoration: _decoration(
                             'Choose the required blood type',
                           ),
@@ -320,7 +320,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                               Switch(
                                 value: _isUrgent,
                                 onChanged: (v) => setState(() => _isUrgent = v),
-                                activeColor: Colors.white,
+                                activeThumbColor: Colors.white,
                                 activeTrackColor: const Color(0xffe60012),
                               ),
                             ],
