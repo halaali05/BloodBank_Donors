@@ -5,8 +5,16 @@ import '../models/user_model.dart' as models;
 /// Service class for handling authentication operations
 /// Manages user registration, login, logout, and user data retrieval
 class AuthService {
-  final _auth = FirebaseAuth.instance;
-  final _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _db;
+
+  AuthService({
+    FirebaseAuth? auth,
+    FirebaseFirestore? db,
+  })  : _auth = auth ?? FirebaseAuth.instance,
+        _db = db ?? FirebaseFirestore.instance;
+        
+
 
   /// Signs up a new donor user
   ///

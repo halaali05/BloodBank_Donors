@@ -16,11 +16,17 @@ dependencies:
   firebase_core: ^4.2.1
   firebase_auth: ^6.1.2
   cloud_firestore: ^6.1.0
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  mocktail: ^1.0.3
+  fake_cloud_firestore: ^4.0.0
+  firebase_auth_mocks: ^0.15.1
+
+
 
 flutter:
   uses-material-design: true

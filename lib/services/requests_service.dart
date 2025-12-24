@@ -4,12 +4,25 @@ import '../models/blood_request_model.dart';
 
 /// Service class for managing blood requests
 /// Handles creating, retrieving, and notifying about blood requests
+
 class RequestsService {
-  RequestsService._internal();
   static final RequestsService instance = RequestsService._internal();
 
-  final CollectionReference _requestsCollection = FirebaseFirestore.instance
-      .collection('requests');
+  final CollectionReference _requestsCollection;
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _db;
+
+  RequestsService._internal()
+      : _db = FirebaseFirestore.instance,
+        _auth = FirebaseAuth.instance,
+        _requestsCollection =
+            FirebaseFirestore.instance.collection('requests');
+
+  /// for testing
+  RequestsService.test(this._db, this._auth)
+      : _requestsCollection = _db.collection('requests');
+
+
 
   /// Adds a new blood request to Firestore
   ///
@@ -21,7 +34,8 @@ class RequestsService {
   ///
   /// Throws [FirebaseException] if the request fails to save
   Future<void> addRequest(BloodRequest request) async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
+    
+    final uid = _auth.currentUser!.uid;
 
     await _requestsCollection.doc(request.id).set({
       'bloodBankId': uid,
@@ -71,14 +85,16 @@ class RequestsService {
   ///
   /// Note: This is called automatically when a request with [isUrgent] = true is added
   Future<void> _sendNotificationToDonors(BloodRequest request) async {
-    final donorsSnapshot = await FirebaseFirestore.instance
+    
+    final donorsSnapshot = await _db
+
         .collection('users')
         .where('role', isEqualTo: 'donor')
         .get();
 
     for (var doc in donorsSnapshot.docs) {
       final donorId = doc.id;
-      await FirebaseFirestore.instance
+          await _db
           .collection('notifications')
           .doc(donorId)
           .collection('user_notifications')

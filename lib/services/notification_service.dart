@@ -1,10 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class NotificationService {
-  NotificationService._();
-  static final instance = NotificationService._();
+  static final NotificationService instance = NotificationService._();
 
-  final _db = FirebaseFirestore.instance;
+  final FirebaseFirestore _db;
+
+  NotificationService._() : _db = FirebaseFirestore.instance;
+
+  NotificationService.test(this._db); 
 
   Future<void> createNotification({
     required String userId,

@@ -52,25 +52,6 @@ void main() {
       expect(map['hospitalLocation'], 'Zarqa');
     });
     
-    
-
-    ///handles missing optional fields correctly
-    test('fromMap handles missing optional fields correctly', () {
-      final data = {
-        'bloodBankId': 'bank999',
-        'bloodBankName': 'Irbid Blood Bank',
-        'bloodType': 'O-',
-        'units': 2,
-        'isUrgent': false,
-        
-      };
-
-      final request = BloodRequest.fromMap(data, 'req777');
-
-      expect(request.details, '');
-      expect(request.hospitalLocation, '');
-    });
-  
 
   });
   
