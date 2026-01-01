@@ -10,12 +10,11 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-
   awesome_dialog: ^3.0.2
-
   firebase_core: ^4.2.1
   firebase_auth: ^6.1.2
   cloud_firestore: ^6.1.0
+  cloud_functions: ^6.0.4
   http: ^1.6.0
 
 dev_dependencies:
@@ -26,9 +25,7 @@ dev_dependencies:
   fake_cloud_firestore: ^4.0.0
   firebase_auth_mocks: ^0.15.1
 
-
-
 flutter:
   uses-material-design: true
-  assets:
-   
+  # assets:
+  #   - assets/

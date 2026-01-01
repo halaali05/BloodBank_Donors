@@ -9,6 +9,44 @@ enum UserRole {
   hospital,
 }
 
+/// Safely parse date values coming from Cloud Functions / Firestore.
+/// Accepts:
+/// - int (millisecondsSinceEpoch)
+/// - String (ISO-8601)
+/// - DateTime
+/// - Firestore Timestamp (has toDate())
+/// - Map like {_seconds: ..., _nanoseconds: ...}
+DateTime? _parseDate(dynamic v) {
+  if (v == null) return null;
+
+  if (v is DateTime) return v;
+
+  if (v is int) {
+    return DateTime.fromMillisecondsSinceEpoch(v);
+  }
+
+  if (v is String) {
+    return DateTime.tryParse(v);
+  }
+
+  // Firestore Timestamp (cloud_firestore) or any object with toDate()
+  try {
+    // ignore: avoid_dynamic_calls
+    final dt = v.toDate();
+    if (dt is DateTime) return dt;
+  } catch (_) {}
+
+  // Sometimes timestamps come as a Map: {_seconds: ..., _nanoseconds: ...}
+  if (v is Map && v.containsKey('_seconds')) {
+    final seconds = v['_seconds'];
+    if (seconds is int) {
+      return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+    }
+  }
+
+  return null;
+}
+
 /// Model class representing a user in the system
 /// Contains all user profile information for both donors and blood banks
 @immutable
@@ -52,18 +90,7 @@ class User {
     this.createdAt,
   });
 
-  /// Factory constructor to create a [User] from Firestore data
-  ///
-  /// Converts a Firestore document map into a [User] object.
-  /// Handles conversion of role string to [UserRole] enum and
-  /// timestamp conversion.
-  ///
-  /// Parameters:
-  /// - [data]: A [Map] containing the Firestore document data
-  /// - [uid]: The user's unique identifier from Firebase Auth
-  ///
-  /// Returns:
-  /// - A new [User] instance with data from Firestore
+  /// Factory constructor to create a [User] from Firestore/Functions data
   factory User.fromMap(Map<String, dynamic> data, String uid) {
     final roleString = (data['role'] ?? '') as String;
     final role = roleString == 'hospital' ? UserRole.hospital : UserRole.donor;
@@ -77,17 +104,11 @@ class User {
       location: data['location'] as String?,
       bloodType: data['bloodType'] as String?,
       medicalFileUrl: data['medicalFileUrl'] as String?,
-      createdAt: (data['createdAt'] as dynamic)?.toDate(),
+      createdAt: _parseDate(data['createdAt']),
     );
   }
 
   /// Converts the [User] to a Map for Firestore storage
-  ///
-  /// Serializes the [User] object into a format that can be
-  /// saved to Firestore. Only includes non-null fields.
-  ///
-  /// Returns:
-  /// - A [Map] containing all user data ready for Firestore
   Map<String, dynamic> toMap() {
     return {
       'email': email,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:awesome_dialog/awesome_dialog.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 
 enum UserType { donor, bloodBank }
@@ -209,6 +210,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = true);
 
     try {
+      Map<String, dynamic> result;
       if (_type == UserType.donor) {
         final name = _nameController.text.trim();
 
@@ -217,7 +219,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         const String bloodType = 'A+';
         const String location = 'Unknown';
 
-        await _authService.signUpDonor(
+        result = await _authService.signUpDonor(
           fullName: name,
           email: email,
           password: password,
@@ -228,7 +230,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         final bloodBankName = _hospitalNameController.text.trim();
         final location = _locationController.text.trim();
 
-        await _authService.signUpBloodBank(
+        result = await _authService.signUpBloodBank(
           bloodBankName: bloodBankName,
           email: email,
           password: password,
@@ -238,26 +240,104 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (!mounted) return;
 
-      AwesomeDialog(
-        context: context,
-        dialogType: DialogType.success,
-        animType: AnimType.bottomSlide,
-        customHeader: CircleAvatar(
-          radius: 30,
-          backgroundColor: Colors.green,
-          child: const Icon(Icons.check_circle, color: Colors.white, size: 30),
-        ),
-        title: 'Account created',
-        desc:
-            'Your account has been created. We sent you a verification email. Please check your inbox, then log in.',
-        btnOkOnPress: () async {
-          await _authService.logout();
-          if (!mounted) return;
-          Navigator.of(context).pop();
-        },
-      ).show();
+      // Check if email is already verified
+      final emailVerified = result['emailVerified'] ?? false;
+
+      if (emailVerified) {
+        // Email already verified, profile created immediately
+        AwesomeDialog(
+          context: context,
+          dialogType: DialogType.success,
+          animType: AnimType.bottomSlide,
+          customHeader: CircleAvatar(
+            radius: 30,
+            backgroundColor: Colors.green,
+            child: const Icon(
+              Icons.check_circle,
+              color: Colors.white,
+              size: 30,
+            ),
+          ),
+          title: 'Account created',
+          desc:
+              'Your account has been created successfully. You can now log in.',
+          btnOkOnPress: () async {
+            await _authService.logout();
+            if (!mounted) return;
+            Navigator.of(context).pop();
+          },
+        ).show();
+      } else {
+        // Email not verified, profile data saved in pending_profiles
+        AwesomeDialog(
+          context: context,
+          dialogType: DialogType.info,
+          animType: AnimType.bottomSlide,
+          customHeader: CircleAvatar(
+            radius: 30,
+            backgroundColor: Colors.blue,
+            child: const Icon(Icons.email, color: Colors.white, size: 30),
+          ),
+          title: 'Verification email sent',
+          desc:
+              'We sent you a verification email. Please check your inbox and click the link to verify your email. Your account will be activated after verification.',
+          btnOkOnPress: () async {
+            await _authService.logout();
+            if (!mounted) return;
+            Navigator.of(context).pop();
+          },
+        ).show();
+      }
     } catch (e) {
       if (!mounted) return;
+
+      // Get user-friendly error message
+      String errorMessage =
+          'Something went wrong while creating your account. Please try again.';
+      String errorTitle = 'Sign up failed';
+
+      if (e is FirebaseAuthException) {
+        // Simple, easy-to-understand error messages
+        switch (e.code) {
+          case 'email-already-in-use':
+            errorMessage =
+                'This email is already used. Please use a different email.';
+            break;
+          case 'weak-password':
+            errorMessage =
+                'Password is too weak. Please use a stronger password.';
+            break;
+          case 'invalid-email':
+            errorMessage = 'Invalid email. Please check your email address.';
+            break;
+          case 'operation-not-allowed':
+            errorMessage =
+                'Registration is not available. Please contact support.';
+            break;
+          default:
+            errorMessage = 'Cannot create account. Please try again.';
+        }
+      } else {
+        // For Cloud Function errors or other exceptions, show the actual error message
+        print('❌ Registration error caught:');
+        print('  Error: $e');
+        print('  Error type: ${e.runtimeType}');
+
+        String errorStr = e.toString();
+        if (errorStr.contains('Exception: ')) {
+          errorMessage = errorStr.replaceFirst('Exception: ', '').trim();
+        } else if (errorStr.contains('Please') ||
+            errorStr.contains('check') ||
+            errorStr.contains('verify')) {
+          // If error already contains helpful message, use it
+          errorMessage = errorStr;
+        } else {
+          // Generic fallback
+          errorMessage =
+              'Cannot create account. Please check your internet connection and try again.';
+        }
+      }
+
       AwesomeDialog(
         context: context,
         dialogType: DialogType.error,
@@ -267,9 +347,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           backgroundColor: Colors.red,
           child: const Icon(Icons.error_outline, color: Colors.white, size: 30),
         ),
-        title: 'Sign up failed',
-        desc:
-            'Something went wrong while creating your account. Please try again.',
+        title: errorTitle,
+        desc: errorMessage,
         btnOkOnPress: () {},
       ).show();
     } finally {

@@ -1,56 +1,50 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/blood_request_model.dart';
+import 'cloud_functions_service.dart';
 
 /// Service class for managing blood requests
 /// Handles creating, retrieving, and notifying about blood requests
+/// Uses Cloud Functions as a secure layer for write operations
 
 class RequestsService {
   static final RequestsService instance = RequestsService._internal();
 
   final CollectionReference _requestsCollection;
-  final FirebaseAuth _auth;
-  final FirebaseFirestore _db;
+  final CloudFunctionsService _cloudFunctions;
 
   RequestsService._internal()
-      : _db = FirebaseFirestore.instance,
-        _auth = FirebaseAuth.instance,
-        _requestsCollection =
-            FirebaseFirestore.instance.collection('requests');
+    : _requestsCollection = FirebaseFirestore.instance.collection('requests'),
+      _cloudFunctions = CloudFunctionsService();
 
   /// for testing
-  RequestsService.test(this._db, this._auth)
-      : _requestsCollection = _db.collection('requests');
+  RequestsService.test(
+    FirebaseFirestore db,
+    FirebaseAuth auth, [
+    CloudFunctionsService? cloudFunctions,
+  ]) : _requestsCollection = db.collection('requests'),
+       _cloudFunctions = cloudFunctions ?? CloudFunctionsService();
 
-
-
-  /// Adds a new blood request to Firestore
+  /// Adds a new blood request via Cloud Functions
   ///
-  /// Creates a new blood request in the Firestore database and sends
-  /// notifications to all donors if the request is marked as urgent.
+  /// Creates a new blood request in the Firestore database through Cloud Functions
+  /// and sends notifications to all donors if the request is marked as urgent.
+  /// This ensures secure access control - only hospitals can create requests.
   ///
   /// Parameters:
   /// - [request]: The [BloodRequest] object containing all request details
   ///
-  /// Throws [FirebaseException] if the request fails to save
+  /// Throws [Exception] if the request fails to save
   Future<void> addRequest(BloodRequest request) async {
-    
-    final uid = _auth.currentUser!.uid;
-
-    await _requestsCollection.doc(request.id).set({
-      'bloodBankId': uid,
-      'bloodBankName': request.bloodBankName,
-      'bloodType': request.bloodType,
-      'units': request.units,
-      'isUrgent': request.isUrgent,
-      'details': request.details,
-      'hospitalLocation': request.hospitalLocation,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    // send notification for urgent request by rand
-    if (request.isUrgent) {
-      await _sendNotificationToDonors(request);
-    }
+    await _cloudFunctions.addRequest(
+      requestId: request.id,
+      bloodBankName: request.bloodBankName,
+      bloodType: request.bloodType,
+      units: request.units,
+      isUrgent: request.isUrgent,
+      details: request.details,
+      hospitalLocation: request.hospitalLocation,
+    );
   }
 
   /// Gets a stream of all blood requests ordered by creation date
@@ -58,6 +52,9 @@ class RequestsService {
   /// Returns a real-time stream of all blood requests from Firestore,
   /// ordered by creation date (newest first). The stream automatically
   /// updates whenever requests are added, modified, or deleted.
+  ///
+  /// Note: This uses direct Firestore access for real-time updates.
+  /// Ensure Firestore security rules restrict read access appropriately.
   ///
   /// Returns:
   /// - A [Stream] of [List<BloodRequest>] that emits whenever the data changes
@@ -75,36 +72,42 @@ class RequestsService {
         );
   }
 
-  /// Sends notifications to all donors for urgent requests
+  /// Gets blood requests via Cloud Functions (for pagination support)
   ///
-  /// Private method that creates notification documents in Firestore for
-  /// all registered donors when an urgent blood request is created.
+  /// Fetches blood requests through Cloud Functions with pagination support.
+  /// Use this when you need pagination or when you prefer all operations
+  /// to go through Cloud Functions.
   ///
   /// Parameters:
-  /// - [request]: The urgent [BloodRequest] that triggered the notifications
+  /// - [limit]: Maximum number of requests to return (default: 50)
+  /// - [lastRequestId]: For pagination, the ID of the last request from previous call
   ///
-  /// Note: This is called automatically when a request with [isUrgent] = true is added
-  Future<void> _sendNotificationToDonors(BloodRequest request) async {
-    
-    final donorsSnapshot = await _db
+  /// Returns:
+  /// - A [List<BloodRequest>] and a boolean indicating if there are more requests
+  Future<Map<String, dynamic>> getRequests({
+    int limit = 50,
+    String? lastRequestId,
+  }) async {
+    final result = await _cloudFunctions.getRequests(
+      limit: limit,
+      lastRequestId: lastRequestId,
+    );
 
-        .collection('users')
-        .where('role', isEqualTo: 'donor')
-        .get();
+    final requestsList = (result['requests'] as List).map((data) {
+      final requestData = Map<String, dynamic>.from(data);
+      final id = requestData.remove('id') as String;
+      // Convert timestamp from milliseconds to Timestamp
+      if (requestData['createdAt'] != null) {
+        requestData['createdAt'] = Timestamp.fromMillisecondsSinceEpoch(
+          requestData['createdAt'] as int,
+        );
+      }
+      return BloodRequest.fromMap(requestData, id);
+    }).toList();
 
-    for (var doc in donorsSnapshot.docs) {
-      final donorId = doc.id;
-          await _db
-          .collection('notifications')
-          .doc(donorId)
-          .collection('user_notifications')
-          .add({
-            'title': 'Urgent blood request: ${request.bloodType}',
-            'body': '${request.units} units needed at ${request.bloodBankName}',
-            'requestId': request.id,
-            'createdAt': FieldValue.serverTimestamp(),
-            'read': false,
-          });
-    }
+    return {'requests': requestsList, 'hasMore': result['hasMore'] as bool};
   }
+
+  // Note: Notification sending is now handled by Cloud Functions
+  // when addRequest is called with isUrgent = true
 }

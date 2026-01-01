@@ -133,7 +133,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // 2) check verification
       final isVerified = await _authService.isEmailVerified();
-
       if (!isVerified) {
         if (!mounted) return;
 
@@ -159,10 +158,13 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // 3) user
+      // 3) current user
       final user = _authService.currentUser;
+      print('LOGIN UID = ${user?.uid}');
+
       if (user == null) {
         if (!mounted) return;
+
         AwesomeDialog(
           context: context,
           dialogType: DialogType.error,
@@ -170,61 +172,68 @@ class _LoginScreenState extends State<LoginScreen> {
           customHeader: CircleAvatar(
             radius: 30,
             backgroundColor: Colors.red,
-            child: const Icon(
-              Icons.error_outline,
-              color: Colors.white,
-              size: 30,
-            ),
+            child: const Icon(Icons.error_outline, color: Colors.white, size: 30),
           ),
           title: 'Error',
           desc: 'We could not load your account information. Please try again.',
           btnOkOnPress: () {},
         ).show();
+
         await _authService.logout();
         return;
       }
 
-      final userData = await _authService.getUserData(user.uid);
+      // 4) try complete profile after verification (won't block login)
+      try {
+        await _authService.completeProfileAfterVerification();
+      } catch (e) {
+        // ممكن يفشل إذا كان البروفايل جاهز أصلاً أو pending مش موجود
+        print('completeProfileAfterVerification skipped/failed: $e');
+      }
+
+      // 5) fetch user profile with retry (Firestore may lag briefly after write)
+      models.User? userData;
+      for (int i = 0; i < 5; i++) {
+        userData = await _authService.getUserData(user.uid);
+        if (userData != null) break;
+        await Future.delayed(const Duration(milliseconds: 600));
+      }
+
       if (userData == null) {
         if (!mounted) return;
+
         AwesomeDialog(
           context: context,
-          dialogType: DialogType.error,
+          dialogType: DialogType.info,
           animType: AnimType.bottomSlide,
           customHeader: CircleAvatar(
             radius: 30,
-            backgroundColor: Colors.red,
-            child: const Icon(
-              Icons.error_outline,
-              color: Colors.white,
-              size: 30,
-            ),
+            backgroundColor: Colors.orange,
+            child: const Icon(Icons.info_outline, color: Colors.white, size: 30),
           ),
-          title: 'Error',
+          title: 'Profile not ready',
           desc:
-              'We could not load your account information. Please try again or contact support.',
+              'Your email is verified, but your profile is still being prepared. '
+              'Please wait a few seconds and try logging in again.',
           btnOkOnPress: () {},
         ).show();
+
         await _authService.logout();
         return;
       }
 
       if (!mounted) return;
 
-      // 4) route by role
+      // 6) route by role
       if (userData.role == models.UserRole.donor) {
         final name = userData.fullName ?? 'Donor';
-
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) => DonorDashboardScreen(donorName: name),
-          ),
+          MaterialPageRoute(builder: (_) => DonorDashboardScreen(donorName: name)),
           (route) => false,
         );
       } else if (userData.role == models.UserRole.hospital) {
         final bloodBankName = userData.bloodBankName ?? 'Blood Bank';
         final location = userData.location ?? 'Unknown';
-
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (_) => BloodBankDashboardScreen(
@@ -242,21 +251,17 @@ class _LoginScreenState extends State<LoginScreen> {
           customHeader: CircleAvatar(
             radius: 30,
             backgroundColor: Colors.red,
-            child: const Icon(
-              Icons.error_outline,
-              color: Colors.white,
-              size: 30,
-            ),
+            child: const Icon(Icons.error_outline, color: Colors.white, size: 30),
           ),
           title: 'Account issue',
-          desc:
-              'Your account type is not set up correctly. Please contact support.',
+          desc: 'Your account type is not set up correctly. Please contact support.',
           btnOkOnPress: () {},
         ).show();
         await _authService.logout();
       }
     } catch (e) {
       if (!mounted) return;
+
       AwesomeDialog(
         context: context,
         dialogType: DialogType.error,
@@ -276,9 +281,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _goToRegister() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const RegisterScreen()));
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+    );
   }
 
   InputDecoration _decoration({
@@ -305,7 +310,6 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // ---------- HEADER البسيط القديم ----------
               Padding(
                 padding: const EdgeInsets.only(bottom: 24),
                 child: Column(
@@ -337,7 +341,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
-              // ---------- CARD ----------
               Container(
                 width: 420,
                 padding: const EdgeInsets.all(24),
@@ -388,9 +391,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : Icons.visibility,
                           ),
                           onPressed: () {
-                            setState(
-                              () => _obscurePassword = !_obscurePassword,
-                            );
+                            setState(() => _obscurePassword = !_obscurePassword);
                           },
                         ),
                       ),
