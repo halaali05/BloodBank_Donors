@@ -3,9 +3,9 @@ import 'package:cloud_functions/cloud_functions.dart';
 class CloudFunctionsService {
   final FirebaseFunctions _functions;
 
- 
   CloudFunctionsService({FirebaseFunctions? functions})
-      : _functions = functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+    : _functions =
+          functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
 
   Future<Map<String, dynamic>> createPendingProfile({
     required String role, // 'donor' or 'hospital'

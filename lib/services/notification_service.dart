@@ -7,7 +7,7 @@ class NotificationService {
 
   NotificationService._() : _db = FirebaseFirestore.instance;
 
-  NotificationService.test(this._db); 
+  NotificationService.test(this._db);
 
   Future<void> createNotification({
     required String userId,

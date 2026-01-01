@@ -20,8 +20,8 @@ class AuthService {
   final CloudFunctionsService _cloudFunctions;
 
   AuthService({FirebaseAuth? auth, CloudFunctionsService? cloudFunctions})
-      : _auth = auth ?? FirebaseAuth.instance,
-        _cloudFunctions = cloudFunctions ?? CloudFunctionsService();
+    : _auth = auth ?? FirebaseAuth.instance,
+      _cloudFunctions = cloudFunctions ?? CloudFunctionsService();
 
   /// Signs up a new donor user
   ///
@@ -169,21 +169,20 @@ class AuthService {
 
   /// Gets user data from Firestore via Cloud Functions
   Future<models.User?> getUserData([String? uid]) async {
-  try {
-    final data = await _cloudFunctions.getUserData(uid: uid);
-    final userUid = data['uid'] as String? ?? uid ?? _auth.currentUser?.uid;
-    if (userUid == null) return null;
+    try {
+      final data = await _cloudFunctions.getUserData(uid: uid);
+      final userUid = data['uid'] as String? ?? uid ?? _auth.currentUser?.uid;
+      if (userUid == null) return null;
 
-    return models.User.fromMap(
-      Map<String, dynamic>.from(data)..remove('uid'),
-      userUid,
-    );
-  } catch (e) {
-    print('❌ getUserData failed: $e');
-    return null;
+      return models.User.fromMap(
+        Map<String, dynamic>.from(data)..remove('uid'),
+        userUid,
+      );
+    } catch (e) {
+      print('❌ getUserData failed: $e');
+      return null;
+    }
   }
-}
-
 
   /// Resends email verification
   Future<void> resendEmailVerification() async {

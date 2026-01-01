@@ -172,7 +172,11 @@ class _LoginScreenState extends State<LoginScreen> {
           customHeader: CircleAvatar(
             radius: 30,
             backgroundColor: Colors.red,
-            child: const Icon(Icons.error_outline, color: Colors.white, size: 30),
+            child: const Icon(
+              Icons.error_outline,
+              color: Colors.white,
+              size: 30,
+            ),
           ),
           title: 'Error',
           desc: 'We could not load your account information. Please try again.',
@@ -209,7 +213,11 @@ class _LoginScreenState extends State<LoginScreen> {
           customHeader: CircleAvatar(
             radius: 30,
             backgroundColor: Colors.orange,
-            child: const Icon(Icons.info_outline, color: Colors.white, size: 30),
+            child: const Icon(
+              Icons.info_outline,
+              color: Colors.white,
+              size: 30,
+            ),
           ),
           title: 'Profile not ready',
           desc:
@@ -228,7 +236,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (userData.role == models.UserRole.donor) {
         final name = userData.fullName ?? 'Donor';
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => DonorDashboardScreen(donorName: name)),
+          MaterialPageRoute(
+            builder: (_) => DonorDashboardScreen(donorName: name),
+          ),
           (route) => false,
         );
       } else if (userData.role == models.UserRole.hospital) {
@@ -251,10 +261,15 @@ class _LoginScreenState extends State<LoginScreen> {
           customHeader: CircleAvatar(
             radius: 30,
             backgroundColor: Colors.red,
-            child: const Icon(Icons.error_outline, color: Colors.white, size: 30),
+            child: const Icon(
+              Icons.error_outline,
+              color: Colors.white,
+              size: 30,
+            ),
           ),
           title: 'Account issue',
-          desc: 'Your account type is not set up correctly. Please contact support.',
+          desc:
+              'Your account type is not set up correctly. Please contact support.',
           btnOkOnPress: () {},
         ).show();
         await _authService.logout();
@@ -281,9 +296,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _goToRegister() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RegisterScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const RegisterScreen()));
   }
 
   InputDecoration _decoration({
@@ -391,7 +406,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : Icons.visibility,
                           ),
                           onPressed: () {
-                            setState(() => _obscurePassword = !_obscurePassword);
+                            setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            );
                           },
                         ),
                       ),

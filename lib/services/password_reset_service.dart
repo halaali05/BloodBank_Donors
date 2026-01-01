@@ -3,10 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 /// Service class for handling password reset operations
 /// Manages sending password reset emails and handling reset errors
 class PasswordResetService {
-  
   final FirebaseAuth _auth;
-    PasswordResetService({FirebaseAuth? auth})
-      : _auth = auth ?? FirebaseAuth.instance;
+  PasswordResetService({FirebaseAuth? auth})
+    : _auth = auth ?? FirebaseAuth.instance;
 
   /// Sends a password reset email to the provided email address
   ///
