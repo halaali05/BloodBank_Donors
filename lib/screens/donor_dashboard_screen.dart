@@ -7,6 +7,7 @@ import 'login_screen.dart';
 import '../models/blood_request_model.dart';
 import '../services/requests_service.dart';
 import 'notifications_screen.dart';
+import '../services/fcm_service.dart'; // ← استدعاء FCMService
 
 class DonorDashboardScreen extends StatelessWidget {
   const DonorDashboardScreen({super.key, this.donorName = 'Donor'});
@@ -15,6 +16,9 @@ class DonorDashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 👈 استدعاء FCM مرة واحدة عند فتح الداشبورد
+    FCMService.instance.initFCM();
+
     final currentUser = FirebaseAuth.instance.currentUser;
 
     return Scaffold(

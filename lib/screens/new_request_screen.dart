@@ -4,6 +4,7 @@ import '../models/blood_request_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/notification_service.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class NewRequestScreen extends StatefulWidget {
   final String bloodBankName;
@@ -54,40 +55,35 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
 
     final uid = FirebaseAuth.instance.currentUser!.uid;
 
-    final request = BloodRequest(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      bloodBankId: uid,
-      bloodBankName: widget.bloodBankName,
-      bloodType: _bloodType,
-      units: _units,
-      isUrgent: _isUrgent,
-      details: _detailsController.text.trim(),
-      hospitalLocation: _hospitalLocationController.text.trim(),
-    );
+    final requestData = {
+      'requestId': DateTime.now().millisecondsSinceEpoch.toString(),
+      'bloodBankId': uid,
+      'bloodBankName': widget.bloodBankName,
+      'bloodType': _bloodType,
+      'units': _units,
+      'isUrgent': _isUrgent,
+      'details': _detailsController.text.trim(),
+      'hospitalLocation': _hospitalLocationController.text.trim(),
+    };
 
-    await RequestsService.instance.addRequest(request);
+    try {
+      final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
+      final result = await functions
+          .httpsCallable('addRequest')
+          .call(requestData);
 
-    final donorsSnapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .where('role', isEqualTo: 'donor')
-        .get();
+      if (!mounted) return;
 
-    for (final donor in donorsSnapshot.docs) {
-      await NotificationService.instance.createNotification(
-        userId: donor.id,
-        requestId: request.id,
-        title: 'New blood request',
-        body: '${request.bloodType} - ${request.units} units needed',
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Request created successfully')),
       );
+
+      Navigator.of(context).pop();
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
     }
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Request created successfully')),
-    );
-
-    Navigator.of(context).pop();
   }
 
   InputDecoration _decoration(String label) {

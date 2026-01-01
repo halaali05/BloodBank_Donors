@@ -22,7 +22,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     _markAllAsRead();
   }
 
-  /// نعلّم كل إشعارات *هذا المستخدم* isRead = true
+  /// نعلّم كل إشعارات هذا المستخدم isRead = true
   Future<void> _markAllAsRead() async {
     try {
       final snapshot = await FirebaseFirestore.instance
@@ -43,8 +43,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  /// فتح البوست تبع الإشعار
-  /// لو الطلب محذوف: بنحذف الإشعار كمان ونعرض رسالة
+  /// فتح الطلب من الإشعار
   Future<void> _openRequestFromNotification(
     String notificationId,
     Map<String, dynamic> data,
@@ -60,14 +59,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
 
-    // نتأكد إذا الطلب لسه موجود
     final reqSnap = await FirebaseFirestore.instance
         .collection('requests')
         .doc(requestId)
         .get();
 
     if (!reqSnap.exists) {
-      // الطلب انحذف → نحذف الإشعار كمان
       await FirebaseFirestore.instance
           .collection('notifications')
           .doc(notificationId)
@@ -117,18 +114,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         title: const Text('Notifications'),
         backgroundColor: const Color(0xffe60012),
         foregroundColor: Colors.white,
-        // شلنا أزرار الحذف من الـ AppBar
       ),
       body: Container(
         color: const Color(0xfff5f6fb),
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
               .collection('notifications')
-              .where('userId', isEqualTo: uid)
+              .where('userId', isEqualTo: uid) // فقط إشعارات هذا المستخدم
               .orderBy('createdAt', descending: true)
               .snapshots(),
           builder: (context, snapshot) {
-            // لو في Error من Firestore (مؤشر للـ index وغيره)
             if (snapshot.hasError) {
               return Center(
                 child: Padding(
@@ -155,12 +150,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               );
             }
 
-            // إزالة التكرار: إشعار واحد لكل requestId
             final seenRequestIds = <String>{};
             final docs = snapshot.data!.docs.where((doc) {
               final data = doc.data();
               final rid = data['requestId'] as String?;
-              if (rid == null) return true; // إشعار عام
+              if (rid == null) return true;
               if (seenRequestIds.contains(rid)) return false;
               seenRequestIds.add(rid);
               return true;
@@ -174,19 +168,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 final data = doc.data();
 
                 final isRead = data['isRead'] == true;
-
                 final String bloodBankName =
                     (data['bloodBankName'] ?? data['hospitalName'] ?? '')
                         as String;
-
                 final createdAt = data['createdAt'] as Timestamp?;
                 final createdAtText = _formatTime(createdAt);
-
                 const String titleText = 'New blood request';
                 final String subtitleText = bloodBankName;
-
                 final bool isUrgent = (data['isUrgent'] == true);
-
                 final Color stripeColor = isUrgent
                     ? const Color(0xffe53935)
                     : const Color(0xff00897b);
@@ -218,7 +207,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // الشريط الملون على اليسار
                           Container(
                             width: 4,
                             height: 70,
@@ -231,8 +219,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
-
-                          // النص والأيقونة
                           Expanded(
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
@@ -277,7 +263,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     ],
                                   ),
                                   const SizedBox(height: 4),
-
                                   if (subtitleText.isNotEmpty)
                                     Text(
                                       subtitleText,
@@ -288,7 +273,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                         color: Colors.black87,
                                       ),
                                     ),
-
                                   if (createdAtText.isNotEmpty) ...[
                                     const SizedBox(height: 4),
                                     Text(
@@ -303,7 +287,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               ),
                             ),
                           ),
-                          // شلنا زر الحذف من هنا
                         ],
                       ),
                     ),
@@ -318,7 +301,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 }
 
-/// شاشة تفاصيل البوست اللي بنوصلها من الإشعار
 class RequestDetailsScreen extends StatelessWidget {
   final String requestId;
 
