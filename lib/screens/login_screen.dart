@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:awesome_dialog/awesome_dialog.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import '../models/user_model.dart' as models;
 import 'register_screen.dart';
@@ -277,6 +278,90 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (!mounted) return;
 
+      String errorTitle = 'Login failed';
+      String errorMessage =
+          'Something went wrong while logging you in. Please try again.';
+
+      if (e is FirebaseAuthException) {
+        // Specific, clear error messages for each Firebase Auth error
+        switch (e.code) {
+          case 'user-not-found':
+            errorTitle = 'Account not found';
+            errorMessage =
+                'No account found with this email address. Please check your email or create a new account.';
+            break;
+          case 'wrong-password':
+            errorTitle = 'Incorrect password';
+            errorMessage =
+                'The password you entered is incorrect. Please check your password and try again.';
+            break;
+          case 'invalid-email':
+            errorTitle = 'Invalid email address';
+            errorMessage =
+                'The email address you entered is not valid. Please check and enter a correct email address (e.g., example@email.com).';
+            break;
+          case 'user-disabled':
+            errorTitle = 'Account disabled';
+            errorMessage =
+                'This account has been disabled. Please contact support for assistance.';
+            break;
+          case 'too-many-requests':
+            errorTitle = 'Too many attempts';
+            errorMessage =
+                'Too many failed login attempts. Please wait a few minutes before trying again.';
+            break;
+          case 'network-request-failed':
+            errorTitle = 'Network error';
+            errorMessage =
+                'Unable to connect to the server. Please check your internet connection and try again.';
+            break;
+          case 'operation-not-allowed':
+            errorTitle = 'Login disabled';
+            errorMessage =
+                'Email/password login is currently not available. Please contact support.';
+            break;
+          case 'invalid-credential':
+            errorTitle = 'Invalid credentials';
+            errorMessage =
+                'The email or password you entered is incorrect. Please check your credentials and try again.';
+            break;
+          default:
+            errorTitle = 'Login failed';
+            errorMessage =
+                'Unable to log in. Please check your email and password and try again.';
+        }
+      } else {
+        // For Cloud Function errors or other exceptions
+        print('❌ Login error caught:');
+        print('  Error: $e');
+        print('  Error type: ${e.runtimeType}');
+
+        String errorStr = e.toString();
+
+        if (errorStr.contains('Exception: ')) {
+          errorMessage = errorStr.replaceFirst('Exception: ', '').trim();
+
+          // Map common errors to specific titles
+          if (errorMessage.toLowerCase().contains('network') ||
+              errorMessage.toLowerCase().contains('connection')) {
+            errorTitle = 'Connection error';
+            errorMessage =
+                'Unable to connect to the server. Please check your internet connection and try again.';
+          } else if (errorMessage.toLowerCase().contains('not found') ||
+              errorMessage.toLowerCase().contains('profile')) {
+            errorTitle = 'Profile not found';
+          } else if (errorMessage.toLowerCase().contains('permission')) {
+            errorTitle = 'Permission denied';
+          } else {
+            errorTitle = 'Login error';
+          }
+        } else {
+          errorTitle = 'Connection error';
+          errorMessage =
+              'Unable to connect to the server. Please check your internet connection and try again.';
+        }
+      }
+
       AwesomeDialog(
         context: context,
         dialogType: DialogType.error,
@@ -286,8 +371,8 @@ class _LoginScreenState extends State<LoginScreen> {
           backgroundColor: Colors.red,
           child: const Icon(Icons.error_outline, color: Colors.white, size: 30),
         ),
-        title: 'Login failed',
-        desc: 'Something went wrong while logging you in. Please try again.',
+        title: errorTitle,
+        desc: errorMessage,
         btnOkOnPress: () {},
       ).show();
     } finally {

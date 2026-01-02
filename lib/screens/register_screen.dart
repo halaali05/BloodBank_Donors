@@ -297,35 +297,76 @@ class _RegisterScreenState extends State<RegisterScreen> {
       String errorTitle = 'Sign up failed';
 
       if (e is FirebaseAuthException) {
-        // Simple, easy-to-understand error messages
+        // Specific, clear error messages for each Firebase Auth error
         switch (e.code) {
           case 'email-already-in-use':
+            errorTitle = 'Email already in use';
             errorMessage =
-                'This email is already used. Please use a different email.';
+                'This email address is already registered. Please use a different email or try logging in instead.';
             break;
           case 'weak-password':
+            errorTitle = 'Password too weak';
             errorMessage =
-                'Password is too weak. Please use a stronger password.';
+                'Your password is too weak. Please use at least 6 characters with a mix of letters and numbers.';
             break;
           case 'invalid-email':
-            errorMessage = 'Invalid email. Please check your email address.';
+            errorTitle = 'Invalid email address';
+            errorMessage =
+                'The email address you entered is not valid. Please check and enter a correct email address (e.g., example@email.com).';
             break;
           case 'operation-not-allowed':
+            errorTitle = 'Registration disabled';
             errorMessage =
-                'Registration is not available. Please contact support.';
+                'Registration is currently not available. Please contact support for assistance.';
+            break;
+          case 'network-request-failed':
+            errorTitle = 'Network error';
+            errorMessage =
+                'Unable to connect to the server. Please check your internet connection and try again.';
+            break;
+          case 'too-many-requests':
+            errorTitle = 'Too many attempts';
+            errorMessage =
+                'Too many registration attempts. Please wait a few minutes before trying again.';
             break;
           default:
-            errorMessage = 'Cannot create account. Please try again.';
+            errorTitle = 'Registration failed';
+            errorMessage =
+                'Unable to create your account. Please check your information and try again.';
         }
       } else {
-        // For Cloud Function errors or other exceptions, show the actual error message
+        // For Cloud Function errors or other exceptions
         print('❌ Registration error caught:');
         print('  Error: $e');
         print('  Error type: ${e.runtimeType}');
 
         String errorStr = e.toString();
+
+        // Extract specific error messages from Cloud Functions
         if (errorStr.contains('Exception: ')) {
           errorMessage = errorStr.replaceFirst('Exception: ', '').trim();
+
+          // Map common Cloud Function errors to specific titles
+          if (errorMessage.toLowerCase().contains('email')) {
+            errorTitle = 'Email error';
+          } else if (errorMessage.toLowerCase().contains('password')) {
+            errorTitle = 'Password error';
+          } else if (errorMessage.toLowerCase().contains('network') ||
+              errorMessage.toLowerCase().contains('connection')) {
+            errorTitle = 'Connection error';
+            errorMessage =
+                'Unable to connect to the server. Please check your internet connection and try again.';
+          } else if (errorMessage.toLowerCase().contains('required') ||
+              errorMessage.toLowerCase().contains('missing')) {
+            errorTitle = 'Missing information';
+          } else if (errorMessage.toLowerCase().contains('invalid')) {
+            errorTitle = 'Invalid information';
+          } else if (errorMessage.toLowerCase().contains('permission') ||
+              errorMessage.toLowerCase().contains('not allowed')) {
+            errorTitle = 'Permission denied';
+          } else {
+            errorTitle = 'Registration failed';
+          }
         } else if (errorStr.contains('Please') ||
             errorStr.contains('check') ||
             errorStr.contains('verify')) {
@@ -333,8 +374,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           errorMessage = errorStr;
         } else {
           // Generic fallback
+          errorTitle = 'Connection error';
           errorMessage =
-              'Cannot create account. Please check your internet connection and try again.';
+              'Unable to connect to the server. Please check your internet connection and try again.';
         }
       }
 

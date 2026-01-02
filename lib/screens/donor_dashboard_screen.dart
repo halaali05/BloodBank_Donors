@@ -34,8 +34,9 @@ class DonorDashboardScreen extends StatelessWidget {
             StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: FirebaseFirestore.instance
                   .collection('notifications')
-                  .where('userId', isEqualTo: currentUser.uid)
-                  .where('isRead', isEqualTo: false)
+                  .doc(currentUser.uid)
+                  .collection('user_notifications')
+                  .where('read', isEqualTo: false)
                   .snapshots(),
               builder: (context, snapshot) {
                 final hasUnread =

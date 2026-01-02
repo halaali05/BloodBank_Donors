@@ -1,9 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/requests_service.dart';
-import '../models/blood_request_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../services/notification_service.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 class NewRequestScreen extends StatefulWidget {
@@ -27,6 +23,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
   String _bloodType = 'A+';
   int _units = 1;
   bool _isUrgent = false;
+  bool _isLoading = false;
 
   final TextEditingController _detailsController = TextEditingController();
   final TextEditingController _hospitalLocationController =
@@ -66,23 +63,85 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
       'hospitalLocation': _hospitalLocationController.text.trim(),
     };
 
+    setState(() => _isLoading = true);
+
     try {
       final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
-      final result = await functions
+      await functions
           .httpsCallable('addRequest')
           .call(requestData);
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Request created successfully')),
+        const SnackBar(
+          content: Text('Request created successfully'),
+          backgroundColor: Colors.green,
+        ),
       );
 
-      Navigator.of(context).pop();
+      // Wait a moment for the snackbar to show, then navigate back
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      
+      String errorMessage = 'Failed to create request. Please try again.';
+      
+      // Handle specific error codes
+      switch (e.code) {
+        case 'permission-denied':
+          errorMessage = 'You do not have permission to create requests. Only hospitals can create requests.';
+          break;
+        case 'invalid-argument':
+          errorMessage = e.message ?? 'Please check your request details and try again.';
+          break;
+        case 'unauthenticated':
+          errorMessage = 'Please log in to create a request.';
+          break;
+        case 'internal':
+          errorMessage = 'Server error occurred. Please try again later.';
+          break;
+        default:
+          errorMessage = e.message ?? 'Failed to create request. Please try again.';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
+      if (!mounted) return;
+      
+      print('❌ Error creating request: $e');
+      print('  Error type: ${e.runtimeType}');
+      
+      String errorMessage = 'Failed to create request. Please check your internet connection and try again.';
+      
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('network') || 
+          errorStr.contains('connection') ||
+          errorStr.contains('timeout')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -347,7 +406,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                           width: double.infinity,
                           height: 48,
                           child: ElevatedButton(
-                            onPressed: _submit,
+                            onPressed: _isLoading ? null : _submit,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xffe60012),
                               foregroundColor: Colors.white,
@@ -356,13 +415,24 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                               ),
                               elevation: 1,
                             ),
-                            child: const Text(
-                              'Create request',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 15,
-                              ),
-                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : const Text(
+                                    'Create request',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 15,
+                                    ),
+                                  ),
                           ),
                         ),
                       ],

@@ -1,33 +1,27 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'cloud_functions_service.dart';
 
+/// Service class for managing notifications
+/// Uses Cloud Functions as a secure layer for all write operations
 class NotificationService {
   static final NotificationService instance = NotificationService._();
 
-  final FirebaseFirestore _db;
+  final CloudFunctionsService _cloudFunctions;
 
-  NotificationService._() : _db = FirebaseFirestore.instance;
+  NotificationService._() : _cloudFunctions = CloudFunctionsService();
 
-  NotificationService.test(this._db);
+  NotificationService.test(CloudFunctionsService? cloudFunctions)
+    : _cloudFunctions = cloudFunctions ?? CloudFunctionsService();
 
-  Future<void> createNotification({
-    required String userId,
-    required String requestId,
-    required String title,
-    required String body,
-  }) async {
-    await _db.collection('notifications').add({
-      'userId': userId,
-      'requestId': requestId,
-      'title': title,
-      'body': body,
-      'isRead': false,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+  /// Marks all unread notifications as read via Cloud Functions
+  Future<void> markAllAsRead() async {
+    await _cloudFunctions.markNotificationsAsRead();
   }
 
-  Future<void> markAsRead(String notificationId) async {
-    await _db.collection('notifications').doc(notificationId).update({
-      'isRead': true,
-    });
+  /// Deletes a specific notification via Cloud Functions
+  Future<void> deleteNotification(String notificationId) async {
+    await _cloudFunctions.deleteNotification(notificationId: notificationId);
   }
+
+  // Note: createNotification is now handled by Cloud Functions
+  // when addRequest is called with isUrgent = true
 }

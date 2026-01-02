@@ -140,6 +140,56 @@ class CloudFunctionsService {
     }
   }
 
+  Future<Map<String, dynamic>> markNotificationsAsRead() async {
+    try {
+      final callable = _functions.httpsCallable('markNotificationsAsRead');
+      final result = await callable.call();
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteNotification({
+    required String notificationId,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('deleteNotification');
+      final result = await callable.call({'notificationId': notificationId});
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteRequest({
+    required String requestId,
+  }) async {
+    try {
+      print(
+        '[CloudFunctionsService] Calling deleteRequest with requestId: $requestId',
+      );
+      final callable = _functions.httpsCallable('deleteRequest');
+      final result = await callable.call({'requestId': requestId});
+      print('[CloudFunctionsService] deleteRequest succeeded: ${result.data}');
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      print(
+        '[CloudFunctionsService] deleteRequest failed with FirebaseFunctionsException',
+      );
+      print('  Code: ${e.code}');
+      print('  Message: ${e.message}');
+      print('  Details: ${e.details}');
+      throw _handleFunctionsException(e);
+    } catch (e) {
+      print(
+        '[CloudFunctionsService] deleteRequest failed with unexpected error: $e',
+      );
+      print('  Type: ${e.runtimeType}');
+      rethrow;
+    }
+  }
+
   Exception _handleFunctionsException(FirebaseFunctionsException e) {
     // Log the full error for debugging
     print('Cloud Function Error:');
@@ -173,7 +223,17 @@ class CloudFunctionsService {
         userMessage = 'Information not found';
         break;
       case 'internal':
-        userMessage = 'Server error occurred. Please try again later.';
+        // Try to extract more specific error from message
+        if (e.message != null && e.message!.isNotEmpty) {
+          // If message contains specific details, use them
+          if (e.message!.contains('Failed to delete request:')) {
+            userMessage = e.message!;
+          } else {
+            userMessage = 'Server error: ${e.message}';
+          }
+        } else {
+          userMessage = 'Server error occurred. Please try again later.';
+        }
         break;
       default:
         // Use the message from the function, or a generic one

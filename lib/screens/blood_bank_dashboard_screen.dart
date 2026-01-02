@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import 'chat_screen.dart';
 import 'new_request_screen.dart';
 import 'login_screen.dart';
 import '../models/blood_request_model.dart';
+import '../services/cloud_functions_service.dart';
 
 class BloodBankDashboardScreen extends StatelessWidget {
   final String bloodBankName;
@@ -21,29 +23,152 @@ class BloodBankDashboardScreen extends StatelessWidget {
     BuildContext context,
     BloodRequest request,
   ) async {
+    // Show confirmation dialog first
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Request'),
+        content: const Text(
+          'Are you sure you want to delete this request? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     try {
       final currentUid = FirebaseAuth.instance.currentUser?.uid;
-      if (currentUid == null || request.bloodBankId != currentUid) return;
-
-      final requestId = request.id;
-      final batch = FirebaseFirestore.instance.batch();
-
-      final reqRef = FirebaseFirestore.instance
-          .collection('requests')
-          .doc(requestId);
-      final notifSnap = await FirebaseFirestore.instance
-          .collection('notifications')
-          .where('requestId', isEqualTo: requestId)
-          .get();
-
-      batch.delete(reqRef);
-      for (final doc in notifSnap.docs) {
-        batch.delete(doc.reference);
+      if (currentUid == null || request.bloodBankId != currentUid) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('You can only delete your own requests.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
       }
 
-      await batch.commit();
-    } catch (e) {
-      debugPrint('Error deleting: $e');
+      // Show loading indicator
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 12),
+                Text('Deleting request...'),
+              ],
+            ),
+            duration: Duration(seconds: 30), // Long duration for loading
+          ),
+        );
+      }
+
+      // Delete request via Cloud Functions (also deletes related notifications)
+      debugPrint('=== DELETE REQUEST START ===');
+      debugPrint('Request ID: ${request.id}');
+      debugPrint('Request bloodBankId: ${request.bloodBankId}');
+      debugPrint('Current user UID: $currentUid');
+      debugPrint('Request ID type: ${request.id.runtimeType}');
+      debugPrint('Request ID length: ${request.id.length}');
+
+      final cloudFunctions = CloudFunctionsService();
+      final result = await cloudFunctions.deleteRequest(requestId: request.id);
+
+      debugPrint('=== DELETE REQUEST SUCCESS ===');
+      debugPrint('Result: $result');
+
+      // Hide loading indicator
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Request deleted successfully.'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('❌ FirebaseFunctionsException deleting request:');
+      debugPrint('  Code: ${e.code}');
+      debugPrint('  Message: ${e.message}');
+      debugPrint('  Details: ${e.details}');
+      debugPrint('  Full error: $e');
+
+      if (context.mounted) {
+        String errorMessage = 'Failed to delete request. Please try again.';
+
+        switch (e.code) {
+          case 'permission-denied':
+            errorMessage =
+                e.message ??
+                'You do not have permission to delete this request.';
+            break;
+          case 'not-found':
+            errorMessage =
+                e.message ??
+                'Request not found. It may have already been deleted.';
+            break;
+          case 'invalid-argument':
+            errorMessage = e.message ?? 'Invalid request ID. Please try again.';
+            break;
+          case 'unauthenticated':
+            errorMessage = 'Please log in to delete requests.';
+            break;
+          case 'internal':
+            // Show the actual error message from the server
+            if (e.message != null && e.message!.isNotEmpty) {
+              errorMessage = e.message!;
+            } else {
+              errorMessage =
+                  'Server error occurred. Please check the console logs and try again.';
+            }
+            break;
+          default:
+            errorMessage =
+                e.message ?? 'Failed to delete request. Please try again.';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ Unexpected error deleting request: $e');
+      debugPrint('  Type: ${e.runtimeType}');
+      debugPrint('  Stack: $stackTrace');
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unexpected error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     }
   }
 

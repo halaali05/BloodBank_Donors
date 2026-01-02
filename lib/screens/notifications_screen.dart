@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/blood_request_model.dart';
+import '../services/notification_service.dart';
 import 'chat_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -14,6 +15,7 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   late final String uid;
+  final _notificationService = NotificationService.instance;
 
   @override
   void initState() {
@@ -22,24 +24,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     _markAllAsRead();
   }
 
-  /// نعلّم كل إشعارات هذا المستخدم isRead = true
+  /// Mark all notifications as read via Cloud Functions
   Future<void> _markAllAsRead() async {
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('notifications')
-          .where('userId', isEqualTo: uid)
-          .where('isRead', isEqualTo: false)
-          .get();
-
-      if (snapshot.docs.isEmpty) return;
-
-      final batch = FirebaseFirestore.instance.batch();
-      for (final doc in snapshot.docs) {
-        batch.update(doc.reference, {'isRead': true});
-      }
-      await batch.commit();
-    } catch (_) {
-      // نتجاهل الخطأ عشان ما يطيح التطبيق
+      await _notificationService.markAllAsRead();
+    } catch (e) {
+      // Ignore errors to prevent app crash
+      debugPrint('Error marking notifications as read: $e');
     }
   }
 
@@ -65,10 +56,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         .get();
 
     if (!reqSnap.exists) {
-      await FirebaseFirestore.instance
-          .collection('notifications')
-          .doc(notificationId)
-          .delete();
+      // Delete notification via Cloud Functions
+      try {
+        await _notificationService.deleteNotification(notificationId);
+      } catch (e) {
+        debugPrint('Error deleting notification: $e');
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -120,7 +113,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
               .collection('notifications')
-              .where('userId', isEqualTo: uid) // فقط إشعارات هذا المستخدم
+              .doc(uid)
+              .collection('user_notifications')
               .orderBy('createdAt', descending: true)
               .snapshots(),
           builder: (context, snapshot) {
