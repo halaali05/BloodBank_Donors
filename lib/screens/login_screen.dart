@@ -190,7 +190,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // 4) try complete profile after verification (won't block login)
       try {
-        await _authService.completeProfileAfterVerification();
+        await _authService.completeProfileAfterVerification().timeout(
+          const Duration(seconds: 2),
+        );
       } catch (e) {
         // ممكن يفشل إذا كان البروفايل جاهز أصلاً أو pending مش موجود
         print('completeProfileAfterVerification skipped/failed: $e');
@@ -198,7 +200,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // 5) fetch user profile with retry (Firestore may lag briefly after write)
       models.User? userData;
-      for (int i = 0; i < 5; i++) {
+      for (int i = 0; i < 3; i++) {
         userData = await _authService.getUserData(user.uid);
         if (userData != null) break;
         await Future.delayed(const Duration(milliseconds: 600));
@@ -403,171 +405,186 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const Color deepRed = Color(0xFF7A0009); // أحمر غامق جداً
+    const Color lineColor = Color(0xFFBFC7D2);
+
+    InputDecoration underlineDeco({
+      required String hint,
+      required IconData icon,
+      Widget? suffix,
+    }) {
+      return InputDecoration(
+        hintText: hint,
+        prefixIcon: Icon(icon, color: Colors.grey[700]),
+        suffixIcon: suffix,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(vertical: 14),
+        enabledBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: lineColor, width: 1),
+        ),
+        focusedBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: deepRed, width: 2),
+        ),
+      );
+    }
+
     return Scaffold(
+      backgroundColor: const Color(0xFFF3F5F9),
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: 24),
-                child: Column(
-                  children: [
-                    const CircleAvatar(
-                      radius: 28,
-                      backgroundColor: Color(0xffffe3e6),
-                      child: Icon(
-                        Icons.favorite,
-                        color: Color(0xffe60012),
-                        size: 32,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Hayat',
-                      style: const TextStyle(
-                        color: _primaryColor,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Donate blood, save a Hayat',
-                      style: TextStyle(color: Colors.black54, fontSize: 14),
-                    ),
-                  ],
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+          child: Container(
+            width: 360,
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 26),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: const Color(0xFFE6EAF2)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x22000000),
+                  blurRadius: 16,
+                  offset: Offset(0, 8),
                 ),
-              ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Avatar
+                Container(
+                  width: 90,
+                  height: 90,
+                  decoration: BoxDecoration(
+                    color: deepRed.withOpacity(0.10),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.person_outline,
+                    size: 48,
+                    color: deepRed,
+                  ),
+                ),
 
-              Container(
-                width: 420,
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x11000000),
-                      blurRadius: 12,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
+                const SizedBox(height: 22),
+
+                // Username
+                TextField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: underlineDeco(
+                    hint: 'Username',
+                    icon: Icons.person_outline,
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Align(
-                      alignment: Alignment.topLeft,
-                      child: Text(
-                        'Login',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
+
+                const SizedBox(height: 14),
+
+                // Password
+                TextField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: underlineDeco(
+                    hint: 'Password',
+                    icon: Icons.lock_outline,
+                    suffix: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                        color: Colors.grey[700],
                       ),
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
                     ),
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: _decoration(
-                        label: 'Email',
-                        prefixIcon: Icons.mail_outline,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      decoration: _decoration(
-                        label: 'Password',
-                        prefixIcon: Icons.lock_outline,
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                          ),
-                          onPressed: () {
-                            setState(
-                              () => _obscurePassword = !_obscurePassword,
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      height: 48,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _primaryColor,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: _isLoading ? null : _login,
-                        child: _isLoading
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              )
-                            : const Text(
-                                'Login',
-                                style: TextStyle(fontSize: 16),
-                              ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: _isLoading ? null : _resendVerification,
-                      child: const Text('Resend verification email'),
-                    ),
-                    TextButton(
-                      onPressed: _isLoading
-                          ? null
-                          : () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const ForgotPasswordScreen(),
-                                ),
-                              );
-                            },
-                      child: const Text('Forgot password?'),
-                    ),
-                    const SizedBox(height: 16),
-                    Center(
-                      child: GestureDetector(
-                        onTap: _goToRegister,
-                        child: Text.rich(
-                          TextSpan(
-                            text: "Don't have an account? ",
-                            style: const TextStyle(fontSize: 13),
-                            children: [
-                              TextSpan(
-                                text: 'Create one',
-                                style: TextStyle(
-                                  color: _primaryColor,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+
+                const SizedBox(height: 18),
+
+                // Log In
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: deepRed,
+                      shape: const StadiumBorder(),
+                      elevation: 0,
+                    ),
+                    onPressed: _isLoading ? null : _login,
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : const Text(
+                            'Log In',
+                            style: TextStyle(fontSize: 16, color: Colors.white),
+                          ),
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // Resend verification
+                TextButton(
+                  onPressed: _isLoading ? null : _resendVerification,
+                  child: const Text(
+                    'Resend verification email',
+                    style: TextStyle(color: deepRed),
+                  ),
+                ),
+
+                // Forgot password
+                TextButton(
+                  onPressed: _isLoading
+                      ? null
+                      : () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const ForgotPasswordScreen(),
+                            ),
+                          );
+                        },
+                  child: const Text(
+                    'Forgot password?',
+                    style: TextStyle(color: deepRed),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                // Create one
+                GestureDetector(
+                  onTap: _goToRegister,
+                  child: Text.rich(
+                    TextSpan(
+                      text: "Don't have an account? ",
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.black54,
+                      ),
+                      children: const [
+                        TextSpan(
+                          text: 'Create one',
+                          style: TextStyle(
+                            color: deepRed,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

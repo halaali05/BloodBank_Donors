@@ -45,7 +45,7 @@ function toHttpsError(err, fallbackMessage) {
   const msg =
     err && typeof err.message === "string" && err.message.trim()
       ? err.message.trim()
-      : (fallbackMessage || "Server error occurred.");
+      : fallbackMessage || "Server error occurred.";
 
   return new HttpsError("internal", msg);
 }
@@ -64,7 +64,10 @@ exports.createPendingProfile = onCall(async (request) => {
 
     const role = nonEmptyString(data.role, "role");
     if (role !== "donor" && role !== "hospital") {
-      throw new HttpsError("invalid-argument", "role must be donor or hospital");
+      throw new HttpsError(
+        "invalid-argument",
+        "role must be donor or hospital"
+      );
     }
 
     const payload = {
@@ -81,11 +84,17 @@ exports.createPendingProfile = onCall(async (request) => {
           ? data.medicalFileUrl.trim()
           : null;
     } else {
-      payload.bloodBankName = nonEmptyString(data.bloodBankName, "bloodBankName");
+      payload.bloodBankName = nonEmptyString(
+        data.bloodBankName,
+        "bloodBankName"
+      );
       payload.location = nonEmptyString(data.location, "location");
     }
 
-    await db.collection("pending_profiles").doc(uid).set(payload, { merge: true });
+    await db
+      .collection("pending_profiles")
+      .doc(uid)
+      .set(payload, { merge: true });
 
     return {
       ok: true,
@@ -175,7 +184,8 @@ exports.getUserData = onCall(async (request) => {
     const d = snap.data() || {};
 
     // ✅ normalize timestamps to millis (safe for Flutter)
-    const toMillis = (v) => (v && typeof v.toMillis === "function" ? v.toMillis() : null);
+    const toMillis = (v) =>
+      v && typeof v.toMillis === "function" ? v.toMillis() : null;
 
     return {
       uid: targetUid,
@@ -189,7 +199,6 @@ exports.getUserData = onCall(async (request) => {
     throw toHttpsError(err, "Failed to load user profile.");
   }
 });
-
 
 /**
  * getUserRole (final profile)
@@ -220,7 +229,7 @@ exports.addRequest = onCall(async (request) => {
     const data = request.data || {};
 
     const userSnap = await db.collection("users").doc(uid).get();
-    const ud = userSnap.exists ? (userSnap.data() || {}) : {};
+    const ud = userSnap.exists ? userSnap.data() || {} : {};
 
     if (!userSnap.exists || ud.role !== "hospital") {
       throw new HttpsError(
@@ -236,7 +245,10 @@ exports.addRequest = onCall(async (request) => {
     const units =
       typeof data.units === "number" ? data.units : parseInt(data.units, 10);
     if (isNaN(units) || units < 1) {
-      throw new HttpsError("invalid-argument", "units must be a positive number");
+      throw new HttpsError(
+        "invalid-argument",
+        "units must be a positive number"
+      );
     }
 
     const isUrgent = data.isUrgent === true;
@@ -298,11 +310,15 @@ exports.getRequests = onCall(async (request) => {
     requireAuth(request);
     const data = request.data || {};
 
-    const limit = typeof data.limit === "number" ? Math.min(data.limit, 100) : 50;
+    const limit =
+      typeof data.limit === "number" ? Math.min(data.limit, 100) : 50;
     const lastRequestId =
       typeof data.lastRequestId === "string" ? data.lastRequestId : null;
 
-    let query = db.collection("requests").orderBy("createdAt", "desc").limit(limit);
+    let query = db
+      .collection("requests")
+      .orderBy("createdAt", "desc")
+      .limit(limit);
 
     if (lastRequestId) {
       const lastDoc = await db.collection("requests").doc(lastRequestId).get();
@@ -414,7 +430,7 @@ exports.deleteRequest = onCall(async (request) => {
 
     // Check if user is a hospital
     const userSnap = await db.collection("users").doc(uid).get();
-    const userData = userSnap.exists ? (userSnap.data() || {}) : {};
+    const userData = userSnap.exists ? userSnap.data() || {} : {};
 
     if (!userSnap.exists || userData.role !== "hospital") {
       throw new HttpsError(
@@ -508,7 +524,11 @@ exports.deleteRequest = onCall(async (request) => {
 
     // If it's already an HttpsError, rethrow it with original message
     if (err instanceof HttpsError) {
-      console.error("[deleteRequest] Re-throwing HttpsError:", err.code, err.message);
+      console.error(
+        "[deleteRequest] Re-throwing HttpsError:",
+        err.code,
+        err.message
+      );
       throw err;
     }
 
@@ -583,6 +603,10 @@ exports.cleanupUnverifiedUsers = onSchedule(
       }
     } while (nextPageToken);
 
-    console.log("[cleanupUnverifiedUsers] done", { scanned, deleted, days: DAYS });
+    console.log("[cleanupUnverifiedUsers] done", {
+      scanned,
+      deleted,
+      days: DAYS,
+    });
   }
 );

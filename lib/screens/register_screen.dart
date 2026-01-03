@@ -13,13 +13,9 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  static const _primaryColor = Color(0xffe60012);
-  static const _fieldFill = Color(0xfff8f9ff);
-  static const _cardShadow = BoxShadow(
-    color: Color(0x11000000),
-    blurRadius: 12,
-    offset: Offset(0, 4),
-  );
+  // نفس لون صفحة الـ Login (أحمر غامق جداً)
+  static const Color deepRed = Color(0xFF7A0009);
+  static const Color lineColor = Color(0xFFBFC7D2);
 
   final _authService = AuthService();
   UserType _type = UserType.donor;
@@ -31,7 +27,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _confirmPasswordController =
       TextEditingController();
   final TextEditingController _locationController = TextEditingController();
-  final TextEditingController _bloodTypeController = TextEditingController();
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -45,7 +40,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _locationController.dispose();
-    _bloodTypeController.dispose();
     super.dispose();
   }
 
@@ -211,11 +205,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     try {
       Map<String, dynamic> result;
+
       if (_type == UserType.donor) {
         final name = _nameController.text.trim();
-
-        // بما إننا شلنا blood type و location من واجهة المتبرع
-        // منبعت قيم افتراضية بسيطة
         const String bloodType = 'A+';
         const String location = 'Unknown';
 
@@ -240,11 +232,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (!mounted) return;
 
-      // Check if email is already verified
       final emailVerified = result['emailVerified'] ?? false;
 
       if (emailVerified) {
-        // Email already verified, profile created immediately
         AwesomeDialog(
           context: context,
           dialogType: DialogType.success,
@@ -268,7 +258,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
           },
         ).show();
       } else {
-        // Email not verified, profile data saved in pending_profiles
         AwesomeDialog(
           context: context,
           dialogType: DialogType.info,
@@ -280,7 +269,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
           title: 'Verification email sent',
           desc:
-              'We sent you a verification email. Please check your inbox and click the link to verify your email. Your account will be activated after verification.',
+              'We sent you a verification email. Please check your inbox and click the link to verify your email.',
           btnOkOnPress: () async {
             await _authService.logout();
             if (!mounted) return;
@@ -291,92 +280,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      // Get user-friendly error message
       String errorMessage =
           'Something went wrong while creating your account. Please try again.';
       String errorTitle = 'Sign up failed';
 
       if (e is FirebaseAuthException) {
-        // Specific, clear error messages for each Firebase Auth error
         switch (e.code) {
           case 'email-already-in-use':
             errorTitle = 'Email already in use';
             errorMessage =
-                'This email address is already registered. Please use a different email or try logging in instead.';
+                'This email address is already registered. Try logging in.';
             break;
           case 'weak-password':
             errorTitle = 'Password too weak';
-            errorMessage =
-                'Your password is too weak. Please use at least 6 characters with a mix of letters and numbers.';
+            errorMessage = 'Use at least 6 characters.';
             break;
           case 'invalid-email':
             errorTitle = 'Invalid email address';
-            errorMessage =
-                'The email address you entered is not valid. Please check and enter a correct email address (e.g., example@email.com).';
-            break;
-          case 'operation-not-allowed':
-            errorTitle = 'Registration disabled';
-            errorMessage =
-                'Registration is currently not available. Please contact support for assistance.';
+            errorMessage = 'Please enter a correct email.';
             break;
           case 'network-request-failed':
             errorTitle = 'Network error';
-            errorMessage =
-                'Unable to connect to the server. Please check your internet connection and try again.';
-            break;
-          case 'too-many-requests':
-            errorTitle = 'Too many attempts';
-            errorMessage =
-                'Too many registration attempts. Please wait a few minutes before trying again.';
+            errorMessage = 'Check your internet and try again.';
             break;
           default:
             errorTitle = 'Registration failed';
-            errorMessage =
-                'Unable to create your account. Please check your information and try again.';
-        }
-      } else {
-        // For Cloud Function errors or other exceptions
-        print('❌ Registration error caught:');
-        print('  Error: $e');
-        print('  Error type: ${e.runtimeType}');
-
-        String errorStr = e.toString();
-
-        // Extract specific error messages from Cloud Functions
-        if (errorStr.contains('Exception: ')) {
-          errorMessage = errorStr.replaceFirst('Exception: ', '').trim();
-
-          // Map common Cloud Function errors to specific titles
-          if (errorMessage.toLowerCase().contains('email')) {
-            errorTitle = 'Email error';
-          } else if (errorMessage.toLowerCase().contains('password')) {
-            errorTitle = 'Password error';
-          } else if (errorMessage.toLowerCase().contains('network') ||
-              errorMessage.toLowerCase().contains('connection')) {
-            errorTitle = 'Connection error';
-            errorMessage =
-                'Unable to connect to the server. Please check your internet connection and try again.';
-          } else if (errorMessage.toLowerCase().contains('required') ||
-              errorMessage.toLowerCase().contains('missing')) {
-            errorTitle = 'Missing information';
-          } else if (errorMessage.toLowerCase().contains('invalid')) {
-            errorTitle = 'Invalid information';
-          } else if (errorMessage.toLowerCase().contains('permission') ||
-              errorMessage.toLowerCase().contains('not allowed')) {
-            errorTitle = 'Permission denied';
-          } else {
-            errorTitle = 'Registration failed';
-          }
-        } else if (errorStr.contains('Please') ||
-            errorStr.contains('check') ||
-            errorStr.contains('verify')) {
-          // If error already contains helpful message, use it
-          errorMessage = errorStr;
-        } else {
-          // Generic fallback
-          errorTitle = 'Connection error';
-          errorMessage =
-              'Unable to connect to the server. Please check your internet connection and try again.';
         }
       }
 
@@ -398,277 +326,262 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  InputDecoration _decoration({
-    required String label,
+  InputDecoration _underlineDeco({
+    required String hint,
     IconData? icon,
-    Widget? suffixIcon,
+    Widget? suffix,
   }) {
     return InputDecoration(
-      labelText: label,
-      prefixIcon: icon != null ? Icon(icon) : null,
-      suffixIcon: suffixIcon,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-      filled: true,
-      fillColor: _fieldFill,
-    );
-  }
-
-  Widget _buildHeader() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: const [
-        CircleAvatar(
-          radius: 28,
-          backgroundColor: Color(0xffffe3e6),
-          child: Icon(Icons.favorite, color: _primaryColor, size: 32),
-        ),
-        SizedBox(height: 12),
-        Text(
-          'Hayat',
-          style: TextStyle(
-            color: _primaryColor,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        SizedBox(height: 4),
-        Text(
-          'Create a new account',
-          style: TextStyle(color: Colors.black54, fontSize: 14),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildToggle() {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xfff4f5fb),
-        borderRadius: BorderRadius.circular(12),
+      hintText: hint,
+      prefixIcon: icon != null ? Icon(icon, color: Colors.grey[700]) : null,
+      suffixIcon: suffix,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+      enabledBorder: const UnderlineInputBorder(
+        borderSide: BorderSide(color: lineColor, width: 1),
       ),
-      padding: const EdgeInsets.all(4),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _type = UserType.donor),
-              child: Container(
-                height: 40,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: _type == UserType.donor
-                      ? _primaryColor
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  'Donor',
-                  style: TextStyle(
-                    color: _type == UserType.donor
-                        ? Colors.white
-                        : Colors.black87,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _type = UserType.bloodBank),
-              child: Container(
-                height: 40,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: _type == UserType.bloodBank
-                      ? _primaryColor
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  'Blood bank',
-                  style: TextStyle(
-                    color: _type == UserType.bloodBank
-                        ? Colors.white
-                        : Colors.black87,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+      focusedBorder: const UnderlineInputBorder(
+        borderSide: BorderSide(color: deepRed, width: 2),
       ),
-    );
-  }
-
-  Widget _textField({
-    required String label,
-    required TextEditingController controller,
-    IconData? icon,
-    bool obscure = false,
-    Widget? suffixIcon,
-  }) {
-    return TextField(
-      controller: controller,
-      obscureText: obscure,
-      decoration: _decoration(label: label, icon: icon, suffixIcon: suffixIcon),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _buildHeader(),
-              const SizedBox(height: 24),
-              Container(
-                width: 520,
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: const [_cardShadow],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildToggle(),
-                    const SizedBox(height: 20),
+      backgroundColor: const Color(0xFFF3F5F9),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: Container(
+              width: 360,
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 26),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: const Color(0xFFE6EAF2)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x22000000),
+                    blurRadius: 16,
+                    offset: Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'SIGN UP',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: deepRed,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
 
-                    // --------- Donor fields ---------
-                    if (_type == UserType.donor) ...[
-                      _textField(
-                        label: 'Full name',
-                        controller: _nameController,
+                  // Toggle (بسيط) - إذا بدك أشيله احكيلي
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xfff4f5fb),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setState(() => _type = UserType.donor),
+                            child: Container(
+                              height: 38,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: _type == UserType.donor
+                                    ? deepRed
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                'Donor',
+                                style: TextStyle(
+                                  color: _type == UserType.donor
+                                      ? Colors.white
+                                      : Colors.black87,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () =>
+                                setState(() => _type = UserType.bloodBank),
+                            child: Container(
+                              height: 38,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: _type == UserType.bloodBank
+                                    ? deepRed
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                'Blood bank',
+                                style: TextStyle(
+                                  color: _type == UserType.bloodBank
+                                      ? Colors.white
+                                      : Colors.black87,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // Username / Full name (حسب النوع)
+                  if (_type == UserType.donor)
+                    TextField(
+                      controller: _nameController,
+                      decoration: _underlineDeco(
+                        hint: 'Username',
                         icon: Icons.person_outline,
                       ),
-                      const SizedBox(height: 12),
-                    ],
+                    ),
 
-                    // --------- Blood bank fields ---------
-                    if (_type == UserType.bloodBank) ...[
-                      _textField(
-                        label: 'Blood bank name',
-                        controller: _hospitalNameController,
+                  if (_type == UserType.bloodBank)
+                    TextField(
+                      controller: _hospitalNameController,
+                      decoration: _underlineDeco(
+                        hint: 'Blood bank name',
                         icon: Icons.local_hospital_outlined,
                       ),
-                      const SizedBox(height: 12),
-                    ],
+                    ),
 
-                    // --------- Common fields ---------
-                    _textField(
-                      label: 'Email',
-                      controller: _emailController,
+                  const SizedBox(height: 12),
+
+                  TextField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: _underlineDeco(
+                      hint: 'E-Mail',
                       icon: Icons.mail_outline,
                     ),
-                    const SizedBox(height: 12),
+                  ),
 
-                    _textField(
-                      label: 'Password',
-                      controller: _passwordController,
+                  const SizedBox(height: 12),
+
+                  TextField(
+                    controller: _passwordController,
+                    obscureText: _obscurePassword,
+                    decoration: _underlineDeco(
+                      hint: 'Password',
                       icon: Icons.lock_outline,
-                      obscure: _obscurePassword,
-                      suffixIcon: IconButton(
+                      suffix: IconButton(
                         icon: Icon(
                           _obscurePassword
                               ? Icons.visibility_off
                               : Icons.visibility,
+                          color: Colors.grey[700],
                         ),
-                        onPressed: () {
-                          setState(() => _obscurePassword = !_obscurePassword);
-                        },
+                        onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                  ),
 
-                    _textField(
-                      label: 'Confirm password',
-                      controller: _confirmPasswordController,
+                  const SizedBox(height: 12),
+
+                  TextField(
+                    controller: _confirmPasswordController,
+                    obscureText: _obscureConfirmPassword,
+                    decoration: _underlineDeco(
+                      hint: 'Confirm Password',
                       icon: Icons.lock_outline,
-                      obscure: _obscureConfirmPassword,
-                      suffixIcon: IconButton(
+                      suffix: IconButton(
                         icon: Icon(
                           _obscureConfirmPassword
                               ? Icons.visibility_off
                               : Icons.visibility,
+                          color: Colors.grey[700],
                         ),
-                        onPressed: () {
-                          setState(() {
-                            _obscureConfirmPassword = !_obscureConfirmPassword;
-                          });
-                        },
+                        onPressed: () => setState(
+                          () => _obscureConfirmPassword =
+                              !_obscureConfirmPassword,
+                        ),
                       ),
                     ),
+                  ),
+
+                  if (_type == UserType.bloodBank) ...[
                     const SizedBox(height: 12),
-
-                    // Location فقط للبنك
-                    if (_type == UserType.bloodBank) ...[
-                      _textField(
-                        label: 'Location',
-                        controller: _locationController,
+                    TextField(
+                      controller: _locationController,
+                      decoration: _underlineDeco(
+                        hint: 'Location',
                         icon: Icons.location_on_outlined,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-
-                    const SizedBox(height: 20),
-
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _primaryColor,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: _isLoading ? null : _submit,
-                        child: _isLoading
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text(
-                                'Create account',
-                                style: TextStyle(fontSize: 16),
-                              ),
                       ),
                     ),
                   ],
-                ),
-              ),
 
-              const SizedBox(height: 16),
-              GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: const Text.rich(
-                  TextSpan(
-                    text: 'Already have an account? ',
-                    style: TextStyle(fontSize: 13),
-                    children: [
-                      TextSpan(
-                        text: 'Login',
-                        style: TextStyle(
-                          color: _primaryColor,
-                          fontWeight: FontWeight.bold,
-                        ),
+                  const SizedBox(height: 22),
+
+                  // زر مثل الصورة (أبيض وحدود)
+                  SizedBox(
+                    height: 46,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: deepRed,
+                        side: const BorderSide(color: deepRed, width: 1.5),
+                        shape: const StadiumBorder(),
                       ),
-                    ],
+                      onPressed: _isLoading ? null : _submit,
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text(
+                              'CREATE ACCOUNT',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                    ),
                   ),
-                ),
+
+                  const SizedBox(height: 14),
+
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: const Text(
+                      'Already have an account? Login',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: deepRed,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

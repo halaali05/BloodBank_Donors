@@ -1,26 +1,21 @@
 import 'package:flutter/material.dart';
-import 'screens/login_screen.dart';
+import 'screens/welcome_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
-/// لتلقي الرسائل حتى لو التطبيق في الخلفية أو مسكر
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // هنا ممكن تعمل أي شيء بالرسالة، حالياً بنسجلها بالـ console
   print('Handling a background message: ${message.messageId}');
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // تهيئة Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // تسجيل الـ background handler
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  // طلب صلاحيات الإشعارات على iOS (Android غالباً مش مطلوب)
   await FirebaseMessaging.instance.requestPermission(
     alert: true,
     badge: true,
@@ -47,8 +42,19 @@ class HayatApp extends StatelessWidget {
         scaffoldBackgroundColor: _bgColor,
         colorScheme: ColorScheme.fromSeed(seedColor: _primaryColor),
         fontFamily: 'Roboto',
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
       ),
-      home: const LoginScreen(),
+      home: const WelcomeScreen(),
     );
   }
 }

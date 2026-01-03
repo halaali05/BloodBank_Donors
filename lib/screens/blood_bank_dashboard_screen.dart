@@ -19,11 +19,15 @@ class BloodBankDashboardScreen extends StatelessWidget {
     required this.location,
   });
 
+  // ===== Theme colors =====
+  static const Color deepRed = Color(0xFF7A0009);
+  static const Color offWhite = Color(0xFFFDF7F6); // أبيض مائل للسكني
+  static const Color cardBorder = Color(0xFFE9E2E1);
+
   Future<void> _deleteRequestWithNotifications(
     BuildContext context,
     BloodRequest request,
   ) async {
-    // Show confirmation dialog first
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -61,7 +65,6 @@ class BloodBankDashboardScreen extends StatelessWidget {
         return;
       }
 
-      // Show loading indicator
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -76,26 +79,14 @@ class BloodBankDashboardScreen extends StatelessWidget {
                 Text('Deleting request...'),
               ],
             ),
-            duration: Duration(seconds: 30), // Long duration for loading
+            duration: Duration(seconds: 30),
           ),
         );
       }
 
-      // Delete request via Cloud Functions (also deletes related notifications)
-      debugPrint('=== DELETE REQUEST START ===');
-      debugPrint('Request ID: ${request.id}');
-      debugPrint('Request bloodBankId: ${request.bloodBankId}');
-      debugPrint('Current user UID: $currentUid');
-      debugPrint('Request ID type: ${request.id.runtimeType}');
-      debugPrint('Request ID length: ${request.id.length}');
-
       final cloudFunctions = CloudFunctionsService();
       final result = await cloudFunctions.deleteRequest(requestId: request.id);
 
-      debugPrint('=== DELETE REQUEST SUCCESS ===');
-      debugPrint('Result: $result');
-
-      // Hide loading indicator
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -107,15 +98,8 @@ class BloodBankDashboardScreen extends StatelessWidget {
         );
       }
     } on FirebaseFunctionsException catch (e) {
-      debugPrint('❌ FirebaseFunctionsException deleting request:');
-      debugPrint('  Code: ${e.code}');
-      debugPrint('  Message: ${e.message}');
-      debugPrint('  Details: ${e.details}');
-      debugPrint('  Full error: $e');
-
       if (context.mounted) {
         String errorMessage = 'Failed to delete request. Please try again.';
-
         switch (e.code) {
           case 'permission-denied':
             errorMessage =
@@ -134,17 +118,14 @@ class BloodBankDashboardScreen extends StatelessWidget {
             errorMessage = 'Please log in to delete requests.';
             break;
           case 'internal':
-            // Show the actual error message from the server
             if (e.message != null && e.message!.isNotEmpty) {
               errorMessage = e.message!;
             } else {
-              errorMessage =
-                  'Server error occurred. Please check the console logs and try again.';
+              errorMessage = 'Server error occurred. Please try again.';
             }
             break;
           default:
-            errorMessage =
-                e.message ?? 'Failed to delete request. Please try again.';
+            errorMessage = e.message ?? errorMessage;
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -155,15 +136,11 @@ class BloodBankDashboardScreen extends StatelessWidget {
           ),
         );
       }
-    } catch (e, stackTrace) {
-      debugPrint('❌ Unexpected error deleting request: $e');
-      debugPrint('  Type: ${e.runtimeType}');
-      debugPrint('  Stack: $stackTrace');
-
+    } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Unexpected error: ${e.toString()}'),
+            content: Text('Unexpected error: $e'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -179,11 +156,46 @@ class BloodBankDashboardScreen extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: offWhite,
+        appBar: AppBar(
+          elevation: 0,
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black87,
+          titleSpacing: 12,
+          title: Row(
+            children: [
+              Image.asset(
+                'images/logoBLOOD.png',
+                height: 34,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Blood Bank',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'Logout',
+              icon: const Icon(Icons.logout, color: deepRed),
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+                // ignore: use_build_context_synchronously
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
+                );
+              },
+            ),
+            const SizedBox(width: 6),
+          ],
+        ),
         body: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xfffff1f3), Color(0xfffde6eb)],
+              colors: [Color(0xFFFFFFFF), Color(0xFFFDF7F6)],
               begin: Alignment.topRight,
               end: Alignment.bottomLeft,
             ),
@@ -200,6 +212,13 @@ class BloodBankDashboardScreen extends StatelessWidget {
                   return const Center(child: CircularProgressIndicator());
                 }
 
+                if (snapshot.hasError) {
+                  return _ErrorBox(
+                    title: 'Error loading requests',
+                    message: '${snapshot.error}',
+                  );
+                }
+
                 final docs = snapshot.data?.docs ?? [];
                 final requests = docs.map((doc) {
                   return BloodRequest.fromMap(
@@ -212,50 +231,81 @@ class BloodBankDashboardScreen extends StatelessWidget {
                   0,
                   (sum, r) => sum + r.units,
                 );
+                final urgentCount = requests.where((r) => r.isUrgent).length;
+                final normalCount = requests.where((r) => !r.isUrgent).length;
 
                 return SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _TopBar(
+                      _HeaderCard(
                         bloodBankName: bloodBankName,
                         location: location,
-                        onLogout: () async {
-                          await FirebaseAuth.instance.signOut();
-                          Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(
-                              builder: (_) => const LoginScreen(),
-                            ),
-                            (route) => false,
-                          );
-                        },
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
+
                       _StatsGrid(
                         totalUnits: totalUnits,
                         activeCount: requests.length,
-                        urgentCount: requests.where((r) => r.isUrgent).length,
-                        normalCount: requests.where((r) => !r.isUrgent).length,
+                        urgentCount: urgentCount,
+                        normalCount: normalCount,
                       ),
-                      const SizedBox(height: 16),
-                      _BloodRequestsSection(
-                        requests: requests,
-                        onCreatePressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => NewRequestScreen(
-                                bloodBankName: bloodBankName,
-                                initialHospitalLocation: location,
+
+                      const SizedBox(height: 14),
+
+                      _SectionHeader(
+                        title: 'Blood Requests',
+                        subtitle: requests.isEmpty
+                            ? 'No active requests'
+                            : 'Manage your current posts',
+                        rightWidget: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => NewRequestScreen(
+                                  bloodBankName: bloodBankName,
+                                  initialHospitalLocation: location,
+                                ),
                               ),
+                            );
+                          },
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('New Request'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: deepRed,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
                             ),
-                          );
-                        },
-                        onDeleteRequest: (request) =>
-                            _deleteRequestWithNotifications(context, request),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
                       ),
+                      const SizedBox(height: 10),
+
+                      if (requests.isEmpty)
+                        const _EmptyRequests()
+                      else
+                        ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: requests.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final r = requests[index];
+                            return _RequestCard(
+                              request: r,
+                              onDelete: () =>
+                                  _deleteRequestWithNotifications(context, r),
+                            );
+                          },
+                        ),
                     ],
                   ),
                 );
@@ -268,201 +318,145 @@ class BloodBankDashboardScreen extends StatelessWidget {
   }
 }
 
-class _RequestCard extends StatelessWidget {
-  final BloodRequest request;
-  final VoidCallback onDelete;
+class _HeaderCard extends StatelessWidget {
+  const _HeaderCard({required this.bloodBankName, required this.location});
 
-  const _RequestCard({required this.request, required this.onDelete});
+  static const Color deepRed = Color(0xFF7A0009);
+  static const Color cardBorder = Color(0xFFE9E2E1);
+
+  final String bloodBankName;
+  final String location;
 
   @override
   Widget build(BuildContext context) {
-    final bool canDelete =
-        FirebaseAuth.instance.currentUser?.uid == request.bloodBankId;
-
-    return Directionality(
-      textDirection: TextDirection.ltr,
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xfffdfdfd),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xffe6e9f0)),
-        ),
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cardBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x11000000),
+            blurRadius: 14,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: deepRed.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.local_hospital, color: deepRed, size: 26),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: const Color(0xffffe3e6),
-                  child: Text(
-                    request.bloodType,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Color(0xffe60012),
-                    ),
+                Text(
+                  bloodBankName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '${request.units} units needed',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                          if (request.isUrgent)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xffffebee),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Text(
-                                'Urgent',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xffc62828),
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          if (canDelete)
-                            IconButton(
-                              constraints: const BoxConstraints(),
-                              padding: EdgeInsets.zero,
-                              icon: const Icon(
-                                Icons.close,
-                                size: 18,
-                                color: Colors.red,
-                              ),
-                              onPressed: onDelete,
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.location_on_outlined,
-                            size: 14,
-                            color: Colors.black54,
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              request.hospitalLocation,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.black54,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      // ✅ النص الإضافي يظهر هنا مباشرة تحت الموقع بدون أي عناوين
-                      if (request.details != null &&
-                          request.details!.trim().isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          request.details!,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
-                            height: 1.3,
-                          ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.location_on_outlined,
+                      size: 16,
+                      color: Colors.black54,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        location,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.black54,
                         ),
-                      ],
-                    ],
-                  ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ChatScreen()),
-                ),
-                icon: const Icon(Icons.chat_bubble_outline, size: 16),
-                label: const Text('Messages', style: TextStyle(fontSize: 12)),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _TopBar extends StatelessWidget {
-  final String bloodBankName;
-  final String location;
-  final VoidCallback onLogout;
-  const _TopBar({
-    required this.bloodBankName,
-    required this.location,
-    required this.onLogout,
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
+    required this.subtitle,
+    required this.rightWidget,
   });
+
+  final String title;
+  final String subtitle;
+  final Widget rightWidget;
+
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              bloodBankName,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            Text(
-              location,
-              style: const TextStyle(fontSize: 13, color: Colors.grey),
-            ),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ],
+          ),
         ),
-        const Spacer(),
-        IconButton(
-          onPressed: onLogout,
-          icon: const Icon(Icons.logout, color: Colors.red),
-        ),
+        rightWidget,
       ],
     );
   }
 }
 
 class _StatsGrid extends StatelessWidget {
-  final int totalUnits;
-  final int activeCount;
-  final int urgentCount;
-  final int normalCount;
   const _StatsGrid({
     required this.totalUnits,
     required this.activeCount,
     required this.urgentCount,
     required this.normalCount,
   });
+
+  final int totalUnits;
+  final int activeCount;
+  final int urgentCount;
+  final int normalCount;
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-      builder: (context, constraints) {
-        final w = (constraints.maxWidth - 12) / 2;
+      builder: (context, c) {
+        final w = (c.maxWidth - 12) / 2;
         return Wrap(
           spacing: 12,
           runSpacing: 12,
@@ -471,28 +465,28 @@ class _StatsGrid extends StatelessWidget {
               title: 'Total Units',
               value: '$totalUnits',
               icon: Icons.bloodtype,
-              color: Colors.blue,
+              tint: const Color(0xFF1565C0),
               width: w,
             ),
             _StatCard(
               title: 'Active Requests',
               value: '$activeCount',
               icon: Icons.list_alt,
-              color: Colors.pink,
+              tint: const Color(0xFF7A0009),
               width: w,
             ),
             _StatCard(
               title: 'Urgent',
               value: '$urgentCount',
-              icon: Icons.warning,
-              color: Colors.orange,
+              icon: Icons.warning_amber_rounded,
+              tint: const Color(0xFFF57C00),
               width: w,
             ),
             _StatCard(
               title: 'Normal',
               value: '$normalCount',
               icon: Icons.check_circle,
-              color: Colors.green,
+              tint: const Color(0xFF2E7D32),
               width: w,
             ),
           ],
@@ -503,17 +497,22 @@ class _StatsGrid extends StatelessWidget {
 }
 
 class _StatCard extends StatelessWidget {
-  final String title, value;
-  final IconData icon;
-  final Color color;
-  final double width;
   const _StatCard({
     required this.title,
     required this.value,
     required this.icon,
-    required this.color,
+    required this.tint,
     required this.width,
   });
+
+  static const Color cardBorder = Color(0xFFE9E2E1);
+
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color tint;
+  final double width;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -522,19 +521,28 @@ class _StatCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
+        border: Border.all(color: cardBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 10,
+            offset: Offset(0, 6),
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 20),
+          Icon(icon, color: tint, size: 20),
           const SizedBox(height: 8),
-          Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+          const SizedBox(height: 2),
           Text(
             value,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
           ),
         ],
       ),
@@ -542,52 +550,239 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _BloodRequestsSection extends StatelessWidget {
-  final List<BloodRequest> requests;
-  final VoidCallback onCreatePressed;
-  final Function(BloodRequest) onDeleteRequest;
-  const _BloodRequestsSection({
-    required this.requests,
-    required this.onCreatePressed,
-    required this.onDeleteRequest,
-  });
+class _RequestCard extends StatelessWidget {
+  const _RequestCard({required this.request, required this.onDelete});
+
+  static const Color deepRed = Color(0xFF7A0009);
+  static const Color cardBorder = Color(0xFFE9E2E1);
+
+  final BloodRequest request;
+  final VoidCallback onDelete;
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ElevatedButton.icon(
-          onPressed: onCreatePressed,
-          icon: const Icon(Icons.add),
-          label: const Text('Create New Request'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xffe60012),
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+    final bool canDelete =
+        FirebaseAuth.instance.currentUser?.uid == request.bloodBankId;
+    final bool isUrgent = request.isUrgent;
+
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: cardBorder),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0A000000),
+              blurRadius: 10,
+              offset: Offset(0, 6),
             ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: deepRed.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    request.bloodType,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: deepRed,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '${request.units} units needed',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                if (isUrgent)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFEBEE),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Text(
+                      'Urgent',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFFC62828),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                if (canDelete) ...[
+                  const SizedBox(width: 6),
+                  IconButton(
+                    tooltip: 'Delete',
+                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      size: 20,
+                      color: Colors.red,
+                    ),
+                    onPressed: onDelete,
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(
+                  Icons.location_on_outlined,
+                  size: 16,
+                  color: Colors.black54,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    request.hospitalLocation,
+                    style: const TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                ),
+              ],
+            ),
+            if (request.details != null &&
+                request.details!.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                request.details!.trim(),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.black87,
+                  height: 1.35,
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ChatScreen()),
+                ),
+                icon: const Icon(
+                  Icons.chat_bubble_outline,
+                  size: 16,
+                  color: deepRed,
+                ),
+                label: const Text(
+                  'Messages',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: deepRed,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyRequests extends StatelessWidget {
+  const _EmptyRequests();
+
+  static const Color deepRed = Color(0xFF7A0009);
+  static const Color cardBorder = Color(0xFFE9E2E1);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cardBorder),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: deepRed.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Icon(Icons.inbox_outlined, color: deepRed, size: 28),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'No active requests',
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Create a new request to reach donors quickly.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.black54, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorBox extends StatelessWidget {
+  const _ErrorBox({required this.title, required this.message});
+
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE9E2E1)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 34),
+              const SizedBox(height: 10),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+              const SizedBox(height: 6),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.black54, fontSize: 12),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
-        if (requests.isEmpty)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(20),
-              child: Text('No active requests'),
-            ),
-          )
-        else
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: requests.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (context, index) => _RequestCard(
-              request: requests[index],
-              onDelete: () => onDeleteRequest(requests[index]),
-            ),
-          ),
-      ],
+      ),
     );
   }
 }
