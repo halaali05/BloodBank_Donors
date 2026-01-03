@@ -544,14 +544,15 @@ class _DonorRequestCardPro extends StatelessWidget {
                       ),
                     ),
                     onPressed: () {
+                      final currentUserId =
+                          FirebaseAuth.instance.currentUser?.uid;
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => ChatScreen(
                             requestId: request.id,
-
-                            // ✅ المسج الثابتة
-                            initialMessage:
-                                'Please donate blood and save a life.',
+                            initialMessage: 'Please donate as soon as possible',
+                            recipientId:
+                                currentUserId, // Show personalized message for this donor
                           ),
                         ),
                       );

@@ -537,22 +537,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                   const SizedBox(height: 22),
 
-                  // زر مثل الصورة (أبيض وحدود)
+                  // زر مثل باقي الأزرار في التطبيق (أحمر غامق)
                   SizedBox(
                     height: 46,
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: deepRed,
-                        side: const BorderSide(color: deepRed, width: 1.5),
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: deepRed,
+                        foregroundColor: Colors.white,
                         shape: const StadiumBorder(),
+                        elevation: 0,
                       ),
                       onPressed: _isLoading ? null : _submit,
                       child: _isLoading
                           ? const SizedBox(
                               width: 20,
                               height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
                             )
                           : const Text(
                               'CREATE ACCOUNT',

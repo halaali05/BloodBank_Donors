@@ -34,7 +34,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // ------------------ resend verification ------------------
-
+  // COMMENTED OUT: Resend verification email functionality disabled
+  /*
   Future<void> _resendVerification() async {
     try {
       final email = _emailController.text.trim();
@@ -98,6 +99,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ).show();
     }
   }
+  */
 
   // ------------------ login ------------------
 
@@ -533,7 +535,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 8),
 
-                // Resend verification
+                // Resend verification - COMMENTED OUT
+                /*
                 TextButton(
                   onPressed: _isLoading ? null : _resendVerification,
                   child: const Text(
@@ -541,6 +544,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(color: deepRed),
                   ),
                 ),
+                */
 
                 // Forgot password
                 TextButton(
