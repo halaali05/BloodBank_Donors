@@ -271,115 +271,11 @@ exports.addRequest = onCall(async (request) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // ✅ Create personalized messages for all matching donors
-    // Notifications will be created by the sendRequestMessageToDonors trigger
+    // ✅ Notifications and messages are handled by the trigger (sendRequestMessageToDonors)
+    // This ensures they are created reliably when the request document is created
     console.log(
-      `[addRequest] Searching for donors with blood type: ${bloodType}`
+      `[addRequest] Request ${requestId} created. Notifications and messages will be created by trigger.`
     );
-
-    const donorsSnapshot = await db
-      .collection("users")
-      .where("role", "==", "donor")
-      .where("bloodType", "==", bloodType)
-      .get();
-
-    console.log(
-      `[addRequest] Found ${donorsSnapshot.size} donors with blood type ${bloodType}`
-    );
-
-    if (donorsSnapshot.empty) {
-      console.log(
-        `[addRequest] No donors found with blood type ${bloodType}, skipping message creation`
-      );
-    } else {
-      // Prepare personalized chat messages only
-      // Notifications are handled by the trigger
-      const messageOps = [];
-
-      donorsSnapshot.docs.forEach((doc) => {
-        try {
-          const donorData = doc.data();
-          const donorId = doc.id;
-          const donorName = donorData.fullName || donorData.name || "Donor";
-
-          console.log(
-            `[addRequest] Processing donor: ${donorName} (${donorId})`
-          );
-
-          // Prepare personalized chat message
-          const messageRef = db
-            .collection("requests")
-            .doc(requestId)
-            .collection("messages")
-            .doc();
-
-          messageOps.push({
-            ref: messageRef,
-            data: {
-              senderId: uid, // From the hospital
-              senderRole: "hospital",
-              text: `Please ${donorName} donate and save a life ❤️`,
-              recipientId: donorId, // Track which donor this message is for
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            },
-          });
-        } catch (donorErr) {
-          console.error(
-            `[addRequest] Error processing donor ${doc.id}:`,
-            donorErr
-          );
-        }
-      });
-
-      // Commit messages in batches if needed
-      const MAX_BATCH_SIZE = 500;
-
-      if (messageOps.length > 0) {
-        console.log(
-          `[addRequest] Preparing to create ${messageOps.length} personalized messages in batches`
-        );
-
-        try {
-          for (let i = 0; i < messageOps.length; i += MAX_BATCH_SIZE) {
-            const batch = db.batch();
-            const chunk = messageOps.slice(i, i + MAX_BATCH_SIZE);
-            const batchNumber = Math.floor(i / MAX_BATCH_SIZE) + 1;
-
-            console.log(
-              `[addRequest] Creating batch ${batchNumber} with ${chunk.length} messages`
-            );
-
-            chunk.forEach((op) => {
-              batch.set(op.ref, op.data);
-            });
-
-            await batch.commit();
-            console.log(
-              `[addRequest] ✅ Successfully committed message batch ${batchNumber} (${chunk.length} messages)`
-            );
-          }
-
-          console.log(
-            `[addRequest] ✅ Successfully created ALL ${messageOps.length} personalized messages`
-          );
-        } catch (batchErr) {
-          console.error(`[addRequest] ❌ CRITICAL ERROR committing message batches:`, batchErr);
-          console.error(`[addRequest] Batch error details:`, {
-            messageCount: messageOps.length,
-            error: batchErr.message,
-            stack: batchErr.stack,
-          });
-          // Don't throw - request is already created
-          // Log the error but continue - the trigger may create messages as backup
-          // However, this is a critical error that should be investigated
-          console.error(
-            `[addRequest] ⚠️ WARNING: Request ${requestId} was created but ${messageOps.length} personalized messages failed to be created!`
-          );
-        }
-      } else {
-        console.log(`[addRequest] ⚠️ No messages to create (no matching donors found)`);
-      }
-    }
 
     return {
       ok: true,
@@ -888,18 +784,24 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
 
       const requestRef = db.collection("requests").doc(requestId);
 
-      // استعلام عن المتبرعين لنفس فصيلة الدم
-      const donorsSnapshot = await db
+      // Get ALL donors for notifications
+      const allDonorsSnapshot = await db
+        .collection("users")
+        .where("role", "==", "donor")
+        .get();
+
+      // Get matching donors for personalized messages
+      const matchingDonorsSnapshot = await db
         .collection("users")
         .where("role", "==", "donor")
         .where("bloodType", "==", bloodType)
         .get();
 
       console.log(
-        `[sendRequestMessageToDonors] Found ${donorsSnapshot.size} donors with blood type ${bloodType}`
+        `[sendRequestMessageToDonors] Found ${allDonorsSnapshot.size} total donors and ${matchingDonorsSnapshot.size} matching donors with blood type ${bloodType}`
       );
 
-      if (donorsSnapshot.empty) {
+      if (allDonorsSnapshot.empty) {
         console.log("[sendRequestMessageToDonors] No donors found, exiting");
         return;
       }
@@ -910,34 +812,21 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
       let messageBatch = db.batch();
       let notificationBatchCount = 0;
       let messageBatchCount = 0;
-      let totalMessagesCreated = 0;
       const batchPromises = [];
 
-      // Check if messages already exist (created by addRequest)
-      const existingMessagesSnapshot = await requestRef
-        .collection("messages")
-        .where("recipientId", "!=", null)
-        .limit(1)
-        .get();
-
-      const messagesAlreadyExist = !existingMessagesSnapshot.empty;
-      console.log(
-        `[sendRequestMessageToDonors] Messages already exist: ${messagesAlreadyExist}`
-      );
-
-      // Send notifications and messages (messages as backup if not already created)
-      for (const donorDoc of donorsSnapshot.docs) {
+      // Create notifications for ALL donors
+      for (const donorDoc of allDonorsSnapshot.docs) {
         const donorData = donorDoc.data();
         const donorId = donorDoc.id;
         const donorName = donorData.fullName || donorData.name || "Donor";
 
         console.log(
-          `[sendRequestMessageToDonors] Processing donor: ${donorName} (${donorId})`
+          `[sendRequestMessageToDonors] Processing notification for donor: ${donorName} (${donorId})`
         );
 
         if (donorData.fcmToken) tokens.push(donorData.fcmToken);
 
-        // Create notification for each donor
+        // Create notification for each donor (ALL donors)
         const notificationRef = db
           .collection("notifications")
           .doc(donorId)
@@ -946,28 +835,12 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
 
         notificationBatch.set(notificationRef, {
           title: `Blood request: ${bloodType}`,
-          body: `Please ${donorName} donate and save a life ❤️`,
+          body: `Please ${donorName} donate as soon as possible`,
           requestId: requestId,
-          bloodBankName: data.bloodBankName || "Blood Bank",
-          isUrgent: data.isUrgent === true,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           read: false,
         });
         notificationBatchCount++;
-
-        // Create personalized message as backup if not already created by addRequest
-        if (!messagesAlreadyExist) {
-          const messageRef = requestRef.collection("messages").doc();
-          messageBatch.set(messageRef, {
-            senderId: bloodBankId,
-            senderRole: "hospital",
-            text: `Please ${donorName} donate and save a life ❤️`,
-            recipientId: donorId,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-          messageBatchCount++;
-          totalMessagesCreated++;
-        }
 
         // Commit notification batch if it reaches the limit
         if (notificationBatchCount >= MAX_BATCH_SIZE) {
@@ -975,6 +848,29 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
           notificationBatch = db.batch();
           notificationBatchCount = 0;
         }
+
+      }
+
+      // Create personalized messages for ALL donors
+      for (const donorDoc of allDonorsSnapshot.docs) {
+        const donorData = donorDoc.data();
+        const donorId = donorDoc.id;
+        const donorName = donorData.fullName || donorData.name || "Donor";
+
+        console.log(
+          `[sendRequestMessageToDonors] Processing personalized message for donor: ${donorName} (${donorId})`
+        );
+
+        // Create personalized message for ALL donors
+        const messageRef = requestRef.collection("messages").doc();
+        messageBatch.set(messageRef, {
+          senderId: bloodBankId,
+          senderRole: "hospital",
+          text: `Please ${donorName} donate as soon as possible`,
+          recipientId: donorId, // Track which donor this message is for
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        messageBatchCount++;
 
         // Commit message batch if it reaches the limit
         if (messageBatchCount >= MAX_BATCH_SIZE) {
@@ -998,17 +894,11 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
       if (batchPromises.length > 0) {
         await Promise.all(batchPromises);
         console.log(
-          `[sendRequestMessageToDonors] ✅ Successfully created ${donorsSnapshot.size} notifications`
+          `[sendRequestMessageToDonors] ✅ Successfully created ${allDonorsSnapshot.size} notifications for all donors`
         );
-        if (!messagesAlreadyExist && totalMessagesCreated > 0) {
-          console.log(
-            `[sendRequestMessageToDonors] ✅ Successfully created ${totalMessagesCreated} personalized messages as backup`
-          );
-        } else if (messagesAlreadyExist) {
-          console.log(
-            `[sendRequestMessageToDonors] ℹ️ Messages already exist, skipped message creation`
-          );
-        }
+        console.log(
+          `[sendRequestMessageToDonors] ✅ Successfully created ${allDonorsSnapshot.size} personalized messages for all donors`
+        );
       } else {
         console.log(
           `[sendRequestMessageToDonors] ⚠️ No batches to commit`
@@ -1030,7 +920,7 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
       }
 
       console.log(
-        `[sendRequestMessageToDonors] Successfully sent messages and notifications to ${donorsSnapshot.size} donors`
+        `[sendRequestMessageToDonors] Successfully sent notifications and personalized messages to ${allDonorsSnapshot.size} donors`
       );
     } catch (err) {
       console.error("[sendRequestMessageToDonors] ERROR:", err);

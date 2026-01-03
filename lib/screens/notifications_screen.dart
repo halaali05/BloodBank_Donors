@@ -325,6 +325,7 @@ class RequestDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
     return Directionality(
       textDirection: TextDirection.ltr,
       child: Scaffold(
@@ -484,7 +485,9 @@ class RequestDetailsScreen extends StatelessWidget {
                               builder: (_) => ChatScreen(
                                 requestId: requestId,
                                 initialMessage:
-                                    'Please donate and save a life ❤️',
+                                    'Please donate as soon as possible',
+                                recipientId:
+                                    currentUserId, // Show personalized message for this donor
                               ),
                             ),
                           );

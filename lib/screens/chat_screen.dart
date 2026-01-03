@@ -29,6 +29,31 @@ class _ChatScreenState extends State<ChatScreen> {
   final currentUser = FirebaseAuth.instance.currentUser;
   final _cloudFunctions = CloudFunctionsService();
   bool _isSending = false;
+  String? _requestOwnerId; // Store the request owner (hospital) ID
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRequestOwner();
+  }
+
+  Future<void> _loadRequestOwner() async {
+    try {
+      final requestDoc = await FirebaseFirestore.instance
+          .collection('requests')
+          .doc(widget.requestId)
+          .get();
+
+      if (requestDoc.exists && mounted) {
+        final data = requestDoc.data();
+        setState(() {
+          _requestOwnerId = data?['bloodBankId'] as String?;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading request owner: $e');
+    }
+  }
 
   @override
   void dispose() {
@@ -232,65 +257,125 @@ class _ChatScreenState extends State<ChatScreen> {
                       )
                       .toList();
 
+                  // Debug logging
+                  debugPrint('=== CHAT FILTERING DEBUG ===');
+                  debugPrint('Current user ID: $currentUserId');
+                  debugPrint('Request owner ID: $_requestOwnerId');
+                  debugPrint('Widget recipientId: ${widget.recipientId}');
+                  debugPrint('Total messages in stream: ${messages.length}');
+
                   // Filter messages based on context:
                   // - If recipientId is provided (from contacts screen), show only messages for that recipient
                   // - Otherwise, show messages for current user (donor) or all messages (hospital)
                   final validMessages = messages.where((msg) {
                     if (msg['text'] == null || msg['text'].toString().isEmpty) {
+                      debugPrint('  Message filtered: empty text');
                       return false;
                     }
 
-                    final senderId = msg['senderId'];
-                    final recipientId = msg['recipientId'];
+                    // Handle different data types from Firestore
+                    final senderId = msg['senderId']?.toString();
+                    final recipientId = msg['recipientId']?.toString();
+                    final senderRole = msg['senderRole']?.toString();
+                    final text = msg['text']?.toString();
+
+                    debugPrint(
+                      '  Message: senderId=$senderId, recipientId=$recipientId, senderRole=$senderRole, text=${text != null && text.length > 30 ? text.substring(0, 30) : text}',
+                    );
 
                     // If viewing from contacts screen (recipientId provided)
-                    // This means hospital is chatting with a specific donor
+                    // This means blood bank is chatting with a specific donor
                     if (widget.recipientId != null) {
-                      final selectedDonorId = widget.recipientId.toString();
+                      // Show ONLY messages for this specific recipient
+                      // This ensures blood bank sees only this donor's personalized message, not all donors' messages
+                      // Convert to strings to ensure proper comparison
+                      final recipientIdStr = recipientId?.toString();
+                      final widgetRecipientIdStr = widget.recipientId
+                          .toString();
+                      final senderIdStr = senderId?.toString();
+                      final currentUserIdStr = currentUserId?.toString();
 
-                      // Show:
-                      // 1. Personalized message for this specific recipient (recipientId matches selected donor)
-                      // 2. Regular chat messages (no recipientId) sent by hospital
-                      // 3. Messages sent by the donor themselves (senderId matches selected donor)
-                      // 4. Messages sent by hospital with recipientId matching selected donor (fallback)
-                      final msgRecipientId = recipientId?.toString();
-                      final msgSenderId = senderId?.toString();
+                      // STRICT FILTERING: Only show messages where recipientId exactly matches the selected donor
+                      // This prevents showing personalized messages for other donors
+                      final isForThisRecipient =
+                          recipientIdStr != null &&
+                          recipientIdStr == widgetRecipientIdStr;
 
-                      final isPersonalizedForThisDonor =
-                          msgRecipientId != null &&
-                          msgRecipientId == selectedDonorId;
-                      final isRegularChatMessage =
-                          msgRecipientId == null &&
-                          msgSenderId == currentUserId?.toString();
-                      final isDonorMessage =
-                          msgSenderId != null && msgSenderId == selectedDonorId;
-                      // Fallback: hospital sent message to this donor (covers personalized messages)
-                      final isHospitalToThisDonor =
-                          msgSenderId == currentUserId?.toString() &&
-                          msgRecipientId == selectedDonorId;
+                      // Also show messages sent by current user in this conversation
+                      // But only if they don't have a recipientId (general messages) OR if recipientId matches
+                      final isSentByCurrentUser =
+                          senderIdStr != null &&
+                          senderIdStr == currentUserIdStr &&
+                          (recipientId == null ||
+                              recipientIdStr == widgetRecipientIdStr);
 
-                      return isPersonalizedForThisDonor ||
-                          isRegularChatMessage ||
-                          isDonorMessage ||
-                          isHospitalToThisDonor;
+                      final matches = isForThisRecipient || isSentByCurrentUser;
+
+                      debugPrint(
+                        '    -> Recipient view (blood bank chatting with specific donor): isForThisRecipient=$isForThisRecipient (recipientId=$recipientIdStr, widget.recipientId=$widgetRecipientIdStr), isSentByCurrentUser=$isSentByCurrentUser, matches=$matches',
+                      );
+                      return matches;
                     }
 
-                    // Default view (no specific recipient selected)
-                    // For hospitals: show all messages
-                    // For donors: show only their personalized messages or messages they sent
-                    final isHospital =
-                        senderId == currentUserId &&
-                        msg['senderRole'] == 'hospital';
+                    // Check if current user is the request owner (hospital)
+                    final isRequestOwner = _requestOwnerId == currentUserId;
 
-                    if (isHospital) {
-                      return true; // Hospitals see all messages
+                    if (isRequestOwner) {
+                      // BLOOD BANK VIEW: When blood bank opens chat without specific recipient
+                      // Show only: messages they sent OR general messages (no recipientId)
+                      // Do NOT show personalized messages for specific donors
+                      final senderIdStr = senderId?.toString();
+                      final currentUserIdStr = currentUserId?.toString();
+                      final recipientIdStr = recipientId?.toString();
+
+                      // Show messages where:
+                      // 1. Blood bank sent the message
+                      // 2. Message is general (no recipientId - for all donors)
+                      // Do NOT show personalized messages (recipientId != null) unless viewing specific donor
+                      final isSentByBloodBank =
+                          senderIdStr != null &&
+                          senderIdStr == currentUserIdStr;
+                      final isGeneralMessage = recipientId == null;
+
+                      final matches = isSentByBloodBank || isGeneralMessage;
+                      debugPrint(
+                        '    -> Blood bank view (no recipient): isSentByBloodBank=$isSentByBloodBank, isGeneralMessage=$isGeneralMessage, recipientId=$recipientIdStr, matches=$matches',
+                      );
+                      return matches;
                     } else {
-                      // Donors see: their messages OR messages intended for them
-                      return senderId == currentUserId ||
-                          recipientId == currentUserId ||
-                          recipientId == null;
+                      // DONOR VIEW: Only show messages meant for this specific donor
+                      // Convert to strings for proper comparison
+                      final senderIdStr = senderId?.toString();
+                      final recipientIdStr = recipientId?.toString();
+                      final currentUserIdStr = currentUserId?.toString();
+
+                      // 1. Messages sent by this donor
+                      final isMyMessage =
+                          senderIdStr != null &&
+                          senderIdStr == currentUserIdStr;
+
+                      // 2. Personalized messages from hospital where recipientId exactly matches current user
+                      // This ensures each donor ONLY sees their own personalized message
+                      final isPersonalizedForMe =
+                          recipientIdStr != null &&
+                          recipientIdStr == currentUserIdStr;
+
+                      // Donors see ONLY:
+                      // - Messages they sent
+                      // - Personalized messages where recipientId == their ID
+                      // This prevents donors from seeing messages meant for other donors
+                      final matches = isMyMessage || isPersonalizedForMe;
+                      debugPrint(
+                        '    -> Donor view: isMyMessage=$isMyMessage, isPersonalizedForMe=$isPersonalizedForMe (recipientId=$recipientIdStr, currentUserId=$currentUserIdStr), matches=$matches',
+                      );
+                      return matches;
                     }
                   }).toList();
+
+                  debugPrint(
+                    'Valid messages after filtering: ${validMessages.length}',
+                  );
+                  debugPrint('=== END DEBUG ===');
 
                   if (validMessages.isEmpty) {
                     return const Center(
