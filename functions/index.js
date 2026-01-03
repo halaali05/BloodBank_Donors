@@ -835,7 +835,7 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
 
         notificationBatch.set(notificationRef, {
           title: `Blood request: ${bloodType}`,
-          body: `Please ${donorName} donate as soon as possible`,
+          body: `Please ${donorName} donate as soon as possible ❤️`,
           requestId: requestId,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           read: false,
@@ -866,7 +866,7 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
         messageBatch.set(messageRef, {
           senderId: bloodBankId,
           senderRole: "hospital",
-          text: `Please ${donorName} donate as soon as possible`,
+          text: `Please ${donorName} donate as soon as possible ❤️`,
           recipientId: donorId, // Track which donor this message is for
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
