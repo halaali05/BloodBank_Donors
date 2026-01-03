@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  final String requestId;
+  final String initialMessage;
+  // معرف طلب الدم اللي حاب تتواصل فيه
+  const ChatScreen({
+    super.key,
+    required this.requestId,
+    required this.initialMessage,
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -14,7 +23,7 @@ class _ChatScreenState extends State<ChatScreen> {
   static const _inputRadius = 24.0;
 
   final TextEditingController _controller = TextEditingController();
-  final List<String> _messages = <String>[];
+  final currentUser = FirebaseAuth.instance.currentUser;
 
   @override
   void dispose() {
@@ -22,48 +31,42 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  /// Sends a message in the chat
-  ///
-  /// Adds the message text to the messages list and clears the input field.
-  /// Messages are inserted at the start of the list because the ListView
-  /// is reversed (newest messages appear at the bottom).
-  ///
-  /// Does nothing if the message text is empty.
-  void _send() {
+  /// Sends a message to Firestore
+  void _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || currentUser == null) return;
 
-    setState(() {
-      // insert at start because list is reversed (keeps latest at bottom visually)
-      _messages.insert(0, text);
-    });
+    final msgData = {
+      'text': text,
+      'senderId': currentUser!.uid,
+      'createdAt': FieldValue.serverTimestamp(),
+      'senderRole': 'donor', // لأن المتبرع يرسل من هنا
+    };
+
+    await FirebaseFirestore.instance
+        .collection('requests')
+        .doc(widget.requestId)
+        .collection('messages')
+        .add(msgData);
 
     _controller.clear();
     FocusScope.of(context).unfocus();
   }
 
-  /// Builds a message bubble widget
-  ///
-  /// Creates a styled container for displaying a chat message.
-  /// Messages are aligned to the right with rounded corners and
-  /// the app's primary color scheme.
-  ///
-  /// Parameters:
-  /// - [msg]: The message text to display
-  ///
-  /// Returns:
-  /// - An [Align] widget containing a styled message bubble
-  Widget _messageBubble(String msg) {
+  /// Builds a message bubble
+  Widget _messageBubble(Map<String, dynamic> msg) {
+    final isMe = msg['senderId'] == currentUser?.uid;
+
     return Align(
-      alignment: Alignment.centerRight,
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xffffe3e6),
+          color: isMe ? const Color(0xffffe3e6) : const Color(0xffe0e0e0),
           borderRadius: BorderRadius.circular(_bubbleRadius),
         ),
-        child: Text(msg),
+        child: Text(msg['text'] ?? ''),
       ),
     );
   }
@@ -78,16 +81,35 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           children: [
             Expanded(
-              child: _messages.isEmpty
-                  ? const Center(child: Text('No messages yet'))
-                  : ListView.builder(
-                      padding: _listPadding,
-                      reverse: true,
-                      itemCount: _messages.length,
-                      itemBuilder: (context, index) {
-                        return _messageBubble(_messages[index]);
-                      },
-                    ),
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('requests')
+                    .doc(widget.requestId)
+                    .collection('messages')
+                    .orderBy('createdAt', descending: true)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return const Center(child: Text('No messages yet'));
+                  }
+
+                  final messages = snapshot.data!.docs
+                      .map((doc) => doc.data() as Map<String, dynamic>)
+                      .toList();
+
+                  return ListView.builder(
+                    padding: _listPadding,
+                    reverse: true,
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      return _messageBubble(messages[index]);
+                    },
+                  );
+                },
+              ),
             ),
 
             Padding(

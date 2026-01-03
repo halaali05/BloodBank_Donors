@@ -682,7 +682,12 @@ class _RequestCard extends StatelessWidget {
               child: TextButton.icon(
                 onPressed: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const ChatScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => ChatScreen(
+                      requestId: request.id,
+                      initialMessage: 'Please donate and save a life ❤️',
+                    ),
+                  ),
                 ),
                 icon: const Icon(
                   Icons.chat_bubble_outline,

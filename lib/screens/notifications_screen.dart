@@ -481,7 +481,11 @@ class RequestDetailsScreen extends StatelessWidget {
                         onPressed: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) => const ChatScreen(),
+                              builder: (_) => ChatScreen(
+                                requestId: requestId,
+                                initialMessage:
+                                    'Please donate and save a life ❤️',
+                              ),
                             ),
                           );
                         },

@@ -1,12 +1,13 @@
 const admin = require("firebase-admin");
+const functions = require("firebase-functions");
 admin.initializeApp();
 const db = admin.firestore();
 
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { setGlobalOptions } = require("firebase-functions/v2");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
+const {setGlobalOptions} = require("firebase-functions/v2");
 
-setGlobalOptions({ region: "us-central1" });
+setGlobalOptions({region: "us-central1"});
 
 /**
  * Require authenticated caller (v2 callable uses request.auth).
@@ -43,9 +44,9 @@ function toHttpsError(err, fallbackMessage) {
   if (err instanceof HttpsError) return err;
 
   const msg =
-    err && typeof err.message === "string" && err.message.trim()
-      ? err.message.trim()
-      : fallbackMessage || "Server error occurred.";
+    err && typeof err.message === "string" && err.message.trim() ?
+      err.message.trim() :
+      fallbackMessage || "Server error occurred.";
 
   return new HttpsError("internal", msg);
 }
@@ -65,8 +66,8 @@ exports.createPendingProfile = onCall(async (request) => {
     const role = nonEmptyString(data.role, "role");
     if (role !== "donor" && role !== "hospital") {
       throw new HttpsError(
-        "invalid-argument",
-        "role must be donor or hospital"
+          "invalid-argument",
+          "role must be donor or hospital",
       );
     }
 
@@ -80,28 +81,28 @@ exports.createPendingProfile = onCall(async (request) => {
       payload.bloodType = nonEmptyString(data.bloodType, "bloodType");
       payload.location = nonEmptyString(data.location, "location");
       payload.medicalFileUrl =
-        typeof data.medicalFileUrl === "string"
-          ? data.medicalFileUrl.trim()
-          : null;
+        typeof data.medicalFileUrl === "string" ?
+          data.medicalFileUrl.trim() :
+          null;
     } else {
       payload.bloodBankName = nonEmptyString(
-        data.bloodBankName,
-        "bloodBankName"
+          data.bloodBankName,
+          "bloodBankName",
       );
       payload.location = nonEmptyString(data.location, "location");
     }
 
     await db
-      .collection("pending_profiles")
-      .doc(uid)
-      .set(payload, { merge: true });
+        .collection("pending_profiles")
+        .doc(uid)
+        .set(payload, {merge: true});
 
     return {
       ok: true,
       emailVerified,
-      message: emailVerified
-        ? "Email already verified. You can complete your profile."
-        : "Pending profile saved. Please verify your email.",
+      message: emailVerified ?
+        "Email already verified. You can complete your profile." :
+        "Pending profile saved. Please verify your email.",
     };
   } catch (err) {
     console.error("[createPendingProfile] ERROR:", err);
@@ -130,7 +131,7 @@ exports.completeProfileAfterVerification = onCall(async (request) => {
     if (!pendingSnap.exists) {
       const userSnap = await userRef.get();
       if (userSnap.exists) {
-        return { ok: true, message: "Profile already completed." };
+        return {ok: true, message: "Profile already completed."};
       }
       throw new HttpsError("not-found", "No pending profile found.");
     }
@@ -139,24 +140,24 @@ exports.completeProfileAfterVerification = onCall(async (request) => {
 
     await db.runTransaction(async (tx) => {
       tx.set(
-        userRef,
-        {
-          ...pendingData,
-          email: userRecord.email || null,
-          emailVerified: true,
-          emailVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-          activatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
+          userRef,
+          {
+            ...pendingData,
+            email: userRecord.email || null,
+            emailVerified: true,
+            emailVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+            activatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          {merge: true},
       );
       tx.delete(pendingRef);
     });
 
     if (pendingData && pendingData.role) {
-      await admin.auth().setCustomUserClaims(uid, { role: pendingData.role });
+      await admin.auth().setCustomUserClaims(uid, {role: pendingData.role});
     }
 
-    return { ok: true, message: "Profile activated." };
+    return {ok: true, message: "Profile activated."};
   } catch (err) {
     console.error("[completeProfileAfterVerification] ERROR:", err);
     throw toHttpsError(err, "Failed to activate profile.");
@@ -213,7 +214,7 @@ exports.getUserRole = onCall(async (request) => {
     }
 
     const d = snap.data() || {};
-    return { role: d.role || "" };
+    return {role: d.role || ""};
   } catch (err) {
     console.error("[getUserRole] ERROR:", err);
     throw toHttpsError(err, "Failed to load user role.");
@@ -233,8 +234,8 @@ exports.addRequest = onCall(async (request) => {
 
     if (!userSnap.exists || ud.role !== "hospital") {
       throw new HttpsError(
-        "permission-denied",
-        "Only hospitals can create blood requests"
+          "permission-denied",
+          "Only hospitals can create blood requests",
       );
     }
 
@@ -246,15 +247,15 @@ exports.addRequest = onCall(async (request) => {
       typeof data.units === "number" ? data.units : parseInt(data.units, 10);
     if (isNaN(units) || units < 1) {
       throw new HttpsError(
-        "invalid-argument",
-        "units must be a positive number"
+          "invalid-argument",
+          "units must be a positive number",
       );
     }
 
     const isUrgent = data.isUrgent === true;
     const hospitalLocation = nonEmptyString(
-      data.hospitalLocation,
-      "hospitalLocation"
+        data.hospitalLocation,
+        "hospitalLocation",
     );
     const details = typeof data.details === "string" ? data.details.trim() : "";
 
@@ -269,38 +270,57 @@ exports.addRequest = onCall(async (request) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    if (isUrgent) {
-      const donorsSnapshot = await db
+    // ✅ تم التعديل: إرسال الرسائل لكل المتبرعين المناسبين، مش بس الطارئة
+    const donorsSnapshot = await db
         .collection("users")
         .where("role", "==", "donor")
+        .where("bloodType", "==", bloodType)
         .get();
 
-      const batch = db.batch();
-      donorsSnapshot.docs.forEach((doc) => {
-        const notificationRef = db
+    const batch = db.batch();
+    donorsSnapshot.docs.forEach((doc) => {
+      const notificationRef = db
           .collection("notifications")
           .doc(doc.id)
           .collection("user_notifications")
           .doc();
 
-        batch.set(notificationRef, {
-          title: `Urgent blood request: ${bloodType}`,
-          body: `${units} units needed at ${bloodBankName}`,
-          requestId,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          read: false,
-        });
+      // كل متبرع يوصل له رسالة عن الطلب الجديد
+      batch.set(notificationRef, {
+        title: `New blood request: ${bloodType}`,
+        body: `${units} units needed at ${bloodBankName}`,
+        requestId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        read: false,
       });
 
-      await batch.commit();
-    }
+      // إنشاء رسالة في شات الطلب لكل متبرع
+      const messageRef = db
+          .collection("requests")
+          .doc(requestId)
+          .collection("messages")
+          .doc();
 
-    return { ok: true, message: "Request created successfully" };
+      batch.set(messageRef, {
+        senderId: uid, // بنك الدم هو المرسل
+        senderRole: "hospital",
+        text: `New request: ${units} units of ${bloodType} 
+        needed at ${bloodBankName}`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        receiverId: doc.id,
+      });
+    });
+
+    await batch.commit();
+
+    return {ok: true, message:
+       "Request created and notifications sent to all matching donors."};
   } catch (err) {
     console.error("[addRequest] ERROR:", err);
     throw toHttpsError(err, "Failed to create request.");
   }
 });
+
 
 /**
  * getRequests - pagination
@@ -316,9 +336,9 @@ exports.getRequests = onCall(async (request) => {
       typeof data.lastRequestId === "string" ? data.lastRequestId : null;
 
     let query = db
-      .collection("requests")
-      .orderBy("createdAt", "desc")
-      .limit(limit);
+        .collection("requests")
+        .orderBy("createdAt", "desc")
+        .limit(limit);
 
     if (lastRequestId) {
       const lastDoc = await db.collection("requests").doc(lastRequestId).get();
@@ -332,13 +352,13 @@ exports.getRequests = onCall(async (request) => {
         id: doc.id,
         ...d,
         createdAt:
-          d.createdAt && typeof d.createdAt.toMillis === "function"
-            ? d.createdAt.toMillis()
-            : null,
+          d.createdAt && typeof d.createdAt.toMillis === "function" ?
+            d.createdAt.toMillis() :
+            null,
       };
     });
 
-    return { requests, hasMore: snapshot.docs.length === limit };
+    return {requests, hasMore: snapshot.docs.length === limit};
   } catch (err) {
     console.error("[getRequests] ERROR:", err);
     throw toHttpsError(err, "Failed to load requests.");
@@ -353,19 +373,19 @@ exports.markNotificationsAsRead = onCall(async (request) => {
     const uid = requireAuth(request);
 
     const snapshot = await db
-      .collection("notifications")
-      .doc(uid)
-      .collection("user_notifications")
-      .where("read", "==", false)
-      .get();
+        .collection("notifications")
+        .doc(uid)
+        .collection("user_notifications")
+        .where("read", "==", false)
+        .get();
 
     if (snapshot.empty) {
-      return { ok: true, message: "No unread notifications.", count: 0 };
+      return {ok: true, message: "No unread notifications.", count: 0};
     }
 
     const batch = db.batch();
     snapshot.docs.forEach((doc) => {
-      batch.update(doc.ref, { read: true });
+      batch.update(doc.ref, {read: true});
     });
 
     await batch.commit();
@@ -390,15 +410,15 @@ exports.deleteNotification = onCall(async (request) => {
     const data = request.data || {};
 
     const notificationId = nonEmptyString(
-      data.notificationId,
-      "notificationId"
+        data.notificationId,
+        "notificationId",
     );
 
     const notificationRef = db
-      .collection("notifications")
-      .doc(uid)
-      .collection("user_notifications")
-      .doc(notificationId);
+        .collection("notifications")
+        .doc(uid)
+        .collection("user_notifications")
+        .doc(notificationId);
 
     const notificationSnap = await notificationRef.get();
     if (!notificationSnap.exists) {
@@ -407,7 +427,7 @@ exports.deleteNotification = onCall(async (request) => {
 
     await notificationRef.delete();
 
-    return { ok: true, message: "Notification deleted." };
+    return {ok: true, message: "Notification deleted."};
   } catch (err) {
     console.error("[deleteNotification] ERROR:", err);
     throw toHttpsError(err, "Failed to delete notification.");
@@ -434,8 +454,8 @@ exports.deleteRequest = onCall(async (request) => {
 
     if (!userSnap.exists || userData.role !== "hospital") {
       throw new HttpsError(
-        "permission-denied",
-        "Only hospitals can delete requests."
+          "permission-denied",
+          "Only hospitals can delete requests.",
       );
     }
 
@@ -450,8 +470,8 @@ exports.deleteRequest = onCall(async (request) => {
     const requestData = requestSnap.data() || {};
     if (requestData.bloodBankId !== uid) {
       throw new HttpsError(
-        "permission-denied",
-        "You can only delete your own requests."
+          "permission-denied",
+          "You can only delete your own requests.",
       );
     }
 
@@ -472,14 +492,14 @@ exports.deleteRequest = onCall(async (request) => {
       for (const userDoc of usersSnapshot.docs) {
         const userId = userDoc.id;
         const notificationsRef = db
-          .collection("notifications")
-          .doc(userId)
-          .collection("user_notifications");
+            .collection("notifications")
+            .doc(userId)
+            .collection("user_notifications");
 
         // Get notifications for this user that match the requestId
         const userNotifications = await notificationsRef
-          .where("requestId", "==", requestId)
-          .get();
+            .where("requestId", "==", requestId)
+            .get();
 
         // Delete each notification
         userNotifications.docs.forEach((notifDoc) => {
@@ -494,23 +514,23 @@ exports.deleteRequest = onCall(async (request) => {
       }
 
       console.log(
-        `[deleteRequest] Deleted ${notificationsDeleted} notification(s)`
+          `[deleteRequest] Deleted ${notificationsDeleted} notification(s)`,
       );
     } catch (notifErr) {
       // If notification deletion fails, log but continue
       // The request is already deleted, so this is just cleanup
       console.warn(
-        "[deleteRequest] Could not delete all notifications:",
-        notifErr.message || notifErr
+          "[deleteRequest] Could not delete all notifications:",
+          notifErr.message || notifErr,
       );
     }
 
     return {
       ok: true,
       message:
-        notificationsDeleted > 0
-          ? `Request and ${notificationsDeleted} notification(s) deleted.`
-          : "Request deleted successfully.",
+        notificationsDeleted > 0 ?
+          `Request and ${notificationsDeleted} notification(s) deleted.` :
+          "Request deleted successfully.",
     };
   } catch (err) {
     console.error("[deleteRequest] ERROR:", err);
@@ -525,9 +545,9 @@ exports.deleteRequest = onCall(async (request) => {
     // If it's already an HttpsError, rethrow it with original message
     if (err instanceof HttpsError) {
       console.error(
-        "[deleteRequest] Re-throwing HttpsError:",
-        err.code,
-        err.message
+          "[deleteRequest] Re-throwing HttpsError:",
+          err.code,
+          err.message,
       );
       throw err;
     }
@@ -562,51 +582,158 @@ async function deletePendingUser(uid) {
  * deletes users with emailVerified=false older than DAYS.
  */
 exports.cleanupUnverifiedUsers = onSchedule(
-  {
-    schedule: "0 3 * * *",
-    timeZone: "Asia/Amman",
-    region: "us-central1",
-  },
-  async () => {
-    const DAYS = 2; // ✅ غيريها
-    const cutoffMs = Date.now() - DAYS * 24 * 60 * 60 * 1000;
+    {
+      schedule: "0 3 * * *",
+      timeZone: "Asia/Amman",
+      region: "us-central1",
+    },
+    async () => {
+      const DAYS = 2; // ✅ غيريها
+      const cutoffMs = Date.now() - DAYS * 24 * 60 * 60 * 1000;
 
-    let nextPageToken = undefined;
-    let scanned = 0;
-    let deleted = 0;
+      let nextPageToken = undefined;
+      let scanned = 0;
+      let deleted = 0;
 
-    do {
-      const res = await admin.auth().listUsers(1000, nextPageToken);
-      nextPageToken = res.pageToken;
+      do {
+        const res = await admin.auth().listUsers(1000, nextPageToken);
+        nextPageToken = res.pageToken;
 
-      for (const user of res.users) {
-        scanned++;
+        for (const user of res.users) {
+          scanned++;
 
-        if (user.emailVerified) continue;
+          if (user.emailVerified) continue;
 
-        const createdStr =
-          user.metadata && user.metadata.creationTime
-            ? user.metadata.creationTime
-            : null;
+          const createdStr =
+          user.metadata && user.metadata.creationTime ?
+            user.metadata.creationTime :
+            null;
 
-        const createdMs = createdStr ? Date.parse(createdStr) : NaN;
-        if (!Number.isFinite(createdMs)) continue;
+          const createdMs = createdStr ? Date.parse(createdStr) : NaN;
+          if (!Number.isFinite(createdMs)) continue;
 
-        if (createdMs < cutoffMs) {
-          try {
-            await deletePendingUser(user.uid);
-            deleted++;
-          } catch (e) {
-            console.error("[cleanupUnverifiedUsers] Failed:", user.uid, e);
+          if (createdMs < cutoffMs) {
+            try {
+              await deletePendingUser(user.uid);
+              deleted++;
+            } catch (e) {
+              console.error("[cleanupUnverifiedUsers] Failed:", user.uid, e);
+            }
           }
         }
-      }
-    } while (nextPageToken);
+      } while (nextPageToken);
 
-    console.log("[cleanupUnverifiedUsers] done", {
-      scanned,
-      deleted,
-      days: DAYS,
-    });
-  }
+      console.log("[cleanupUnverifiedUsers] done", {
+        scanned,
+        deleted,
+        days: DAYS,
+      });
+    },
 );
+
+/* =========================
+   ✅ Cleanup: Orphan Notifications
+========================= */
+exports.cleanupOrphanNotifications = onSchedule(
+    {
+      schedule: "35 5 * * *", // كل يوم الساعة 4 صباحًا
+      timeZone: "Asia/Amman",
+      region: "us-central1",
+    },
+    async () => {
+      console.log("[cleanupOrphanNotifications] started");
+
+      try {
+        const usersSnapshot = await db.collection("users").get();
+        let totalDeleted = 0;
+
+        for (const userDoc of usersSnapshot.docs) {
+          const uid = userDoc.id;
+          const notificationsRef = db
+              .collection("notifications")
+              .doc(uid)
+              .collection("user_notifications");
+
+          // استعلام للإشعارات التي ليس لها requestId
+          const orphanSnap = await notificationsRef
+              .where("requestId", "==", null)
+              .get();
+
+          if (!orphanSnap.empty) {
+            const batch = db.batch();
+            orphanSnap.docs.forEach((doc) => {
+              batch.delete(doc.ref);
+              totalDeleted++;
+            });
+            await batch.commit();
+            console.log(`[cleanupOrphanNotifications] 
+              deleted ${orphanSnap.docs.length}
+               orphan notifications for user ${uid}`);
+          }
+        }
+
+        console.log(`[cleanupOrphanNotifications]
+           done. Total deleted: ${totalDeleted}`);
+      } catch (err) {
+        console.error("[cleanupOrphanNotifications] ERROR:", err);
+      }
+    });
+exports.sendRequestMessageToDonors = functions.firestore
+    .document("requests/{requestId}")
+    .onCreate(async (snap, context) => {
+      try {
+        const data = snap.data();
+        if (!data) return;
+
+        const bloodType = data.bloodType;
+        const message = "Please donate and save a life ❤️"; // ✅ رسالتك الثابتة
+
+        // استعلام عن المتبرعين لنفس فصيلة الدم
+        const donorsSnapshot = await db
+            .collection("users")
+            .where("role", "==", "donor")
+            .where("bloodType", "==", bloodType)
+            .get();
+
+        const batch = db.batch();
+        const tokens = [];
+
+        donorsSnapshot.docs.forEach((donorDoc) => {
+          const donorData = donorDoc.data();
+          if (donorData.fcmToken) tokens.push(donorData.fcmToken);
+
+          const notificationRef = db
+              .collection("notifications")
+              .doc(donorDoc.id)
+              .collection("user_notifications")
+              .doc();
+
+          batch.set(notificationRef, {
+            title: `Blood request: ${bloodType}`,
+            body: message,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            read: false,
+          });
+        });
+
+        await batch.commit();
+
+        // إرسال إشعار Push Notification للمتبرعين
+        if (tokens.length > 0) {
+          await admin.messaging().sendMulticast({
+            tokens: tokens,
+            notification: {
+              title: `New Blood Request (${bloodType})`,
+              body: message,
+            },
+            data: {
+              requestId: context.params.requestId,
+            },
+          });
+        }
+
+        console.log(`Notifications sent to ${donorsSnapshot.size} donors`);
+      } catch (err) {
+        console.error("sendRequestMessageToDonors ERROR:", err);
+      }
+    });

@@ -545,7 +545,15 @@ class _DonorRequestCardPro extends StatelessWidget {
                     ),
                     onPressed: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const ChatScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(
+                            requestId: request.id,
+
+                            // ✅ المسج الثابتة
+                            initialMessage:
+                                'Please donate blood and save a life.',
+                          ),
+                        ),
                       );
                     },
                     icon: const Icon(Icons.chat_bubble_outline, size: 18),

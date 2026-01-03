@@ -162,6 +162,27 @@ class CloudFunctionsService {
     }
   }
 
+  // send request message to ddonors function by rand
+  Future<Map<String, dynamic>> sendRequestMessageToDonors({
+    required String requestId,
+    required String bloodType,
+    required bool isUrgent,
+    required String bloodBankId,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('sendRequestMessageToDonors');
+      final result = await callable.call({
+        'requestId': requestId,
+        'bloodType': bloodType,
+        'isUrgent': isUrgent,
+        'bloodBankId': bloodBankId,
+      });
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> deleteRequest({
     required String requestId,
   }) async {
