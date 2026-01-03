@@ -73,22 +73,29 @@ void main() {
     expect(result.message,"Something went wrong. Please try again.");
   });
 
-  /// EMPTY EMAIL
-  test('returns message if email empty', () async {
-    final result = await service.sendPasswordResetEmail("");
 
-    expect(result.success, false);
-    expect(result.message, "Please enter your email address.");
-  });
+/// EMPTY EMAIL
+test('returns message if email empty', () async {
+  final result = await service.sendPasswordResetEmail("");
 
+  expect(result.success, false);
+  expect(result.message, "Please enter your email address.");
 
-
-
-
-
+  verifyNever(() =>
+      mockAuth.sendPasswordResetEmail(email: any(named: "email")));
+});
 
 
+/// UNKNOWN FIREBASE ERROR
+test('returns default failure message for unknown firebase error', () async {
+  when(() => mockAuth.sendPasswordResetEmail(
+        email: any(named: "email"),
+      )).thenThrow(FirebaseAuthException(code: "some-random-code"));
 
+  final result = await service.sendPasswordResetEmail("test@test.com");
 
+  expect(result.success, false);
+  expect(result.message, "Failed to send reset email. Please try again.");
+});
 
 }

@@ -1,142 +1,229 @@
-// import 'package:flutter_test/flutter_test.dart';
-// import 'package:mocktail/mocktail.dart';
-// import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
-// import 'package:firebase_auth/firebase_auth.dart';
-// import 'package:bloodbank_donors/services/auth_service.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:bloodbank_donors/services/auth_service.dart';
+import 'package:bloodbank_donors/services/cloud_functions_service.dart';
+import 'package:bloodbank_donors/models/user_model.dart' as models;
 
-// class MockFirebaseAuth extends Mock implements FirebaseAuth {}
-// class MockUserCredential extends Mock implements UserCredential {}
-// class MockUser extends Mock implements User {}
+/// ---------- MOCKS ----------
+class MockFirebaseAuth extends Mock implements FirebaseAuth {}
+class MockUserCredential extends Mock implements UserCredential {}
+class MockUser extends Mock implements User {}
+class MockCloudFunctionsService extends Mock
+    implements CloudFunctionsService {}
 
-// void main() {
-//   late MockFirebaseAuth mockAuth;
-//   late FakeFirebaseFirestore fakeDb;
-//   late AuthService service;
+void main() {
+  late MockFirebaseAuth mockAuth;
+  late MockCloudFunctionsService mockCloud;
+  late AuthService service;
 
-//   setUp(() {
-//     mockAuth = MockFirebaseAuth();
-//     fakeDb = FakeFirebaseFirestore();
-//    // service = AuthService(auth: mockAuth, db: fakeDb);
-//   });
+  setUp(() {
+    mockAuth = MockFirebaseAuth();
+    mockCloud = MockCloudFunctionsService();
 
+    service = AuthService(
+      auth: mockAuth,
+      cloudFunctions: mockCloud,
+    );
+  });
 
-//             /// test cases///
+  /// --------------------------------------------------
+  /// signUpDonor
+  /// --------------------------------------------------
+  test('signUpDonor creates user, calls cloud function, sends verification',
+      () async {
+    final mockUser = MockUser();
+    final mockCred = MockUserCredential();
 
+    when(() => mockUser.uid).thenReturn('uid123');
+    when(() => mockUser.reload()).thenAnswer((_) async {});
+    when(() => mockUser.getIdToken(true))
+        .thenAnswer((_) async => 'token');
+    when(() => mockUser.sendEmailVerification())
+        .thenAnswer((_) async {});
+    when(() => mockCred.user).thenReturn(mockUser);
 
-//         ///signUpDonor stores user data in firestore///
+    when(() => mockAuth.createUserWithEmailAndPassword(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+        )).thenAnswer((_) async => mockCred);
 
-// test('signUpDonor stores user data in firestore', () async {
-//   final mockUser = MockUser();
-//   when(() => mockUser.uid).thenReturn("abc123");
-//   when(() => mockUser.sendEmailVerification()).thenAnswer((_) async {});
+    when(() => mockAuth.currentUser).thenReturn(mockUser);
 
-//   final mockCred = MockUserCredential();
-//   when(() => mockCred.user).thenReturn(mockUser);
+    when(() => mockCloud.createPendingProfile(
+          role: 'donor',
+          fullName: any(named: 'fullName'),
+          bloodType: any(named: 'bloodType'),
+          location: any(named: 'location'),
+          medicalFileUrl: any(named: 'medicalFileUrl'),
+        )).thenAnswer((_) async {
+      return {
+        'emailVerified': false,
+        'message': 'Verification email sent',
+      };
+    });
 
-//   when(() => mockAuth.createUserWithEmailAndPassword(
-//     email: any(named: 'email'),
-//     password: any(named: 'password'),
-//   )).thenAnswer((_) async => mockCred);
+    final result = await service.signUpDonor(
+      fullName: 'Donor',
+      email: 'donor@test.com',
+      password: '123456',
+      bloodType: 'A+',
+      location: 'Amman',
+    );
 
-//   await service.signUpDonor(
-//     fullName: "Test Donor",
-//     email: "test@test.com",
-//     password: "123456",
-//     bloodType: "A+",
-//     location: "Amman",
-//   );
+    expect(result['emailVerified'], false);
+    expect(result['message'], 'Verification email sent');
 
-//   final doc = await fakeDb.collection('users').doc("abc123").get();
+    verify(() => mockCloud.createPendingProfile(
+          role: 'donor',
+          fullName: 'Donor',
+          bloodType: 'A+',
+          location: 'Amman',
+          medicalFileUrl: null,
+        )).called(1);
 
-//   expect(doc.exists, true);
-//   expect(doc['role'], 'donor');
-//   expect(doc['bloodType'], 'A+');
-// });
+    verify(() => mockUser.sendEmailVerification()).called(1);
+  });
 
+  /// --------------------------------------------------
+  /// signUpBloodBank
+  /// --------------------------------------------------
+  test(
+      'signUpBloodBank creates hospital user and sends verification email',
+      () async {
+    final mockUser = MockUser();
+    final mockCred = MockUserCredential();
 
+    when(() => mockUser.uid).thenReturn('bank1');
+    when(() => mockUser.reload()).thenAnswer((_) async {});
+    when(() => mockUser.getIdToken(true))
+        .thenAnswer((_) async => 'token');
+    when(() => mockUser.sendEmailVerification())
+        .thenAnswer((_) async {});
+    when(() => mockCred.user).thenReturn(mockUser);
 
-//         ///signUpBloodBank stores hospital correctly///
+    when(() => mockAuth.createUserWithEmailAndPassword(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+        )).thenAnswer((_) async => mockCred);
 
-// test('signUpBloodBank stores hospital correctly', () async {
-//   final user = MockUser();
-//   when(() => user.uid).thenReturn("bank001");
-//   when(() => user.sendEmailVerification()).thenAnswer((_) async {});
+    when(() => mockAuth.currentUser).thenReturn(mockUser);
 
-//   final cred = MockUserCredential();
-//   when(() => cred.user).thenReturn(user);
+    when(() => mockCloud.createPendingProfile(
+          role: 'hospital',
+          bloodBankName: any(named: 'bloodBankName'),
+          location: any(named: 'location'),
+        )).thenAnswer((_) async {
+      return {
+        'emailVerified': false,
+        'message': 'Verification email sent',
+      };
+    });
 
-//   when(() => mockAuth.createUserWithEmailAndPassword(
-//     email: any(named: 'email'),
-//     password: any(named: 'password'),
-//   )).thenAnswer((_) async => cred);
+    final result = await service.signUpBloodBank(
+      bloodBankName: 'Irbid Hospital',
+      email: 'bank@test.com',
+      password: '123456',
+      location: 'Irbid',
+    );
 
-//   await service.signUpBloodBank(
-//     bloodBankName: "Irbid Bank",
-//     email: "bank@test.com",
-//     password: "123456",
-//     location: "Irbid",
-//   );
+    expect(result['emailVerified'], false);
+    verify(() => mockUser.sendEmailVerification()).called(1);
+  });
 
-//   final doc = await fakeDb.collection("users").doc("bank001").get();
+  /// --------------------------------------------------
+  /// login
+  /// --------------------------------------------------
+  test('login calls FirebaseAuth signIn', () async {
+    when(() => mockAuth.signInWithEmailAndPassword(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+        )).thenAnswer((_) async => MockUserCredential());
 
-//   expect(doc.exists, true);
-//   expect(doc["role"], "hospital");
-//   expect(doc["bloodBankName"], "Irbid Bank");
-// });
+    await service.login(email: 'a@a.com', password: '123456');
 
-//         ///login///
+    verify(() => mockAuth.signInWithEmailAndPassword(
+          email: 'a@a.com',
+          password: '123456',
+        )).called(1);
+  });
 
-// test('login calls firebase auth login', () async {
-//   when(() => mockAuth.signInWithEmailAndPassword(
-//     email: any(named: 'email'),
-//     password: any(named: 'password'),
-//   )).thenAnswer((_) async => MockUserCredential());
+  /// --------------------------------------------------
+  /// logout
+  /// --------------------------------------------------
+  test('logout calls FirebaseAuth signOut', () async {
+    when(() => mockAuth.signOut()).thenAnswer((_) async {});
 
-//   await service.login(email: "a@a.com", password: "123456");
+    await service.logout();
 
-//   verify(() => mockAuth.signInWithEmailAndPassword(
-//     email: "a@a.com",
-//     password: "123456",
-//   )).called(1);
-// });
+    verify(() => mockAuth.signOut()).called(1);
+  });
 
-//         /// logout///
+  /// --------------------------------------------------
+  /// getUserRole
+  /// --------------------------------------------------
+  test('getUserRole returns role from cloud functions', () async {
+    when(() => mockCloud.getUserRole(uid: any(named: 'uid')))
+        .thenAnswer((_) async => 'donor');
 
-// test('logout calls firebase signOut', () async {
-//   when(() => mockAuth.signOut()).thenAnswer((_) async {});
+    final role = await service.getUserRole('uid1');
 
-//   await service.logout();
+    expect(role, 'donor');
+  });
 
-//   verify(() => mockAuth.signOut()).called(1);
-// });
+  /// --------------------------------------------------
+  /// getUserData
+  /// --------------------------------------------------
+  test('getUserData returns User model when data exists', () async {
+    when(() => mockCloud.getUserData(uid: any(named: 'uid')))
+        .thenAnswer((_) async {
+      return {
+        'uid': 'u1',
+        'email': 'test@test.com',
+        'role': 'donor',
+        'fullName': 'Test User',
+      };
+    });
 
-//         ///getUserRole///
-// test('getUserRole returns correct role', () async {
-//   await fakeDb.collection('users').doc('u1').set({
-//     "role": "donor"
-//   });
+    final user = await service.getUserData('u1');
 
-//   final role = await service.getUserRole("u1");
+    expect(user, isNotNull);
+    expect(user!.email, 'test@test.com');
+    expect(user.role, models.UserRole.donor);
+  });
 
-//   expect(role, "donor");
-// });
+  /// --------------------------------------------------
+  /// resendEmailVerification
+  /// --------------------------------------------------
+  test('resendEmailVerification sends email if not verified', () async {
+    final mockUser = MockUser();
 
+    when(() => mockUser.emailVerified).thenReturn(false);
+    when(() => mockUser.sendEmailVerification())
+        .thenAnswer((_) async {});
+    when(() => mockAuth.currentUser).thenReturn(mockUser);
 
-//         ///getUserData///
+    await service.resendEmailVerification();
 
-// test('getUserData returns user object when exists', () async {
-//   await fakeDb.collection('users').doc('u22').set({
-//     "role": "donor",
-//     "fullName": "Layan",
-//     "email": "l@test.com"
-//   });
+    verify(() => mockUser.sendEmailVerification()).called(1);
+  });
 
-//   final data = await service.getUserData("u22");
+  /// --------------------------------------------------
+  /// completeProfileAfterVerification
+  /// --------------------------------------------------
+  test('completeProfileAfterVerification calls cloud function if verified',
+      () async {
+    final mockUser = MockUser();
 
-//   expect(data, isNotNull);
-//   expect(data!.email, "l@test.com");
-// });
+    when(() => mockUser.emailVerified).thenReturn(true);
+    when(() => mockUser.reload()).thenAnswer((_) async {});
+    when(() => mockAuth.currentUser).thenReturn(mockUser);
 
-               
+    when(() => mockCloud.completeProfileAfterVerification())
+        .thenAnswer((_) async => {'success': true});
 
-// }
+    final result = await service.completeProfileAfterVerification();
+
+    expect(result['success'], true);
+  });
+}

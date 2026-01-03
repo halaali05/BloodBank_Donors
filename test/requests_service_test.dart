@@ -1,109 +1,167 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
-import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import 'package:bloodbank_donors/services/requests_service.dart';
+import 'package:bloodbank_donors/services/cloud_functions_service.dart';
 import 'package:bloodbank_donors/models/blood_request_model.dart';
 
+/// ---------------- MOCKS ----------------
+
+class MockFirebaseFirestore extends Mock implements FirebaseFirestore {}
+
+class MockCollectionReference extends Mock implements CollectionReference<Map<String, dynamic>> {}
+
+class MockQuerySnapshot extends Mock implements QuerySnapshot<Map<String, dynamic>> {}
+
+class MockQueryDocumentSnapshot extends Mock implements QueryDocumentSnapshot<Map<String, dynamic>> {}
+
+class MockCloudFunctionsService extends Mock implements CloudFunctionsService {}
+
+class MockFirebaseAuth extends Mock implements FirebaseAuth {}
+
 void main() {
-  late FakeFirebaseFirestore fakeDb;
+  late MockFirebaseFirestore mockDb;
+  late MockCollectionReference mockCollection;
+  late MockCloudFunctionsService mockCloud;
   late MockFirebaseAuth mockAuth;
   late RequestsService service;
 
-  setUp(() async {
-    fakeDb = FakeFirebaseFirestore();
+  setUp(() {
+    mockDb = MockFirebaseFirestore();
+    mockCollection = MockCollectionReference();
+    mockCloud = MockCloudFunctionsService();
+    mockAuth = MockFirebaseAuth();
 
-    mockAuth = MockFirebaseAuth(
-      signedIn: true,
-      mockUser: MockUser(uid: "bank123"),
+    // Firestore -> collection('requests')
+    when(() => mockDb.collection('requests'))
+        .thenReturn(mockCollection);
+
+    service = RequestsService.test(
+      mockDb,
+      mockAuth,
+      mockCloud,
     );
-
-    service = RequestsService.test(fakeDb, mockAuth);
   });
 
-  
-              /// TEST CASES ///
-               
-               
-    ///  addRequest adds correctly to Firestore
-  
-    test('addRequest stores blood request in Firestore', () async {
+  /// ----------------------------------------------------
+  /// addRequest
+  /// ----------------------------------------------------
+
+  test('addRequest calls CloudFunctionsService with correct data', () async {
     final request = BloodRequest(
-      id: "req001",
-      bloodBankId: "bank123",
-      bloodBankName: "Jordan Hospital",
-      bloodType: "A+",
-      units: 4,
-      isUrgent: false,
-      details: "Emergency",
-      hospitalLocation: "Amman",
-    );
-
-    await service.addRequest(request);
-
-    final doc =await fakeDb.collection('requests').doc("req001").get();
-
-    expect(doc.exists, true);
-    expect(doc.data()!['bloodBankName'], "Jordan Hospital");
-    expect(doc.data()!['bloodType'], "A+");
-    expect(doc.data()!['units'], 4);
-  });
-
-  
-            /// urgent request creates notifications///
-  
-  test('urgent request sends notifications to donors', () async {
-    
-    await fakeDb.collection('users').doc("d1").set({
-      'role': 'donor',
-      'email': 'd1@test.com'
-    });
-
-    await fakeDb.collection('users').doc("d2").set({
-      'role': 'donor',
-      'email': 'd2@test.com'
-    });
-
-    final request = BloodRequest(
-      id: "req002",
-      bloodBankId: "bank123",
-      bloodBankName: "Irbid Hospital",
-      bloodType: "O-",
+      id: 'req001',
+      bloodBankId: 'bank123',
+      bloodBankName: 'Jordan Hospital',
+      bloodType: 'A+',
       units: 3,
       isUrgent: true,
-      details: "Urgent case",
-      hospitalLocation: "Irbid",
+      details: 'Emergency case',
+      hospitalLocation: 'Amman',
     );
+
+    when(() => mockCloud.addRequest(
+          requestId: any(named: 'requestId'),
+          bloodBankName: any(named: 'bloodBankName'),
+          bloodType: any(named: 'bloodType'),
+          units: any(named: 'units'),
+          isUrgent: any(named: 'isUrgent'),
+          details: any(named: 'details'),
+          hospitalLocation: any(named: 'hospitalLocation'),
+        )).thenAnswer((_) async => <String, dynamic>{});
 
     await service.addRequest(request);
 
-    final notif1 = await fakeDb.collection('notifications').doc("d1").collection('user_notifications').get();
-
-    final notif2 = await fakeDb.collection('notifications').doc("d2").collection('user_notifications').get();
-
-    expect(notif1.docs.length, 1);
-    expect(notif2.docs.length, 1);
+    verify(() => mockCloud.addRequest(
+          requestId: 'req001',
+          bloodBankName: 'Jordan Hospital',
+          bloodType: 'A+',
+          units: 3,
+          isUrgent: true,
+          details: 'Emergency case',
+          hospitalLocation: 'Amman',
+        )).called(1);
   });
 
-  
-       /// getRequestsStream returns stream correctly ///
-  
-    test('getRequestsStream returns list of BloodRequest', () async {
-    await fakeDb.collection('requests').doc("r1").set({
-      'bloodBankId': 'bank123',
+  /// ----------------------------------------------------
+  /// getRequestsStream
+  /// ----------------------------------------------------
+
+  test('getRequestsStream returns list of BloodRequest', () async {
+    final mockSnapshot = MockQuerySnapshot();
+    final mockDoc = MockQueryDocumentSnapshot();
+
+    when(() => mockCollection.orderBy('createdAt', descending: true))
+        .thenReturn(mockCollection);
+
+    when(() => mockCollection.snapshots())
+        .thenAnswer((_) => Stream.value(mockSnapshot));
+
+    when(() => mockSnapshot.docs).thenReturn([mockDoc]);
+
+    when(() => mockDoc.id).thenReturn('req123');
+
+    when(() => mockDoc.data()).thenReturn({
+      'bloodBankId': 'bank1',
       'bloodBankName': 'City Bank',
-      'bloodType': 'B+',
+      'bloodType': 'O-',
       'units': 2,
       'isUrgent': false,
-      'details': 'Normal',
+      'details': 'Normal case',
       'hospitalLocation': 'Zarqa',
       'createdAt': DateTime.now(),
     });
 
-    final stream = service.getRequestsStream();
-
-    final result = await stream.first;
+    final result = await service.getRequestsStream().first;
 
     expect(result.length, 1);
-    expect(result.first.bloodType, "B+");
+    expect(result.first.id, 'req123');
+    expect(result.first.bloodType, 'O-');
+    expect(result.first.units, 2);
   });
+
+  /// ----------------------------------------------------
+  /// getRequestsStream
+  /// ----------------------------------------------------
+
+test('getRequests handles createdAt milliseconds safely', () async {
+  final mockCloud = MockCloudFunctionsService();
+
+  final service = RequestsService.test(
+    FakeFirebaseFirestore(),
+    MockFirebaseAuth(),
+    mockCloud,
+  );
+
+  when(() => mockCloud.getRequests(
+        limit: any(named: 'limit'),
+        lastRequestId: any(named: 'lastRequestId'),
+      )).thenAnswer(
+    (_) async => {
+      'requests': [
+        {
+          'id': 'req100',
+          'bloodBankName': 'Test Bank',
+          'bloodType': 'O+',
+          'units': 2,
+          'isUrgent': false,
+          'details': '',
+          'hospitalLocation': 'Amman',
+          'createdAt': DateTime.now().millisecondsSinceEpoch,
+        }
+      ],
+      'hasMore': false,
+    },
+  );
+
+  final result = await service.getRequests();
+
+  expect(result['requests'], isA<List<BloodRequest>>());
+  expect(result['requests'].length, 1);
+  expect((result['requests'] as List).first.bloodType, 'O+');
+});
+
+
 }

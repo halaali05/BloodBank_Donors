@@ -664,11 +664,10 @@ class _RequestCard extends StatelessWidget {
                 ),
               ],
             ),
-            if (request.details != null &&
-                request.details!.trim().isNotEmpty) ...[
+            if (request.details.trim().isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
-                request.details!.trim(),
+                request.details.trim(),
                 style: const TextStyle(
                   fontSize: 12,
                   color: Colors.black87,
