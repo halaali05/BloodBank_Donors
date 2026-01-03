@@ -183,6 +183,36 @@ class CloudFunctionsService {
     }
   }
 
+  /// Get list of all donors (hospitals only)
+  /// Optional: filter by bloodType if provided
+  Future<Map<String, dynamic>> getDonors({String? bloodType}) async {
+    try {
+      final callable = _functions.httpsCallable('getDonors');
+      final result = await callable.call(
+        bloodType != null ? {'bloodType': bloodType} : {},
+      );
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> sendMessage({
+    required String requestId,
+    required String text,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('sendMessage');
+      final result = await callable.call({
+        'requestId': requestId,
+        'text': text,
+      });
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> deleteRequest({
     required String requestId,
   }) async {

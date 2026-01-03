@@ -7,7 +7,15 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isAuthenticated() && request.auth.uid == userId;
+      // Allow users to read their own data
+      // Allow hospitals to read donor data (for contacts list)
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        // Hospitals can read donor profiles for contacts
+        (request.auth != null && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'hospital' &&
+         resource.data.role == 'donor')
+      );
       allow write: if false; // only Admin SDK (Cloud Functions)
     }
 
@@ -19,6 +27,13 @@ service cloud.firestore {
     match /requests/{requestId} {
       allow read: if isAuthenticated(); // أو false إذا بدك كل شي عبر functions
       allow write: if false;
+      
+      // Allow reading messages for authenticated users
+      // Messages are written via Cloud Functions, but users need to read them
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow write: if false; // only Admin SDK (Cloud Functions)
+      }
     }
 
     match /notifications/{userId}/user_notifications/{notificationId} {

@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
-import 'chat_screen.dart';
+import 'contacts_screen.dart';
 import 'new_request_screen.dart';
 import 'login_screen.dart';
 import '../models/blood_request_model.dart';
@@ -680,22 +680,24 @@ class _RequestCard extends StatelessWidget {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ChatScreen(
-                      requestId: request.id,
-                      initialMessage: 'Please donate and save a life ❤️',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ContactsScreen(
+                        requestId: request.id,
+                        // bloodType is optional - show all donors
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
                 icon: const Icon(
-                  Icons.chat_bubble_outline,
+                  Icons.people_outline,
                   size: 16,
                   color: deepRed,
                 ),
                 label: const Text(
-                  'Messages',
+                  'Donors',
                   style: TextStyle(
                     fontSize: 12,
                     color: deepRed,
