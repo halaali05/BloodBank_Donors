@@ -9,8 +9,7 @@ import 'package:bloodbank_donors/models/user_model.dart' as models;
 class MockFirebaseAuth extends Mock implements FirebaseAuth {}
 class MockUserCredential extends Mock implements UserCredential {}
 class MockUser extends Mock implements User {}
-class MockCloudFunctionsService extends Mock
-    implements CloudFunctionsService {}
+class MockCloudFunctionsService extends Mock implements CloudFunctionsService {}
 
 void main() {
   late MockFirebaseAuth mockAuth;
@@ -21,10 +20,8 @@ void main() {
     mockAuth = MockFirebaseAuth();
     mockCloud = MockCloudFunctionsService();
 
-    service = AuthService(
-      auth: mockAuth,
-      cloudFunctions: mockCloud,
-    );
+    service = AuthService(auth: mockAuth, cloudFunctions: mockCloud,);
+
   });
 
   /// --------------------------------------------------
@@ -37,10 +34,8 @@ void main() {
 
     when(() => mockUser.uid).thenReturn('uid123');
     when(() => mockUser.reload()).thenAnswer((_) async {});
-    when(() => mockUser.getIdToken(true))
-        .thenAnswer((_) async => 'token');
-    when(() => mockUser.sendEmailVerification())
-        .thenAnswer((_) async {});
+    when(() => mockUser.getIdToken(true)).thenAnswer((_) async => 'token');
+    when(() => mockUser.sendEmailVerification()).thenAnswer((_) async {});
     when(() => mockCred.user).thenReturn(mockUser);
 
     when(() => mockAuth.createUserWithEmailAndPassword(
@@ -96,12 +91,9 @@ void main() {
 
     when(() => mockUser.uid).thenReturn('bank1');
     when(() => mockUser.reload()).thenAnswer((_) async {});
-    when(() => mockUser.getIdToken(true))
-        .thenAnswer((_) async => 'token');
-    when(() => mockUser.sendEmailVerification())
-        .thenAnswer((_) async {});
+    when(() => mockUser.getIdToken(true)).thenAnswer((_) async => 'token');
+    when(() => mockUser.sendEmailVerification()).thenAnswer((_) async {});
     when(() => mockCred.user).thenReturn(mockUser);
-
     when(() => mockAuth.createUserWithEmailAndPassword(
           email: any(named: 'email'),
           password: any(named: 'password'),
