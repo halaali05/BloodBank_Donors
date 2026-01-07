@@ -35,7 +35,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // ------------------ resend verification ------------------
   // COMMENTED OUT: Resend verification email functionality disabled
-  /*
+
   Future<void> _resendVerification() async {
     try {
       final email = _emailController.text.trim();
@@ -99,7 +99,6 @@ class _LoginScreenState extends State<LoginScreen> {
       ).show();
     }
   }
-  */
 
   // ------------------ login ------------------
 
@@ -241,9 +240,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (userData.role == models.UserRole.donor) {
         final name = userData.fullName ?? 'Donor';
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) => DonorDashboardScreen(donorName: name),
-          ),
+          MaterialPageRoute(builder: (_) => const DonorDashboardScreen()),
           (route) => false,
         );
       } else if (userData.role == models.UserRole.hospital) {
@@ -536,7 +533,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 8),
 
                 // Resend verification - COMMENTED OUT
-                /*
                 TextButton(
                   onPressed: _isLoading ? null : _resendVerification,
                   child: const Text(
@@ -544,7 +540,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(color: deepRed),
                   ),
                 ),
-                */
 
                 // Forgot password
                 TextButton(

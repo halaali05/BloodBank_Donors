@@ -45,9 +45,9 @@ function toHttpsError(err, fallbackMessage) {
   if (err instanceof HttpsError) return err;
 
   const msg =
-    err && typeof err.message === "string" && err.message.trim() ?
-      err.message.trim() :
-      fallbackMessage || "Server error occurred.";
+    err && typeof err.message === "string" && err.message.trim()
+      ? err.message.trim()
+      : fallbackMessage || "Server error occurred.";
 
   return new HttpsError("internal", msg);
 }
@@ -68,7 +68,7 @@ exports.createPendingProfile = onCall(async (request) => {
     if (role !== "donor" && role !== "hospital") {
       throw new HttpsError(
         "invalid-argument",
-        "role must be donor or hospital",
+        "role must be donor or hospital"
       );
     }
 
@@ -82,13 +82,13 @@ exports.createPendingProfile = onCall(async (request) => {
       payload.bloodType = nonEmptyString(data.bloodType, "bloodType");
       payload.location = nonEmptyString(data.location, "location");
       payload.medicalFileUrl =
-        typeof data.medicalFileUrl === "string" ?
-          data.medicalFileUrl.trim() :
-          null;
+        typeof data.medicalFileUrl === "string"
+          ? data.medicalFileUrl.trim()
+          : null;
     } else {
       payload.bloodBankName = nonEmptyString(
         data.bloodBankName,
-        "bloodBankName",
+        "bloodBankName"
       );
       payload.location = nonEmptyString(data.location, "location");
     }
@@ -101,9 +101,9 @@ exports.createPendingProfile = onCall(async (request) => {
     return {
       ok: true,
       emailVerified,
-      message: emailVerified ?
-        "Email already verified. You can complete your profile." :
-        "Pending profile saved. Please verify your email.",
+      message: emailVerified
+        ? "Email already verified. You can complete your profile."
+        : "Pending profile saved. Please verify your email.",
     };
   } catch (err) {
     console.error("[createPendingProfile] ERROR:", err);
@@ -149,7 +149,7 @@ exports.completeProfileAfterVerification = onCall(async (request) => {
           emailVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
           activatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
-        { merge: true },
+        { merge: true }
       );
       tx.delete(pendingRef);
     });
@@ -236,7 +236,7 @@ exports.addRequest = onCall(async (request) => {
     if (!userSnap.exists || ud.role !== "hospital") {
       throw new HttpsError(
         "permission-denied",
-        "Only hospitals can create blood requests",
+        "Only hospitals can create blood requests"
       );
     }
 
@@ -249,14 +249,14 @@ exports.addRequest = onCall(async (request) => {
     if (isNaN(units) || units < 1) {
       throw new HttpsError(
         "invalid-argument",
-        "units must be a positive number",
+        "units must be a positive number"
       );
     }
 
     const isUrgent = data.isUrgent === true;
     const hospitalLocation = nonEmptyString(
       data.hospitalLocation,
-      "hospitalLocation",
+      "hospitalLocation"
     );
     const details = typeof data.details === "string" ? data.details.trim() : "";
 
@@ -288,7 +288,6 @@ exports.addRequest = onCall(async (request) => {
   }
 });
 
-
 /**
  * getDonors - Get list of all donors (hospitals only)
  * Optional: filter by bloodType if provided
@@ -308,14 +307,15 @@ exports.getDonors = onCall(async (request) => {
     if (userData.role !== "hospital") {
       throw new HttpsError(
         "permission-denied",
-        "Only hospitals can view donor lists.",
+        "Only hospitals can view donor lists."
       );
     }
 
     // bloodType is optional - if not provided, get all donors
-    const bloodType = typeof data.bloodType === "string" && data.bloodType.trim() !== ""
-      ? data.bloodType.trim()
-      : null;
+    const bloodType =
+      typeof data.bloodType === "string" && data.bloodType.trim() !== ""
+        ? data.bloodType.trim()
+        : null;
 
     let query = db.collection("users").where("role", "==", "donor");
 
@@ -325,15 +325,15 @@ exports.getDonors = onCall(async (request) => {
         `[getDonors] Hospital ${uid} requesting donors with blood type: ${bloodType}`
       );
     } else {
-      console.log(
-        `[getDonors] Hospital ${uid} requesting all donors`
-      );
+      console.log(`[getDonors] Hospital ${uid} requesting all donors`);
     }
 
     const donorsSnapshot = await query.get();
 
     console.log(
-      `[getDonors] Found ${donorsSnapshot.size} donors${bloodType ? ` with blood type ${bloodType}` : ""}`
+      `[getDonors] Found ${donorsSnapshot.size} donors${
+        bloodType ? ` with blood type ${bloodType}` : ""
+      }`
     );
 
     const donors = donorsSnapshot.docs.map((doc) => {
@@ -388,9 +388,9 @@ exports.getRequests = onCall(async (request) => {
         id: doc.id,
         ...d,
         createdAt:
-          d.createdAt && typeof d.createdAt.toMillis === "function" ?
-            d.createdAt.toMillis() :
-            null,
+          d.createdAt && typeof d.createdAt.toMillis === "function"
+            ? d.createdAt.toMillis()
+            : null,
       };
     });
 
@@ -447,7 +447,7 @@ exports.deleteNotification = onCall(async (request) => {
 
     const notificationId = nonEmptyString(
       data.notificationId,
-      "notificationId",
+      "notificationId"
     );
 
     const notificationRef = db
@@ -536,7 +536,7 @@ exports.deleteRequest = onCall(async (request) => {
     if (!userSnap.exists || userData.role !== "hospital") {
       throw new HttpsError(
         "permission-denied",
-        "Only hospitals can delete requests.",
+        "Only hospitals can delete requests."
       );
     }
 
@@ -552,7 +552,7 @@ exports.deleteRequest = onCall(async (request) => {
     if (requestData.bloodBankId !== uid) {
       throw new HttpsError(
         "permission-denied",
-        "You can only delete your own requests.",
+        "You can only delete your own requests."
       );
     }
 
@@ -595,23 +595,23 @@ exports.deleteRequest = onCall(async (request) => {
       }
 
       console.log(
-        `[deleteRequest] Deleted ${notificationsDeleted} notification(s)`,
+        `[deleteRequest] Deleted ${notificationsDeleted} notification(s)`
       );
     } catch (notifErr) {
       // If notification deletion fails, log but continue
       // The request is already deleted, so this is just cleanup
       console.warn(
         "[deleteRequest] Could not delete all notifications:",
-        notifErr.message || notifErr,
+        notifErr.message || notifErr
       );
     }
 
     return {
       ok: true,
       message:
-        notificationsDeleted > 0 ?
-          `Request and ${notificationsDeleted} notification(s) deleted.` :
-          "Request deleted successfully.",
+        notificationsDeleted > 0
+          ? `Request and ${notificationsDeleted} notification(s) deleted.`
+          : "Request deleted successfully.",
     };
   } catch (err) {
     console.error("[deleteRequest] ERROR:", err);
@@ -628,7 +628,7 @@ exports.deleteRequest = onCall(async (request) => {
       console.error(
         "[deleteRequest] Re-throwing HttpsError:",
         err.code,
-        err.message,
+        err.message
       );
       throw err;
     }
@@ -686,9 +686,9 @@ exports.cleanupUnverifiedUsers = onSchedule(
         if (user.emailVerified) continue;
 
         const createdStr =
-          user.metadata && user.metadata.creationTime ?
-            user.metadata.creationTime :
-            null;
+          user.metadata && user.metadata.creationTime
+            ? user.metadata.creationTime
+            : null;
 
         const createdMs = createdStr ? Date.parse(createdStr) : NaN;
         if (!Number.isFinite(createdMs)) continue;
@@ -709,7 +709,7 @@ exports.cleanupUnverifiedUsers = onSchedule(
       deleted,
       days: DAYS,
     });
-  },
+  }
 );
 
 /* =========================
@@ -758,7 +758,8 @@ exports.cleanupOrphanNotifications = onSchedule(
     } catch (err) {
       console.error("[cleanupOrphanNotifications] ERROR:", err);
     }
-  });
+  }
+);
 exports.sendRequestMessageToDonors = onDocumentCreated(
   {
     document: "requests/{requestId}",
@@ -848,7 +849,6 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
           notificationBatch = db.batch();
           notificationBatchCount = 0;
         }
-
       }
 
       // Create personalized messages for ALL donors
@@ -900,23 +900,61 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
           `[sendRequestMessageToDonors] ✅ Successfully created ${allDonorsSnapshot.size} personalized messages for all donors`
         );
       } else {
-        console.log(
-          `[sendRequestMessageToDonors] ⚠️ No batches to commit`
-        );
+        console.log(`[sendRequestMessageToDonors] ⚠️ No batches to commit`);
       }
 
       // إرسال إشعار Push Notification للمتبرعين
-      if (tokens.length > 0) {
-        await admin.messaging().sendMulticast({
-          tokens: tokens,
-          notification: {
-            title: `New Blood Request (${bloodType})`,
-            body: "Please donate and save a life ❤️",
-          },
-          data: {
-            requestId: requestId,
-          },
+      // ✅ Push Notification to ALL donors (no device filtering)
+
+      // 1) remove null/empty + de-duplicate
+      const uniqueTokens = [...new Set(tokens)].filter(
+        (t) => typeof t === "string" && t.trim().length > 0
+      );
+
+      async function sendInChunks(arr, size, fn) {
+        for (let i = 0; i < arr.length; i += size) {
+          await fn(arr.slice(i, i + size));
+        }
+      }
+
+      if (uniqueTokens.length > 0) {
+        const title = data.isUrgent
+          ? "Urgent blood request"
+          : "New blood request";
+        const body = `${data.bloodBankName || "Blood Bank"} needs ${
+          data.units || ""
+        } units (${bloodType})`;
+
+        await sendInChunks(uniqueTokens, 500, async (chunk) => {
+          const res = await admin.messaging().sendEachForMulticast({
+            tokens: chunk,
+            notification: { title, body },
+            data: {
+              type: "request",
+              requestId,
+              bloodType,
+              isUrgent: data.isUrgent ? "true" : "false",
+            },
+            android: { priority: "high" },
+            apns: { payload: { aps: { sound: "default" } } },
+          });
+
+          console.log(
+            "[Push] sent:",
+            res.successCount,
+            "failed:",
+            res.failureCount
+          );
+
+          // (Optional) log failures
+          res.responses.forEach((r, idx) => {
+            if (!r.success) {
+              console.log("[Push] failed token:", chunk[idx], r.error?.message);
+            }
+          });
         });
+      } else {
+        console.log("[Push] No tokens found for donors.");
       }
 
       console.log(

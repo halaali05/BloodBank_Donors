@@ -8,10 +8,10 @@ import '../models/blood_request_model.dart';
 import '../services/requests_service.dart';
 import 'notifications_screen.dart';
 import '../services/fcm_service.dart';
+import 'donor_profile_screen.dart';
 
 class DonorDashboardScreen extends StatefulWidget {
-  const DonorDashboardScreen({super.key, this.donorName = 'Donor'});
-  final String donorName;
+  const DonorDashboardScreen({super.key});
 
   @override
   State<DonorDashboardScreen> createState() => _DonorDashboardScreenState();
@@ -20,7 +20,6 @@ class DonorDashboardScreen extends StatefulWidget {
 class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
   static const Color deepRed = Color(0xFF7A0009);
   static const Color bg = Color(0xFFF3F5F9);
-  static const Color cardBorder = Color(0xFFE6EAF2);
 
   User? get currentUser => FirebaseAuth.instance.currentUser;
 
@@ -28,12 +27,13 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
   void initState() {
     super.initState();
 
-    // ✅ FCM مرة وحدة فقط + بدون ما يكسر الصفحة لو صار error
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
+        debugPrint('🚀 calling initFCM...');
         await FCMService.instance.initFCM();
+        debugPrint('✅ initFCM done');
       } catch (e) {
-        debugPrint('⚠️ initFCM failed (ignored): $e');
+        debugPrint('❌ initFCM error: $e');
       }
     });
   }
@@ -51,6 +51,10 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final user = currentUser;
+
+    final userRef = user == null
+        ? null
+        : FirebaseFirestore.instance.collection('users').doc(user.uid);
 
     return Scaffold(
       backgroundColor: bg,
@@ -76,6 +80,18 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
         title: const SizedBox.shrink(),
 
         actions: [
+          // ✅ Profile
+          IconButton(
+            tooltip: 'Profile',
+            icon: const Icon(Icons.person, color: Color(0xFF7A0009)),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DonorProfileScreen()),
+              );
+            },
+          ),
+
+          // ✅ Notifications
           if (user != null)
             StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: FirebaseFirestore.instance
@@ -132,15 +148,16 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
               icon: const Icon(Icons.notifications_none),
             ),
 
+          // ✅ Logout
           IconButton(
             tooltip: 'Logout',
             icon: const Icon(Icons.logout, color: deepRed),
             onPressed: _logout,
           ),
+
           const SizedBox(width: 6),
         ],
       ),
-
       body: SafeArea(
         child: StreamBuilder<List<BloodRequest>>(
           stream: RequestsService.instance.getRequestsStream(),
@@ -158,7 +175,6 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
                 .where((r) => r.isUrgent == true)
                 .length;
 
-            // ✅ ListView واحد (Scroll مضمون)
             return RefreshIndicator(
               onRefresh: () async {
                 await Future.delayed(const Duration(milliseconds: 400));
@@ -166,11 +182,40 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
                 children: [
-                  _DonorHeaderPro(
-                    donorName: widget.donorName,
-                    totalRequests: requests.length,
-                    urgentCount: urgentCount,
-                  ),
+                  // ✅ Header name live from Firestore
+                  if (userRef == null)
+                    _DonorHeaderPro(
+                      donorName: 'Donor',
+                      totalRequests: requests.length,
+                      urgentCount: urgentCount,
+                    )
+                  else
+                    StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                      stream: userRef.snapshots(),
+                      builder: (context, userSnap) {
+                        final data = userSnap.data?.data() ?? {};
+
+                        final nameFromFirestore = (data['name'] ?? '')
+                            .toString()
+                            .trim();
+                        final nameFromAuth = (user?.displayName ?? '')
+                            .toString()
+                            .trim();
+
+                        final donorName = nameFromFirestore.isNotEmpty
+                            ? nameFromFirestore
+                            : (nameFromAuth.isNotEmpty
+                                  ? nameFromAuth
+                                  : 'Donor');
+
+                        return _DonorHeaderPro(
+                          donorName: donorName,
+                          totalRequests: requests.length,
+                          urgentCount: urgentCount,
+                        );
+                      },
+                    ),
+
                   const SizedBox(height: 14),
 
                   _SectionHeader(
@@ -551,8 +596,7 @@ class _DonorRequestCardPro extends StatelessWidget {
                           builder: (_) => ChatScreen(
                             requestId: request.id,
                             initialMessage: 'Please donate as soon as possible',
-                            recipientId:
-                                currentUserId, // Show personalized message for this donor
+                            recipientId: currentUserId,
                           ),
                         ),
                       );
