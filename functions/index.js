@@ -438,6 +438,43 @@ exports.markNotificationsAsRead = onCall(async (request) => {
 });
 
 /**
+ * markNotificationAsRead - mark a single notification as read for a user
+ */
+exports.markNotificationAsRead = onCall(async (request) => {
+  try {
+    const uid = requireAuth(request);
+    const data = request.data || {};
+
+    const notificationId = nonEmptyString(
+      data.notificationId,
+      "notificationId"
+    );
+
+    const notificationRef = db
+      .collection("notifications")
+      .doc(uid)
+      .collection("user_notifications")
+      .doc(notificationId);
+
+    const notificationSnap = await notificationRef.get();
+    if (!notificationSnap.exists) {
+      throw new HttpsError("not-found", "Notification not found.");
+    }
+
+    // Update both read and isRead fields for compatibility
+    await notificationRef.update({
+      read: true,
+      isRead: true,
+    });
+
+    return { ok: true, message: "Notification marked as read." };
+  } catch (err) {
+    console.error("[markNotificationAsRead] ERROR:", err);
+    throw toHttpsError(err, "Failed to mark notification as read.");
+  }
+});
+
+/**
  * deleteNotification - delete a specific notification
  */
 exports.deleteNotification = onCall(async (request) => {
