@@ -3,15 +3,17 @@ import 'screens/welcome_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'services/local_notif_service.dart';
+import 'services/fcm_service.dart';
 
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  print('📬 [FCM Background] Handling background message: ${message.messageId}');
+  print(
+    '📬 [FCM Background] Handling background message: ${message.messageId}',
+  );
   print('📬 [FCM Background] Title: ${message.notification?.title}');
   print('📬 [FCM Background] Body: ${message.notification?.body}');
   print('📬 [FCM Background] Data: ${message.data}');
-  
+
   // You can show a local notification here if needed
   // LocalNotifService.instance.show(
   //   title: message.notification?.title ?? 'Notification',
@@ -24,16 +26,10 @@ void main() async {
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Initialize local notifications service early
-  await LocalNotifService.instance.init();
+  /// ✅ لازم يكون هون
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-  await FirebaseMessaging.instance.requestPermission(
-    alert: true,
-    badge: true,
-    sound: true,
-  );
+  await FCMService.instance.initFCM();
 
   runApp(const HayatApp());
 }

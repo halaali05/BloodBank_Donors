@@ -559,123 +559,88 @@ exports.deleteRequest = onCall(async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
-
-    console.log("[deleteRequest] Called with data:", JSON.stringify(data));
-
     const requestId = nonEmptyString(data.requestId, "requestId");
-    console.log("[deleteRequest] Request ID:", requestId);
-    console.log("[deleteRequest] User UID:", uid);
 
-    // Check if user is a hospital
+    console.log("[deleteRequest] Called with Request ID:", requestId, "by User UID:", uid);
+
+    // تحقق من أن المستخدم مستشفى
     const userSnap = await db.collection("users").doc(uid).get();
     const userData = userSnap.exists ? userSnap.data() || {} : {};
-
     if (!userSnap.exists || userData.role !== "hospital") {
-      throw new HttpsError(
-        "permission-denied",
-        "Only hospitals can delete requests."
-      );
+      throw new HttpsError("permission-denied", "Only hospitals can delete requests.");
     }
 
-    // Check if request exists and belongs to this hospital
+    // تحقق من أن الطلب موجود وينتمي للمستشفى
     const requestRef = db.collection("requests").doc(requestId);
     const requestSnap = await requestRef.get();
-
     if (!requestSnap.exists) {
       throw new HttpsError("not-found", "Request not found.");
     }
-
     const requestData = requestSnap.data() || {};
     if (requestData.bloodBankId !== uid) {
-      throw new HttpsError(
-        "permission-denied",
-        "You can only delete your own requests."
-      );
+      throw new HttpsError("permission-denied", "You can only delete your own requests.");
     }
 
-    // Delete the request (main operation)
-    console.log("[deleteRequest] Deleting request document:", requestId);
+    // =========================
+    // 1️⃣ حذف الرسائل الفرعية
+    // =========================
+    const messagesSnapshot = await requestRef.collection("messages").get();
+    if (!messagesSnapshot.empty) {
+      const batchSize = 500;
+      for (let i = 0; i < messagesSnapshot.docs.length; i += batchSize) {
+        const batch = db.batch();
+        messagesSnapshot.docs.slice(i, i + batchSize).forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
+      console.log(`[deleteRequest] Deleted ${messagesSnapshot.size} messages`);
+    }
+
+    // =========================
+    // 2️⃣ حذف الطلب نفسه
+    // =========================
     await requestRef.delete();
     console.log("[deleteRequest] Request deleted successfully");
 
-    // Try to delete notifications (optional - won't block if it fails)
-    // We'll iterate through all users and check their notifications
-    // This avoids needing a collectionGroup index
+    // =========================
+    // 3️⃣ حذف الإشعارات المرتبطة بالطلب لكل المستخدمين
+    // =========================
+    const usersSnapshot = await db.collection("users").get();
+    const notifPromises = [];
     let notificationsDeleted = 0;
-    try {
-      // Get all users to check their notifications
-      const usersSnapshot = await db.collection("users").get();
-      const deletePromises = [];
 
-      for (const userDoc of usersSnapshot.docs) {
-        const userId = userDoc.id;
-        const notificationsRef = db
-          .collection("notifications")
-          .doc(userId)
-          .collection("user_notifications");
-
-        // Get notifications for this user that match the requestId
-        const userNotifications = await notificationsRef
-          .where("requestId", "==", requestId)
-          .get();
-
-        // Delete each notification
-        userNotifications.docs.forEach((notifDoc) => {
-          deletePromises.push(notifDoc.ref.delete());
+    for (const userDoc of usersSnapshot.docs) {
+      const notificationsRef = db
+        .collection("notifications")
+        .doc(userDoc.id)
+        .collection("user_notifications");
+      const userNotifs = await notificationsRef.where("requestId", "==", requestId).get();
+      if (!userNotifs.empty) {
+        const batch = db.batch();
+        userNotifs.docs.forEach(doc => {
+          batch.delete(doc.ref);
           notificationsDeleted++;
         });
+        notifPromises.push(batch.commit());
       }
-
-      // Wait for all deletions to complete
-      if (deletePromises.length > 0) {
-        await Promise.all(deletePromises);
-      }
-
-      console.log(
-        `[deleteRequest] Deleted ${notificationsDeleted} notification(s)`
-      );
-    } catch (notifErr) {
-      // If notification deletion fails, log but continue
-      // The request is already deleted, so this is just cleanup
-      console.warn(
-        "[deleteRequest] Could not delete all notifications:",
-        notifErr.message || notifErr
-      );
     }
+
+    if (notifPromises.length > 0) await Promise.all(notifPromises);
+    console.log(`[deleteRequest] Deleted ${notificationsDeleted} notification(s)`);
 
     return {
       ok: true,
       message:
         notificationsDeleted > 0
-          ? `Request and ${notificationsDeleted} notification(s) deleted.`
-          : "Request deleted successfully.",
+          ? `Request, messages, and ${notificationsDeleted} notification(s) deleted successfully.`
+          : "Request and messages deleted successfully.",
     };
+
   } catch (err) {
     console.error("[deleteRequest] ERROR:", err);
-    console.error("[deleteRequest] Error type:", typeof err);
-    console.error("[deleteRequest] Error details:", {
-      message: err.message,
-      code: err.code,
-      name: err.name,
-      stack: err.stack,
-    });
-
-    // If it's already an HttpsError, rethrow it with original message
-    if (err instanceof HttpsError) {
-      console.error(
-        "[deleteRequest] Re-throwing HttpsError:",
-        err.code,
-        err.message
-      );
-      throw err;
-    }
-
-    // Provide more specific error message
-    const errorMessage = err.message || "Unknown error occurred";
-    console.error("[deleteRequest] Converting to HttpsError:", errorMessage);
-    throw toHttpsError(err, `Failed to delete request: ${errorMessage}`);
+    throw toHttpsError(err, `Failed to delete request: ${err.message || "Unknown error"}`);
   }
 });
+
 
 /* =======================
    ✅ Cleanup: Pending Accounts
@@ -1004,3 +969,54 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
     }
   }
 );
+
+// cleanupOrphanMessages حذف الرسائل الموجودة مسبقا بدون طلبات بالفيربيس 
+exports.cleanupOrphanMessages = onSchedule(
+  {
+    schedule: "0 4 * * *", // كل يوم الساعة 4 صباحًا
+    timeZone: "Asia/Amman",
+    region: "us-central1",
+  },
+  async () => {
+    console.log("[cleanupOrphanMessages] started");
+
+    try {
+      const requestsSnapshot = await db.collection("requests").get();
+      const existingRequestIds = requestsSnapshot.docs.map(doc => doc.id);
+
+      // احصل على جميع المستندات تحت requests
+      const allRequestsSnapshot = await db.collection("requests").get();
+
+      let totalDeleted = 0;
+
+      // افحص كل الطلبات القديمة
+      for (const requestDoc of allRequestsSnapshot.docs) {
+        const requestId = requestDoc.id;
+
+        // إذا هذا الطلب موجود، تجاهل
+        if (existingRequestIds.includes(requestId)) continue;
+
+        // احصل على جميع الرسائل تحت هذا الطلب
+        const messagesRef = db.collection("requests").doc(requestId).collection("messages");
+        const messagesSnapshot = await messagesRef.get();
+
+        if (!messagesSnapshot.empty) {
+          const batchSize = 500;
+          for (let i = 0; i < messagesSnapshot.docs.length; i += batchSize) {
+            const batch = db.batch();
+            messagesSnapshot.docs.slice(i, i + batchSize).forEach(doc => {
+              batch.delete(doc.ref);
+              totalDeleted++;
+            });
+            await batch.commit();
+          }
+          console.log(`[cleanupOrphanMessages] Deleted ${messagesSnapshot.size} orphan messages for request ${requestId}`);
+        }
+      }
+
+      console.log(`[cleanupOrphanMessages] done. Total orphan messages deleted: ${totalDeleted}`);
+    } catch (err) {
+      console.error("[cleanupOrphanMessages] ERROR:", err);
+    }
+  }
+); 
