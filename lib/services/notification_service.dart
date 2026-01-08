@@ -17,6 +17,13 @@ class NotificationService {
     await _cloudFunctions.markNotificationsAsRead();
   }
 
+  /// Marks a single notification as read via Cloud Functions
+  Future<void> markAsRead(String notificationId) async {
+    await _cloudFunctions.markNotificationAsRead(
+      notificationId: notificationId,
+    );
+  }
+
   /// Deletes a specific notification via Cloud Functions
   Future<void> deleteNotification(String notificationId) async {
     await _cloudFunctions.deleteNotification(notificationId: notificationId);

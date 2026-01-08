@@ -150,6 +150,18 @@ class CloudFunctionsService {
     }
   }
 
+  Future<Map<String, dynamic>> markNotificationAsRead({
+    required String notificationId,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('markNotificationAsRead');
+      final result = await callable.call({'notificationId': notificationId});
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> deleteNotification({
     required String notificationId,
   }) async {

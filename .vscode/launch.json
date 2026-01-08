@@ -1,11 +1,11 @@
 {
   "version": "0.2.0",
   "configurations": [
-    
     {
-      "name": "Flutter Web (Chrome)",
-      "type": "dart",
+      "name": "Flutter Web (main.dart)",
       "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
       "args": [
         "-d",
         "chrome",
