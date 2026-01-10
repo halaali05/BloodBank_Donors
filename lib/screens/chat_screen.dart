@@ -1,13 +1,32 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../services/cloud_functions_service.dart';
+import '../controllers/chat_controller.dart';
+import '../widgets/common/error_box.dart';
+import '../widgets/chat/message_bubble.dart';
+import '../widgets/chat/chat_input_field.dart';
 
+/// Chat screen for messaging between blood banks and donors
+/// Supports both general messages (to all donors) and personalized messages (to specific donor)
+///
+/// SECURITY ARCHITECTURE:
+/// - Read operations: All go through Cloud Functions (server-side)
+///   - Messages: Read via getMessages Cloud Function
+/// - Write operations: All go through Cloud Functions (server-side)
+///   - Messages: Sent via sendMessage Cloud Function
+///
+/// NOTE: Real-time updates are achieved through periodic polling (every 5 seconds)
+/// since Cloud Functions cannot return real-time streams.
 class ChatScreen extends StatefulWidget {
+  /// ID of the blood request this chat is associated with
   final String requestId;
+
+  /// Initial message text (not used, kept for compatibility)
   final String initialMessage;
-  final String? recipientId; // Optional: filter messages for specific donor
-  // معرف طلب الدم اللي حاب تتواصل فيه
+
+  /// Optional: If provided, filters messages to show only those for this specific donor
+  /// Used when blood bank wants to chat with a specific donor
+  final String? recipientId;
+
   const ChatScreen({
     super.key,
     required this.requestId,
@@ -20,71 +39,130 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  // UI constants
   static const _listPadding = EdgeInsets.all(12);
-  static const _inputSidePadding = 12.0;
-  static const _bubbleRadius = 14.0;
-  static const _inputRadius = 24.0;
 
-  final TextEditingController _controller = TextEditingController();
-  final currentUser = FirebaseAuth.instance.currentUser;
-  final _cloudFunctions = CloudFunctionsService();
+  // Controllers and services
+  final ChatController _controller = ChatController();
+  final TextEditingController _textController = TextEditingController();
+
+  // State
+  Timer? _refreshTimer;
+  List<Map<String, dynamic>> _messages = [];
+  bool _isLoading = true;
   bool _isSending = false;
-  String? _requestOwnerId; // Store the request owner (hospital) ID
+  String? _error;
+
+  // Request and user info
+  String? _requestOwnerId; // ID of the blood bank that created the request
+  String? _currentUserRole; // Current user's role (donor or hospital)
 
   @override
   void initState() {
     super.initState();
-    _loadRequestOwner();
-  }
-
-  Future<void> _loadRequestOwner() async {
-    try {
-      final requestDoc = await FirebaseFirestore.instance
-          .collection('requests')
-          .doc(widget.requestId)
-          .get();
-
-      if (requestDoc.exists && mounted) {
-        final data = requestDoc.data();
-        setState(() {
-          _requestOwnerId = data?['bloodBankId'] as String?;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading request owner: $e');
-    }
+    _initializeChat();
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _refreshTimer?.cancel();
+    _textController.dispose();
     super.dispose();
   }
 
-  /// Sends a message via Cloud Functions
-  Future<void> _send() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty || currentUser == null || _isSending) return;
+  // ------------------ Initialization ------------------
+  /// Initializes chat by loading user role and messages
+  Future<void> _initializeChat() async {
+    await _loadUserRole();
+    _loadMessages();
+
+    // Set up periodic refresh (every 10 seconds) for real-time updates
+    // Increased interval to improve performance
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted) {
+        _loadMessages();
+      }
+    });
+  }
+
+  // ------------------ Data Loading ------------------
+  /// Loads messages via Cloud Functions
+  Future<void> _loadMessages() async {
+    if (!mounted) return;
 
     setState(() {
-      _isSending = true;
+      _isLoading = true;
+      _error = null;
     });
 
     try {
-      debugPrint('Sending message: $text');
-      debugPrint('Request ID: ${widget.requestId}');
+      // Pass recipientId to filter messages when blood bank chats with specific donor
+      final messages = await _controller.fetchMessages(
+        widget.requestId,
+        filterRecipientId: widget.recipientId,
+      );
+      if (mounted) {
+        setState(() {
+          _messages = messages;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceFirst('Exception: ', '');
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
-      final result = await _cloudFunctions.sendMessage(
+  /// Loads the current user's role (donor or hospital)
+  /// Used for message routing logic
+  Future<void> _loadUserRole() async {
+    try {
+      final role = await _controller.getUserRole();
+      if (mounted) {
+        setState(() {
+          _currentUserRole = role;
+        });
+      }
+    } catch (e) {
+      // Error loading user role - continue without it
+    }
+  }
+
+  // ------------------ Message Operations ------------------
+  /// Sends a message to the chat
+  /// Handles message routing:
+  /// - If recipientId is provided: sends personalized message to that donor
+  /// - If donor sends message: automatically routes to blood bank
+  /// - If blood bank sends without recipientId: sends general message to all donors
+  Future<void> _sendMessage() async {
+    final text = _textController.text.trim();
+    final currentUser = _controller.getCurrentUser();
+    if (text.isEmpty || currentUser == null || _isSending) return;
+
+    setState(() => _isSending = true);
+
+    try {
+      // CRITICAL: Ensure recipientId is preserved
+      final recipientIdToSend = widget.recipientId;
+
+      await _controller.sendMessage(
         requestId: widget.requestId,
         text: text,
+        recipientId: recipientIdToSend,
+        requestOwnerId: _requestOwnerId,
+        currentUserRole: _currentUserRole,
       );
 
-      debugPrint('Message sent successfully: $result');
-
-      _controller.clear();
+      _textController.clear();
       FocusScope.of(context).unfocus();
 
-      // Show success feedback (optional)
+      // Refresh messages after sending
+      await _loadMessages();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -94,352 +172,119 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         );
       }
-    } catch (e, stackTrace) {
-      debugPrint('Error sending message: $e');
-      debugPrint('Stack trace: $stackTrace');
-
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to send message: ${e.toString()}'),
+            content: Text(
+              'Failed to send message: ${e.toString().replaceFirst('Exception: ', '')}',
+            ),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
             action: SnackBarAction(
               label: 'Retry',
               textColor: Colors.white,
-              onPressed: () => _send(),
+              onPressed: _sendMessage,
             ),
           ),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isSending = false;
-        });
-      }
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
-  /// Builds a message bubble
-  Widget _messageBubble(Map<String, dynamic> msg) {
-    final isMe = msg['senderId'] == currentUser?.uid;
-    final text = msg['text']?.toString() ?? '';
-    final createdAt = msg['createdAt'];
-
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        decoration: BoxDecoration(
-          color: isMe ? const Color(0xffffe3e6) : const Color(0xffe0e0e0),
-          borderRadius: BorderRadius.circular(_bubbleRadius),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(text, style: const TextStyle(fontSize: 14)),
-            if (createdAt != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  _formatTime(createdAt),
-                  style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _formatTime(dynamic timestamp) {
-    try {
-      DateTime dateTime;
-      if (timestamp is Timestamp) {
-        dateTime = timestamp.toDate();
-      } else if (timestamp is Map) {
-        // Handle Firestore timestamp format
-        final seconds = timestamp['_seconds'] as int?;
-        if (seconds != null) {
-          dateTime = DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
-        } else {
-          return '';
-        }
-      } else if (timestamp is int) {
-        dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
-      } else {
-        return '';
-      }
-      final now = DateTime.now();
-      final difference = now.difference(dateTime);
-      if (difference.inMinutes < 1) {
-        return 'Just now';
-      } else if (difference.inHours < 1) {
-        return '${difference.inMinutes}m ago';
-      } else if (difference.inDays < 1) {
-        return '${difference.inHours}h ago';
-      } else {
-        return '${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
-      }
-    } catch (e) {
-      return '';
-    }
-  }
+  // ------------------ UI Build ------------------
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+    final currentUser = _controller.getCurrentUser();
+
+    if (currentUser == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Messages')),
+        body: const Center(
+          child: Text(
+            'Please login to send messages.',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Messages')),
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Column(
           children: [
             Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('requests')
-                    .doc(widget.requestId)
-                    .collection('messages')
-                    .orderBy('createdAt', descending: true)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+              child: _isLoading && _messages.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? ErrorBox(
+                      title: 'Error loading messages',
+                      message: _error!,
+                      onRetry: _loadMessages,
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _loadMessages,
+                      child: _messages.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No messages yet',
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            )
+                          : ListView.builder(
+                              reverse: true,
+                              padding: _listPadding,
+                              itemCount: _messages.length,
+                              itemBuilder: (context, index) {
+                                final msg = _messages[index];
+                                final createdAt = msg['createdAt'];
+                                DateTime? dateTime;
 
-                  if (snapshot.hasError) {
-                    debugPrint('Chat StreamBuilder error: ${snapshot.error}');
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.error_outline, color: Colors.red),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Error loading messages: ${snapshot.error}',
-                            style: const TextStyle(color: Colors.red),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 8),
-                          TextButton(
-                            onPressed: () => setState(() {}),
-                            child: const Text('Retry'),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
+                                // Handle different timestamp formats
+                                if (createdAt != null) {
+                                  if (createdAt is DateTime) {
+                                    dateTime = createdAt;
+                                  } else if (createdAt is int) {
+                                    dateTime =
+                                        DateTime.fromMillisecondsSinceEpoch(
+                                          createdAt,
+                                        );
+                                  } else if (createdAt is Map) {
+                                    // Firestore Timestamp format
+                                    final seconds =
+                                        createdAt['_seconds'] as int?;
+                                    if (seconds != null) {
+                                      dateTime =
+                                          DateTime.fromMillisecondsSinceEpoch(
+                                            seconds * 1000,
+                                          );
+                                    }
+                                  }
+                                }
 
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return const Center(
-                      child: Text(
-                        'No messages yet',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    );
-                  }
-
-                  final currentUserId = currentUser?.uid;
-
-                  final messages = snapshot.data!.docs
-                      .map(
-                        (doc) => {
-                          'id': doc.id,
-                          ...doc.data() as Map<String, dynamic>,
-                        },
-                      )
-                      .toList();
-
-                  // Debug logging
-                  debugPrint('=== CHAT FILTERING DEBUG ===');
-                  debugPrint('Current user ID: $currentUserId');
-                  debugPrint('Request owner ID: $_requestOwnerId');
-                  debugPrint('Widget recipientId: ${widget.recipientId}');
-                  debugPrint('Total messages in stream: ${messages.length}');
-
-                  // Filter messages based on context:
-                  // - If recipientId is provided (from contacts screen), show only messages for that recipient
-                  // - Otherwise, show messages for current user (donor) or all messages (hospital)
-                  final validMessages = messages.where((msg) {
-                    if (msg['text'] == null || msg['text'].toString().isEmpty) {
-                      debugPrint('  Message filtered: empty text');
-                      return false;
-                    }
-
-                    // Handle different data types from Firestore
-                    final senderId = msg['senderId']?.toString();
-                    final recipientId = msg['recipientId']?.toString();
-                    final senderRole = msg['senderRole']?.toString();
-                    final text = msg['text']?.toString();
-
-                    debugPrint(
-                      '  Message: senderId=$senderId, recipientId=$recipientId, senderRole=$senderRole, text=${text != null && text.length > 30 ? text.substring(0, 30) : text}',
-                    );
-
-                    // If viewing from contacts screen (recipientId provided)
-                    // This means blood bank is chatting with a specific donor
-                    if (widget.recipientId != null) {
-                      // Show ONLY messages for this specific recipient
-                      // This ensures blood bank sees only this donor's personalized message, not all donors' messages
-                      // Convert to strings to ensure proper comparison
-                      final recipientIdStr = recipientId?.toString();
-                      final widgetRecipientIdStr = widget.recipientId
-                          .toString();
-                      final senderIdStr = senderId?.toString();
-                      final currentUserIdStr = currentUserId?.toString();
-
-                      // STRICT FILTERING: Only show messages where recipientId exactly matches the selected donor
-                      // This prevents showing personalized messages for other donors
-                      final isForThisRecipient =
-                          recipientIdStr != null &&
-                          recipientIdStr == widgetRecipientIdStr;
-
-                      // Also show messages sent by current user in this conversation
-                      // But only if they don't have a recipientId (general messages) OR if recipientId matches
-                      final isSentByCurrentUser =
-                          senderIdStr != null &&
-                          senderIdStr == currentUserIdStr &&
-                          (recipientId == null ||
-                              recipientIdStr == widgetRecipientIdStr);
-
-                      final matches = isForThisRecipient || isSentByCurrentUser;
-
-                      debugPrint(
-                        '    -> Recipient view (blood bank chatting with specific donor): isForThisRecipient=$isForThisRecipient (recipientId=$recipientIdStr, widget.recipientId=$widgetRecipientIdStr), isSentByCurrentUser=$isSentByCurrentUser, matches=$matches',
-                      );
-                      return matches;
-                    }
-
-                    // Check if current user is the request owner (hospital)
-                    final isRequestOwner = _requestOwnerId == currentUserId;
-
-                    if (isRequestOwner) {
-                      // BLOOD BANK VIEW: When blood bank opens chat without specific recipient
-                      // Show only: messages they sent OR general messages (no recipientId)
-                      // Do NOT show personalized messages for specific donors
-                      final senderIdStr = senderId?.toString();
-                      final currentUserIdStr = currentUserId?.toString();
-                      final recipientIdStr = recipientId?.toString();
-
-                      // Show messages where:
-                      // 1. Blood bank sent the message
-                      // 2. Message is general (no recipientId - for all donors)
-                      // Do NOT show personalized messages (recipientId != null) unless viewing specific donor
-                      final isSentByBloodBank =
-                          senderIdStr != null &&
-                          senderIdStr == currentUserIdStr;
-                      final isGeneralMessage = recipientId == null;
-
-                      final matches = isSentByBloodBank || isGeneralMessage;
-                      debugPrint(
-                        '    -> Blood bank view (no recipient): isSentByBloodBank=$isSentByBloodBank, isGeneralMessage=$isGeneralMessage, recipientId=$recipientIdStr, matches=$matches',
-                      );
-                      return matches;
-                    } else {
-                      // DONOR VIEW: Only show messages meant for this specific donor
-                      // Convert to strings for proper comparison
-                      final senderIdStr = senderId?.toString();
-                      final recipientIdStr = recipientId?.toString();
-                      final currentUserIdStr = currentUserId?.toString();
-
-                      // 1. Messages sent by this donor
-                      final isMyMessage =
-                          senderIdStr != null &&
-                          senderIdStr == currentUserIdStr;
-
-                      // 2. Personalized messages from hospital where recipientId exactly matches current user
-                      // This ensures each donor ONLY sees their own personalized message
-                      final isPersonalizedForMe =
-                          recipientIdStr != null &&
-                          recipientIdStr == currentUserIdStr;
-
-                      // Donors see ONLY:
-                      // - Messages they sent
-                      // - Personalized messages where recipientId == their ID
-                      // This prevents donors from seeing messages meant for other donors
-                      final matches = isMyMessage || isPersonalizedForMe;
-                      debugPrint(
-                        '    -> Donor view: isMyMessage=$isMyMessage, isPersonalizedForMe=$isPersonalizedForMe (recipientId=$recipientIdStr, currentUserId=$currentUserIdStr), matches=$matches',
-                      );
-                      return matches;
-                    }
-                  }).toList();
-
-                  debugPrint(
-                    'Valid messages after filtering: ${validMessages.length}',
-                  );
-                  debugPrint('=== END DEBUG ===');
-
-                  if (validMessages.isEmpty) {
-                    return const Center(
-                      child: Text(
-                        'No messages yet',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    padding: _listPadding,
-                    reverse: true,
-                    itemCount: validMessages.length,
-                    itemBuilder: (context, index) {
-                      return _messageBubble(validMessages[index]);
-                    },
-                  );
-                },
-              ),
-            ),
-
-            Padding(
-              padding: EdgeInsets.only(
-                left: _inputSidePadding,
-                right: _inputSidePadding,
-                top: 8,
-                bottom: _inputSidePadding + bottomInset,
-              ),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: _isSending ? null : _send,
-                    icon: _isSending
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.send),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      enabled: !_isSending,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _send(),
-                      decoration: InputDecoration(
-                        hintText: _isSending
-                            ? 'Sending...'
-                            : 'Type a message...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(_inputRadius),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                      ),
+                                return MessageBubble(
+                                  message: msg,
+                                  isFromCurrentUser: _controller
+                                      .isMessageFromCurrentUser(msg),
+                                  formattedTime: _controller.formatTime(
+                                    dateTime,
+                                  ),
+                                );
+                              },
+                            ),
                     ),
-                  ),
-                ],
-              ),
+            ),
+            ChatInputField(
+              controller: _textController,
+              isSending: _isSending,
+              onSend: _sendMessage,
+              bottomPadding: safeBottom,
             ),
           ],
         ),

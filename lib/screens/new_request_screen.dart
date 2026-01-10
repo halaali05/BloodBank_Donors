@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import '../theme/app_theme.dart';
 
+/// Screen for blood banks to create new blood requests
+/// Allows selecting blood type, units, urgency, location, and details
 class NewRequestScreen extends StatefulWidget {
+  /// Name of the blood bank creating the request
   final String bloodBankName;
+
+  /// Pre-filled hospital location (from blood bank profile)
   final String initialHospitalLocation;
 
   const NewRequestScreen({
@@ -17,44 +23,48 @@ class NewRequestScreen extends StatefulWidget {
 }
 
 class _NewRequestScreenState extends State<NewRequestScreen> {
-  // ✅ Theme colors
-  static const Color deepRed = Color(0xFF7A0009);
-  static const Color softBg = Color(0xFFF6F3F4); // أبيض مائل للسكري
-  static const Color fieldFill = Color(0xFFF8F9FF);
+  // Form state
+  String _bloodType = 'A+'; // Selected blood type
+  int _units = 1; // Number of units needed
+  bool _isUrgent = false; // Whether request is urgent
+  bool _isLoading = false; // Show loading during submission
 
-  static const _pagePadding = 16.0;
-  static const _fieldRadius = 14.0;
-
-  String _bloodType = 'A+';
-  int _units = 1;
-  bool _isUrgent = false;
-  bool _isLoading = false;
-
+  // Text field controllers
   final TextEditingController _detailsController = TextEditingController();
-  final TextEditingController _hospitalLocationController =
-      TextEditingController();
+
+  // Location dropdown state (replaces text field)
+  String? _selectedHospitalLocation;
 
   @override
   void initState() {
     super.initState();
-    _hospitalLocationController.text = widget.initialHospitalLocation.trim();
+    // Pre-fill location from blood bank profile if it's a valid governorate
+    final initialLocation = widget.initialHospitalLocation.trim();
+    if (initialLocation.isNotEmpty &&
+        AppTheme.jordanianGovernorates.contains(initialLocation)) {
+      _selectedHospitalLocation = initialLocation;
+    }
   }
 
   @override
   void dispose() {
     _detailsController.dispose();
-    _hospitalLocationController.dispose();
     super.dispose();
   }
 
+  /// Submits the blood request to Firebase
+  /// Validates required fields, then calls Cloud Function to create request
   Future<void> _submit() async {
-    if (_hospitalLocationController.text.trim().isEmpty) {
+    // Validate required fields
+    if (_selectedHospitalLocation == null ||
+        _selectedHospitalLocation!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter hospital location')),
+        const SnackBar(content: Text('Please select hospital location')),
       );
       return;
     }
 
+    // Verify user is authenticated
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -74,7 +84,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
       'units': _units,
       'isUrgent': _isUrgent,
       'details': _detailsController.text.trim(),
-      'hospitalLocation': _hospitalLocationController.text.trim(),
+      'hospitalLocation': _selectedHospitalLocation ?? '',
     };
 
     setState(() => _isLoading = true);
@@ -151,27 +161,9 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
     }
   }
 
+  /// Creates input decoration for form fields
   InputDecoration _decoration({required String label, IconData? icon}) {
-    return InputDecoration(
-      labelText: label,
-      prefixIcon: icon != null ? Icon(icon, color: Colors.grey[700]) : null,
-      filled: true,
-      fillColor: fieldFill,
-      labelStyle: const TextStyle(fontSize: 13, color: Colors.black54),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(_fieldRadius),
-        borderSide: const BorderSide(color: Color(0xffd0d4f0)),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(_fieldRadius),
-        borderSide: const BorderSide(color: Color(0xffd0d4f0)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(_fieldRadius),
-        borderSide: const BorderSide(color: deepRed, width: 1.6),
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-    );
+    return AppTheme.outlinedInputDecoration(label: label, icon: icon);
   }
 
   @override
@@ -181,7 +173,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
     return Directionality(
       textDirection: TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: softBg,
+        backgroundColor: AppTheme.softBg,
         appBar: AppBar(
           elevation: 0,
           backgroundColor: Colors.white,
@@ -221,10 +213,10 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
           child: SingleChildScrollView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: EdgeInsets.fromLTRB(
-              _pagePadding,
-              _pagePadding,
-              _pagePadding,
-              _pagePadding + bottomInset,
+              AppTheme.padding,
+              AppTheme.padding,
+              AppTheme.padding,
+              AppTheme.padding + bottomInset,
             ),
             child: Center(
               child: ConstrainedBox(
@@ -253,10 +245,13 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                             width: 42,
                             height: 42,
                             decoration: BoxDecoration(
-                              color: deepRed.withOpacity(0.10),
+                              color: AppTheme.deepRed.withOpacity(0.10),
                               borderRadius: BorderRadius.circular(14),
                             ),
-                            child: const Icon(Icons.bloodtype, color: deepRed),
+                            child: const Icon(
+                              Icons.bloodtype,
+                              color: AppTheme.deepRed,
+                            ),
                           ),
                           const SizedBox(width: 10),
                           const Expanded(
@@ -316,8 +311,10 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         height: 56,
                         decoration: BoxDecoration(
-                          color: fieldFill,
-                          borderRadius: BorderRadius.circular(_fieldRadius),
+                          color: AppTheme.fieldFill,
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.borderRadiusSmall,
+                          ),
                           border: Border.all(color: const Color(0xffd0d4f0)),
                         ),
                         child: Row(
@@ -368,10 +365,12 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
                           color: const Color(0xFFFFF4F5),
-                          borderRadius: BorderRadius.circular(_fieldRadius),
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.borderRadiusSmall,
+                          ),
                           border: Border.all(
                             color: _isUrgent
-                                ? deepRed
+                                ? AppTheme.deepRed
                                 : const Color(0xFFF0C9CE),
                           ),
                         ),
@@ -392,7 +391,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                             Switch(
                               value: _isUrgent,
                               onChanged: (v) => setState(() => _isUrgent = v),
-                              activeTrackColor: deepRed,
+                              activeTrackColor: AppTheme.deepRed,
                               activeThumbColor: Colors.white,
                             ),
                           ],
@@ -401,13 +400,30 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
 
                       const SizedBox(height: 18),
 
-                      TextField(
-                        controller: _hospitalLocationController,
+                      // Hospital location dropdown
+                      DropdownButtonFormField<String>(
+                        value: _selectedHospitalLocation,
                         decoration: _decoration(
                           label: 'Hospital location',
                           icon: Icons.location_on_outlined,
                         ),
-                        textInputAction: TextInputAction.next,
+                        items: AppTheme.jordanianGovernorates.map((location) {
+                          return DropdownMenuItem<String>(
+                            value: location,
+                            child: Text(location),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedHospitalLocation = value;
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please select a location';
+                          }
+                          return null;
+                        },
                       ),
 
                       const SizedBox(height: 16),
@@ -428,14 +444,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                         height: 48,
                         child: ElevatedButton(
                           onPressed: _isLoading ? null : _submit,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: deepRed,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            elevation: 0,
-                          ),
+                          style: AppTheme.primaryButtonStyle(),
                           child: _isLoading
                               ? const SizedBox(
                                   width: 22,

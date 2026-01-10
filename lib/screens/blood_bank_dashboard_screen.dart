@@ -1,16 +1,39 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
-
 import 'contacts_screen.dart';
 import 'new_request_screen.dart';
 import 'login_screen.dart';
 import '../models/blood_request_model.dart';
-import '../services/cloud_functions_service.dart';
+import '../controllers/blood_bank_dashboard_controller.dart';
+import '../theme/app_theme.dart';
+import '../widgets/common/app_bar_with_logo.dart';
+import '../widgets/common/error_box.dart';
+import '../widgets/common/loading_indicator.dart';
+import '../widgets/common/empty_state.dart';
+import '../widgets/common/section_header.dart';
+import '../widgets/dashboard/header_card.dart';
+import '../widgets/dashboard/stat_card.dart';
+import '../widgets/dashboard/request_card.dart';
 
-class BloodBankDashboardScreen extends StatelessWidget {
+/// Main dashboard screen for blood banks/hospitals
+///
+/// Displays all active blood requests, statistics, and allows creating new requests
+///
+/// SECURITY ARCHITECTURE:
+/// - Read operations: All go through Cloud Functions (server-side)
+///   - Requests: Read via getRequestsByBloodBankId Cloud Function
+/// - Write operations: All go through Cloud Functions (server-side)
+///   - Delete requests: Uses deleteRequest Cloud Function
+///   - Create requests: Uses addRequest Cloud Function (from NewRequestScreen)
+///
+/// NOTE: Real-time updates are achieved through periodic polling (every 10 seconds)
+/// since Cloud Functions cannot return real-time streams.
+class BloodBankDashboardScreen extends StatefulWidget {
+  /// Name of the blood bank
   final String bloodBankName;
+
+  /// Location of the blood bank
   final String location;
 
   const BloodBankDashboardScreen({
@@ -19,15 +42,80 @@ class BloodBankDashboardScreen extends StatelessWidget {
     required this.location,
   });
 
-  // ===== Theme colors =====
-  static const Color deepRed = Color(0xFF7A0009);
-  static const Color offWhite = Color(0xFFFDF7F6); // أبيض مائل للسكني
-  static const Color cardBorder = Color(0xFFE9E2E1);
+  @override
+  State<BloodBankDashboardScreen> createState() =>
+      _BloodBankDashboardScreenState();
+}
 
-  Future<void> _deleteRequestWithNotifications(
+class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
+  final BloodBankDashboardController _controller =
+      BloodBankDashboardController();
+  Timer? _refreshTimer;
+  List<BloodRequest> _requests = [];
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRequests();
+
+    // Set up periodic refresh (every 30 seconds) for real-time updates
+    // Increased interval to improve performance
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) {
+        _loadRequests();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Loads requests via Cloud Functions
+  Future<void> _loadRequests() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final requests = await _controller.fetchRequests();
+      if (mounted) {
+        setState(() {
+          _requests = requests;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceFirst('Exception: ', '');
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // ------------------ Delete Request Handler ------------------
+  /// Handles request deletion with confirmation dialog
+  ///
+  /// Flow:
+  /// 1. Show confirmation dialog
+  /// 2. Verify user owns the request (client-side check)
+  /// 3. Call Cloud Function to delete (server-side validation)
+  /// 4. Refresh requests list
+  /// 5. Show success/error message
+  Future<void> _handleDeleteRequest(
     BuildContext context,
     BloodRequest request,
   ) async {
+    // Step 1: Show confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -51,81 +139,100 @@ class BloodBankDashboardScreen extends StatelessWidget {
 
     if (confirmed != true) return;
 
-    try {
-      final currentUid = FirebaseAuth.instance.currentUser?.uid;
-      if (currentUid == null || request.bloodBankId != currentUid) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('You can only delete your own requests.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
-      }
-
+    // Step 2: Validate request ID
+    if (request.id.isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Row(
-              children: [
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                SizedBox(width: 12),
-                Text('Deleting request...'),
-              ],
-            ),
-            duration: Duration(seconds: 30),
+            content: Text('Invalid request. Cannot delete.'),
+            backgroundColor: Colors.red,
           ),
         );
       }
+      return;
+    }
 
-      final cloudFunctions = CloudFunctionsService();
-      final result = await cloudFunctions.deleteRequest(requestId: request.id);
+    // Step 3: Verify ownership (client-side check)
+    if (!_controller.verifyRequestOwnership(request.bloodBankId)) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You can only delete your own requests.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Step 4: Show loading indicator
+    if (!context.mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    // Step 5: Delete via Cloud Function (server-side)
+    try {
+      final result = await _controller.deleteRequest(requestId: request.id);
+
+      // Close loading dialog
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Step 6: Refresh requests list
+      await _loadRequests();
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        final message =
+            result['message'] as String? ?? 'Request deleted successfully.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['message'] ?? 'Request deleted successfully.'),
+            content: Text(message),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 3),
           ),
         );
       }
-    } on FirebaseFunctionsException catch (e) {
+    } catch (e) {
+      // Close loading dialog
       if (context.mounted) {
-        String errorMessage = 'Failed to delete request. Please try again.';
-        switch (e.code) {
-          case 'permission-denied':
+        Navigator.of(context).pop();
+      }
+
+      // Debug: Print full error for troubleshooting
+      print('[Delete Request Error] Full error: $e');
+      print('[Delete Request Error] Error type: ${e.runtimeType}');
+
+      if (context.mounted) {
+        String errorMessage;
+
+        // Extract error message based on error type
+        if (e is Exception) {
+          errorMessage = e.toString().replaceFirst('Exception: ', '');
+        } else {
+          errorMessage = e.toString();
+        }
+
+        // Clean up the error message
+        if (errorMessage.isEmpty) {
+          errorMessage = 'Failed to delete request. Please try again.';
+        }
+
+        // Handle specific error cases
+        if (errorMessage.contains('FAILED_PRECONDITION') ||
+            errorMessage.contains('failed-precondition')) {
+          if (errorMessage.contains('index') ||
+              errorMessage.contains('Index')) {
             errorMessage =
-                e.message ??
-                'You do not have permission to delete this request.';
-            break;
-          case 'not-found':
+                'Database index required. Please contact support or check Firebase console.';
+          } else if (!errorMessage.contains('verify') &&
+              !errorMessage.contains('email')) {
             errorMessage =
-                e.message ??
-                'Request not found. It may have already been deleted.';
-            break;
-          case 'invalid-argument':
-            errorMessage = e.message ?? 'Invalid request ID. Please try again.';
-            break;
-          case 'unauthenticated':
-            errorMessage = 'Please log in to delete requests.';
-            break;
-          case 'internal':
-            if (e.message != null && e.message!.isNotEmpty) {
-              errorMessage = e.message!;
-            } else {
-              errorMessage = 'Server error occurred. Please try again.';
-            }
-            break;
-          default:
-            errorMessage = e.message ?? errorMessage;
+                'Operation failed. This may require a database index. Please contact support.';
+          }
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -136,181 +243,146 @@ class BloodBankDashboardScreen extends StatelessWidget {
           ),
         );
       }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Unexpected error: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
     }
   }
 
+  // ------------------ Logout Handler ------------------
+  /// Handles user logout
+  Future<void> _handleLogout(BuildContext context) async {
+    await FirebaseAuth.instance.signOut();
+    if (context.mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    }
+  }
+
+  // ------------------ UI Build ------------------
   @override
   Widget build(BuildContext context) {
-    final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
-
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: TextDirection.rtl, // RTL for Arabic support
       child: Scaffold(
-        backgroundColor: offWhite,
-        appBar: AppBar(
-          elevation: 0,
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black87,
-          titleSpacing: 12,
-          title: Row(
-            children: [
-              Image.asset(
-                'images/logoBLOOD.png',
-                height: 34,
-                fit: BoxFit.contain,
-              ),
-              const SizedBox(width: 10),
-              const Text(
-                'Blood Bank',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-            ],
-          ),
+        backgroundColor: AppTheme.offWhite,
+        appBar: AppBarWithLogo(
+          title: 'Blood Bank',
           actions: [
             IconButton(
               tooltip: 'Logout',
-              icon: const Icon(Icons.logout, color: deepRed),
-              onPressed: () async {
-                await FirebaseAuth.instance.signOut();
-                // ignore: use_build_context_synchronously
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-                );
-              },
+              icon: const Icon(Icons.logout, color: AppTheme.deepRed),
+              onPressed: () => _handleLogout(context),
             ),
-            const SizedBox(width: 6),
           ],
         ),
         body: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xFFFFFFFF), Color(0xFFFDF7F6)],
+              colors: [Color(0xFFFFFFFF), AppTheme.offWhite],
               begin: Alignment.topRight,
               end: Alignment.bottomLeft,
             ),
           ),
           child: SafeArea(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('requests')
-                  .where('bloodBankId', isEqualTo: currentUserId)
-                  .orderBy('createdAt', descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (snapshot.hasError) {
-                  return _ErrorBox(
-                    title: 'Error loading requests',
-                    message: '${snapshot.error}',
-                  );
-                }
-
-                final docs = snapshot.data?.docs ?? [];
-                final requests = docs.map((doc) {
-                  return BloodRequest.fromMap(
-                    Map<String, dynamic>.from(doc.data()),
-                    doc.id,
-                  );
-                }).toList();
-
-                final totalUnits = requests.fold<int>(
-                  0,
-                  (sum, r) => sum + r.units,
-                );
-                final urgentCount = requests.where((r) => r.isUrgent).length;
-                final normalCount = requests.where((r) => !r.isUrgent).length;
-
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _HeaderCard(
-                        bloodBankName: bloodBankName,
-                        location: location,
+            // FutureBuilder with periodic refresh for real-time updates
+            // All reads go through Cloud Functions (server-side)
+            child: _isLoading && _requests.isEmpty
+                ? const LoadingIndicator()
+                : _error != null
+                ? ErrorBox(title: 'Error loading requests', message: _error!)
+                : RefreshIndicator(
+                    onRefresh: _loadRequests,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppTheme.padding,
+                        14,
+                        AppTheme.padding,
+                        18,
                       ),
-                      const SizedBox(height: 14),
-
-                      _StatsGrid(
-                        totalUnits: totalUnits,
-                        activeCount: requests.length,
-                        urgentCount: urgentCount,
-                        normalCount: normalCount,
-                      ),
-
-                      const SizedBox(height: 14),
-
-                      _SectionHeader(
-                        title: 'Blood Requests',
-                        subtitle: requests.isEmpty
-                            ? 'No active requests'
-                            : 'Manage your current posts',
-                        rightWidget: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => NewRequestScreen(
-                                  bloodBankName: bloodBankName,
-                                  initialHospitalLocation: location,
-                                ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          HeaderCard(
+                            title: widget.bloodBankName,
+                            subtitle: widget.location,
+                          ),
+                          const SizedBox(height: 14),
+                          _StatsGrid(
+                            totalUnits: _controller.calculateStatistics(
+                              _requests,
+                            )['totalUnits']!,
+                            activeCount: _controller.calculateStatistics(
+                              _requests,
+                            )['activeCount']!,
+                            urgentCount: _controller.calculateStatistics(
+                              _requests,
+                            )['urgentCount']!,
+                            normalCount: _controller.calculateStatistics(
+                              _requests,
+                            )['normalCount']!,
+                          ),
+                          const SizedBox(height: 20),
+                          SectionHeader(
+                            title: 'Active Requests',
+                            subtitle: _requests.isEmpty
+                                ? 'No active requests'
+                                : 'Manage your blood current posts',
+                            rightWidget: ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => NewRequestScreen(
+                                      bloodBankName: widget.bloodBankName,
+                                      initialHospitalLocation: widget.location,
+                                    ),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.add, size: 18),
+                              label: const Text('New Request'),
+                              style: AppTheme.primaryButtonStyle(
+                                borderRadius: AppTheme.borderRadiusSmall,
                               ),
-                            );
-                          },
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('New Request'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: deepRed,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 10),
+                          if (_requests.isEmpty)
+                            const EmptyState(
+                              icon: Icons.inbox_outlined,
+                              title: 'No active requests',
+                              subtitle:
+                                  'Create a new request to reach donors quickly.',
+                            )
+                          else
+                            ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: _requests.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 12),
+                              itemBuilder: (context, index) {
+                                final request = _requests[index];
+                                return RequestCard(
+                                  request: request,
+                                  onDelete: () =>
+                                      _handleDeleteRequest(context, request),
+                                  onViewDonors: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => ContactsScreen(
+                                          requestId: request.id,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                        ],
                       ),
-                      const SizedBox(height: 10),
-
-                      if (requests.isEmpty)
-                        const _EmptyRequests()
-                      else
-                        ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: requests.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final r = requests[index];
-                            return _RequestCard(
-                              request: r,
-                              onDelete: () =>
-                                  _deleteRequestWithNotifications(context, r),
-                            );
-                          },
-                        ),
-                    ],
+                    ),
                   ),
-                );
-              },
-            ),
           ),
         ),
       ),
@@ -318,127 +390,8 @@ class BloodBankDashboardScreen extends StatelessWidget {
   }
 }
 
-class _HeaderCard extends StatelessWidget {
-  const _HeaderCard({required this.bloodBankName, required this.location});
-
-  static const Color deepRed = Color(0xFF7A0009);
-  static const Color cardBorder = Color(0xFFE9E2E1);
-
-  final String bloodBankName;
-  final String location;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cardBorder),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x11000000),
-            blurRadius: 14,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: deepRed.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(Icons.local_hospital, color: deepRed, size: 26),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  bloodBankName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 16,
-                      color: Colors.black54,
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        location,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Colors.black54,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.title,
-    required this.subtitle,
-    required this.rightWidget,
-  });
-
-  final String title;
-  final String subtitle;
-  final Widget rightWidget;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: const TextStyle(fontSize: 12, color: Colors.black54),
-              ),
-            ],
-          ),
-        ),
-        rightWidget,
-      ],
-    );
-  }
-}
-
+/// Grid widget that displays statistics cards in a 2x2 layout
+/// Shows total units, active requests, urgent count, and normal count
 class _StatsGrid extends StatelessWidget {
   const _StatsGrid({
     required this.totalUnits,
@@ -455,340 +408,44 @@ class _StatsGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-      builder: (context, c) {
-        final w = (c.maxWidth - 12) / 2;
+      builder: (context, constraints) {
+        // Calculate card width for 2-column grid (accounting for spacing)
+        final cardWidth = (constraints.maxWidth - 12) / 2;
         return Wrap(
           spacing: 12,
           runSpacing: 12,
           children: [
-            _StatCard(
+            StatCard(
               title: 'Total Units',
               value: '$totalUnits',
               icon: Icons.bloodtype,
               tint: const Color(0xFF1565C0),
-              width: w,
+              width: cardWidth,
             ),
-            _StatCard(
+            StatCard(
               title: 'Active Requests',
               value: '$activeCount',
               icon: Icons.list_alt,
-              tint: const Color(0xFF7A0009),
-              width: w,
+              tint: AppTheme.deepRed,
+              width: cardWidth,
             ),
-            _StatCard(
+            StatCard(
               title: 'Urgent',
               value: '$urgentCount',
               icon: Icons.warning_amber_rounded,
               tint: const Color(0xFFF57C00),
-              width: w,
+              width: cardWidth,
             ),
-            _StatCard(
+            StatCard(
               title: 'Normal',
               value: '$normalCount',
               icon: Icons.check_circle,
               tint: const Color(0xFF2E7D32),
-              width: w,
+              width: cardWidth,
             ),
           ],
         );
       },
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.title,
-    required this.value,
-    required this.icon,
-    required this.tint,
-    required this.width,
-  });
-
-  static const Color cardBorder = Color(0xFFE9E2E1);
-
-  final String title;
-  final String value;
-  final IconData icon;
-  final Color tint;
-  final double width;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cardBorder),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 10,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: tint, size: 20),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RequestCard extends StatelessWidget {
-  const _RequestCard({required this.request, required this.onDelete});
-
-  static const Color deepRed = Color(0xFF7A0009);
-  static const Color cardBorder = Color(0xFFE9E2E1);
-
-  final BloodRequest request;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool canDelete =
-        FirebaseAuth.instance.currentUser?.uid == request.bloodBankId;
-    final bool isUrgent = request.isUrgent;
-
-    return Directionality(
-      textDirection: TextDirection.ltr,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: cardBorder),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0A000000),
-              blurRadius: 10,
-              offset: Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: deepRed.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    request.bloodType,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      color: deepRed,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    '${request.units} units needed',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-                if (isUrgent)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFEBEE),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'Urgent',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFFC62828),
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                if (canDelete) ...[
-                  const SizedBox(width: 6),
-                  IconButton(
-                    tooltip: 'Delete',
-                    constraints: const BoxConstraints(),
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      size: 20,
-                      color: Colors.red,
-                    ),
-                    onPressed: onDelete,
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(
-                  Icons.location_on_outlined,
-                  size: 16,
-                  color: Colors.black54,
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    request.hospitalLocation,
-                    style: const TextStyle(fontSize: 12, color: Colors.black54),
-                  ),
-                ),
-              ],
-            ),
-            if (request.details.trim().isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                request.details.trim(),
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Colors.black87,
-                  height: 1.35,
-                ),
-              ),
-            ],
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ContactsScreen(
-                        requestId: request.id,
-                        // bloodType is optional - show all donors
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(
-                  Icons.people_outline,
-                  size: 16,
-                  color: deepRed,
-                ),
-                label: const Text(
-                  'Donors',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: deepRed,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyRequests extends StatelessWidget {
-  const _EmptyRequests();
-
-  static const Color deepRed = Color(0xFF7A0009);
-  static const Color cardBorder = Color(0xFFE9E2E1);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cardBorder),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: deepRed.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: const Icon(Icons.inbox_outlined, color: deepRed, size: 28),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'No active requests',
-            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Create a new request to reach donors quickly.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.black54, fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ErrorBox extends StatelessWidget {
-  const _ErrorBox({required this.title, required this.message});
-
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFE9E2E1)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 34),
-              const SizedBox(height: 10),
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
-              const SizedBox(height: 6),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.black54, fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

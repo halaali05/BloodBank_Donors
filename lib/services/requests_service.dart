@@ -1,29 +1,24 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../models/blood_request_model.dart';
 import 'cloud_functions_service.dart';
 
 /// Service class for managing blood requests
 /// Handles creating, retrieving, and notifying about blood requests
-/// Uses Cloud Functions as a secure layer for write operations
-
+///
+/// SECURITY ARCHITECTURE:
+/// - All writes go through Cloud Functions (server-side)
+/// - All reads go through Cloud Functions (server-side)
+/// - No direct Firestore access from client-side
 class RequestsService {
   static final RequestsService instance = RequestsService._internal();
 
-  final CollectionReference _requestsCollection;
   final CloudFunctionsService _cloudFunctions;
 
-  RequestsService._internal()
-    : _requestsCollection = FirebaseFirestore.instance.collection('requests'),
-      _cloudFunctions = CloudFunctionsService();
+  RequestsService._internal() : _cloudFunctions = CloudFunctionsService();
 
-  /// for testing
-  RequestsService.test(
-    FirebaseFirestore db,
-    FirebaseAuth auth, [
-    CloudFunctionsService? cloudFunctions,
-  ]) : _requestsCollection = db.collection('requests'),
-       _cloudFunctions = cloudFunctions ?? CloudFunctionsService();
+  /// For testing - allows dependency injection
+  RequestsService.test({CloudFunctionsService? cloudFunctions})
+    : _cloudFunctions = cloudFunctions ?? CloudFunctionsService();
 
   /// Adds a new blood request via Cloud Functions
   ///
@@ -47,43 +42,19 @@ class RequestsService {
     );
   }
 
-  /// Gets a stream of all blood requests ordered by creation date
+  /// Gets blood requests via Cloud Functions
   ///
-  /// Returns a real-time stream of all blood requests from Firestore,
-  /// ordered by creation date (newest first). The stream automatically
-  /// updates whenever requests are added, modified, or deleted.
-  ///
-  /// Note: This uses direct Firestore access for real-time updates.
-  /// Ensure Firestore security rules restrict read access appropriately.
-  ///
-  /// Returns:
-  /// - A [Stream] of [List<BloodRequest>] that emits whenever the data changes
-  Stream<List<BloodRequest>> getRequestsStream() {
-    return _requestsCollection
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map(
-          (snapshot) => snapshot.docs.map((doc) {
-            return BloodRequest.fromMap(
-              doc.data() as Map<String, dynamic>,
-              doc.id,
-            );
-          }).toList(),
-        );
-  }
-
-  /// Gets blood requests via Cloud Functions (for pagination support)
-  ///
-  /// Fetches blood requests through Cloud Functions with pagination support.
-  /// Use this when you need pagination or when you prefer all operations
-  /// to go through Cloud Functions.
+  /// Security Architecture:
+  /// - All reads go through Cloud Functions (server-side)
+  /// - Server validates user authentication
+  /// - Server ensures proper data filtering and access control
   ///
   /// Parameters:
   /// - [limit]: Maximum number of requests to return (default: 50)
   /// - [lastRequestId]: For pagination, the ID of the last request from previous call
   ///
   /// Returns:
-  /// - A [List<BloodRequest>] and a boolean indicating if there are more requests
+  /// - Map with 'requests' list and 'hasMore' boolean indicating if there are more requests
   Future<Map<String, dynamic>> getRequests({
     int limit = 50,
     String? lastRequestId,
@@ -107,7 +78,4 @@ class RequestsService {
 
     return {'requests': requestsList, 'hasMore': result['hasMore'] as bool};
   }
-
-  // Note: Notification sending is now handled by Cloud Functions
-  // when addRequest is called with isUrgent = true
 }

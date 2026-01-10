@@ -48,7 +48,6 @@ void main() {
     when(() => mockCloud.createPendingProfile(
           role: 'donor',
           fullName: any(named: 'fullName'),
-          bloodType: any(named: 'bloodType'),
           location: any(named: 'location'),
           medicalFileUrl: any(named: 'medicalFileUrl'),
         )).thenAnswer((_) async {
@@ -62,7 +61,6 @@ void main() {
       fullName: 'Donor',
       email: 'donor@test.com',
       password: '123456',
-      bloodType: 'A+',
       location: 'Amman',
     );
 
@@ -72,7 +70,6 @@ void main() {
     verify(() => mockCloud.createPendingProfile(
           role: 'donor',
           fullName: 'Donor',
-          bloodType: 'A+',
           location: 'Amman',
           medicalFileUrl: null,
         )).called(1);

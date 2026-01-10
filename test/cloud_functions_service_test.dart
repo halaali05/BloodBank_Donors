@@ -42,7 +42,6 @@ void main() {
       final result = await service.createPendingProfile(
         role: 'donor',
         fullName: 'Ali',
-        bloodType: 'A+',
         location: 'Amman',
       );
 

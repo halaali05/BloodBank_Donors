@@ -46,6 +46,71 @@ class PasswordResetService {
     }
   }
 
+  /// Confirms password reset with oobCode and new password
+  ///
+  /// Uses the oobCode (out-of-band code) extracted from the password reset
+  /// email link to confirm and apply the new password for the user account.
+  ///
+  /// The oobCode is automatically included in the Firebase Auth password
+  /// reset email link as a URL parameter (e.g., ?oobCode=ABC123).
+  ///
+  /// Flow:
+  /// 1. User requests password reset → receives email with link
+  /// 2. User clicks link → app extracts oobCode from URL
+  /// 3. User enters new password → this method is called with oobCode
+  /// 4. Firebase validates code and updates password server-side
+  ///
+  /// Parameters:
+  /// - [code]: The oobCode extracted from the password reset email link
+  /// - [newPassword]: The new password to set
+  ///
+  /// Returns:
+  /// - [PasswordResetResult] containing success status and a message
+  Future<PasswordResetResult> confirmPasswordReset({
+    required String code,
+    required String newPassword,
+  }) async {
+    if (code.trim().isEmpty) {
+      return const PasswordResetResult(
+        success: false,
+        message: 'Please enter the verification code.',
+      );
+    }
+
+    if (newPassword.isEmpty) {
+      return const PasswordResetResult(
+        success: false,
+        message: 'Please enter a new password.',
+      );
+    }
+
+    if (newPassword.length < 6) {
+      return const PasswordResetResult(
+        success: false,
+        message: 'Password must be at least 6 characters.',
+      );
+    }
+
+    try {
+      await _auth.confirmPasswordReset(
+        code: code.trim(),
+        newPassword: newPassword,
+      );
+      return const PasswordResetResult(
+        success: true,
+        message: 'Your password has been successfully updated.',
+      );
+    } on FirebaseAuthException catch (e) {
+      final message = _getConfirmResetErrorMessage(e.code);
+      return PasswordResetResult(success: false, message: message);
+    } catch (e) {
+      return const PasswordResetResult(
+        success: false,
+        message: 'Something went wrong. Please try again.',
+      );
+    }
+  }
+
   /// Converts Firebase Auth error codes to user-friendly error messages
   ///
   /// Private helper method that maps Firebase Authentication error codes
@@ -66,6 +131,31 @@ class PasswordResetService {
         return 'Too many requests. Please try again later.';
       default:
         return 'Failed to send reset email. Please try again.';
+    }
+  }
+
+  /// Converts Firebase Auth error codes to user-friendly error messages
+  /// for password reset confirmation
+  ///
+  /// Parameters:
+  /// - [code]: The Firebase Auth error code
+  ///
+  /// Returns:
+  /// - A [String] containing a user-friendly error message
+  String _getConfirmResetErrorMessage(String code) {
+    switch (code) {
+      case 'expired-action-code':
+        return 'The verification code has expired. Please request a new password reset.';
+      case 'invalid-action-code':
+        return 'The verification code is invalid. Please check and try again.';
+      case 'weak-password':
+        return 'Password is too weak. Please use at least 6 characters.';
+      case 'user-disabled':
+        return 'This account has been disabled. Please contact support.';
+      case 'user-not-found':
+        return 'No account found. Please check your email address.';
+      default:
+        return 'Failed to reset password. Please try again.';
     }
   }
 }

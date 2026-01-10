@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'login_screen.dart';
+import '../theme/app_theme.dart';
 
+/// First screen users see when opening the app
+/// Shows app branding and "Get Started" button to navigate to login
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
-
-  static const Color deepRed = Color(0xFF7A0009);
 
   @override
   Widget build(BuildContext context) {
@@ -13,7 +14,7 @@ class WelcomeScreen extends StatelessWidget {
     return Scaffold(
       body: Stack(
         children: [
-          // ✅ الخلفية مثل ما هي
+          // Background image (logo)
           Container(
             decoration: const BoxDecoration(
               image: DecorationImage(
@@ -23,7 +24,7 @@ class WelcomeScreen extends StatelessWidget {
             ),
           ),
 
-          // ✅ الطبقة البيضاء مثل ما هي
+          // Semi-transparent white overlay for better text readability
           Container(color: Colors.white.withOpacity(0.78)),
 
           SafeArea(
@@ -37,23 +38,23 @@ class WelcomeScreen extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // ✅ اللوغو الغامق: أقرب أكثر
                         Transform.translate(
-                          offset: const Offset(0, 16), // ✅ نزّل اللوغو لتحت
+                          offset: const Offset(0, 16),
                           child: Image.asset(
                             'images/logoBLOOD.png',
-                            height: h * 0.26, // ✅ كان 0.30 (صغرناه)
+                            height: h * 0.26,
                             fit: BoxFit.contain,
                           ),
                         ),
 
-                        const SizedBox(height: 0), // ✅ صار صفر (لاصق تقريبًا)
+                        const SizedBox(height: 0),
 
+                        // App name/title
                         const Text(
                           'HAYAH',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: deepRed,
+                            color: AppTheme.deepRed,
                             fontSize: 42,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 5,
@@ -62,11 +63,12 @@ class WelcomeScreen extends StatelessWidget {
 
                         const SizedBox(height: 10),
 
+                        // App tagline
                         const Text(
                           'Donate blood, save a Hayah',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: Colors.grey,
+                            color: Color.fromARGB(255, 62, 61, 61),
                             fontSize: 17,
                             height: 1.45,
                           ),
@@ -76,7 +78,7 @@ class WelcomeScreen extends StatelessWidget {
                   ),
                 ),
 
-                // ✅ زر Get Started
+                // "Get Started" button - navigates to login screen
                 Positioned(
                   left: 32,
                   right: 32,
@@ -85,7 +87,7 @@ class WelcomeScreen extends StatelessWidget {
                     height: 52,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: deepRed,
+                        backgroundColor: AppTheme.deepRed,
                         foregroundColor: Colors.white,
                         elevation: 2,
                         shape: const StadiumBorder(),

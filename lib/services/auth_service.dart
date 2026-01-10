@@ -35,7 +35,6 @@ class AuthService {
     required String fullName,
     required String email,
     required String password,
-    required String bloodType,
     required String location,
     String? medicalFileUrl,
   }) async {
@@ -53,34 +52,33 @@ class AuthService {
       await cred.user!.getIdToken(true); // force refresh
 
       // 2) Save pending profile FIRST (before sending email)
-      print('Calling createPendingProfile Cloud Function...');
-      print('  Role: donor');
-      print('  FullName: $fullName');
-      print('  BloodType: $bloodType');
-      print('  Location: $location');
-      print('  User UID: ${cred.user!.uid}');
-      print('  User authenticated: ${_auth.currentUser != null}');
-
       final result = await _cloudFunctions.createPendingProfile(
         role: 'donor',
         fullName: fullName,
-        bloodType: bloodType,
         location: location,
         medicalFileUrl: medicalFileUrl,
       );
 
-      print('createPendingProfile succeeded: $result');
-
       // 3) Send verification email ONLY if Cloud Function succeeded
-      await cred.user!.sendEmailVerification();
+      // Reload user to ensure we have the latest state
+      await cred.user!.reload();
+      try {
+        await cred.user!.sendEmailVerification();
+      } catch (emailError) {
+        // If email sending fails, still return success but note the issue
+        // The account is created and profile is saved, user can request resend later
+        return {
+          'emailVerified': result['emailVerified'] ?? false,
+          'message':
+              'Account created, but verification email could not be sent. Please use "Resend verification email" from login screen.',
+        };
+      }
 
       return {
         'emailVerified': result['emailVerified'] ?? false,
         'message': result['message'] ?? 'Verification email sent',
       };
     } catch (e) {
-      print('❌ Error in signUpDonor: $e');
-      print('  Error type: ${e.runtimeType}');
       rethrow;
     }
   }
@@ -113,23 +111,27 @@ class AuthService {
       await cred.user!.getIdToken(true); // force refresh
 
       // 2) Save pending profile FIRST (before sending email)
-      print('Calling createPendingProfile Cloud Function...');
-      print('  Role: hospital');
-      print('  BloodBankName: $bloodBankName');
-      print('  Location: $location');
-      print('  User UID: ${cred.user!.uid}');
-      print('  User authenticated: ${_auth.currentUser != null}');
-
       final result = await _cloudFunctions.createPendingProfile(
         role: 'hospital',
         bloodBankName: bloodBankName,
         location: location,
       );
 
-      print('createPendingProfile succeeded: $result');
-
       // 3) Send verification email ONLY if Cloud Function succeeded
-      await cred.user!.sendEmailVerification();
+      // Reload user to ensure we have the latest state
+      await cred.user!.reload();
+      try {
+        await cred.user!.sendEmailVerification();
+      } catch (emailError) {
+        // If email sending fails, still return success but note the issue
+        // The account is created and profile is saved, user can request resend later
+        final emailVerified = result['emailVerified'] ?? false;
+        return {
+          'emailVerified': emailVerified,
+          'message':
+              'Account created, but verification email could not be sent. Please use "Resend verification email" from login screen.',
+        };
+      }
 
       final emailVerified = result['emailVerified'] ?? false;
       return {
@@ -137,18 +139,36 @@ class AuthService {
         'message': result['message'] ?? 'Verification email sent',
       };
     } catch (e) {
-      print('❌ Error in signUpBloodBank: $e');
-      print('  Error type: ${e.runtimeType}');
       rethrow;
     }
   }
 
   /// Logs in a user with email and password
+  ///
+  /// Security: All database operations go through Cloud Functions
+  /// No direct Firestore access from client side
   Future<void> login({required String email, required String password}) async {
     await _auth.signInWithEmailAndPassword(
       email: email.trim(),
       password: password,
     );
+
+    // Update last login time via Cloud Function (server-side, non-blocking)
+    // This is used to filter notifications to only logged-in users
+    // Only updates if user document already exists in users collection
+    // Run asynchronously to not block login
+    final user = _auth.currentUser;
+    if (user != null) {
+      // Fire and forget - don't wait for this to complete
+      _cloudFunctions
+          .updateLastLoginAt()
+          .then((_) {
+            // Success - ignore result
+          })
+          .catchError((e) {
+            // Failed to update last login time - non-critical, ignore
+          });
+    }
   }
 
   /// Logs out the current user
@@ -179,7 +199,6 @@ class AuthService {
         userUid,
       );
     } catch (e) {
-      print('❌ getUserData failed: $e');
       return null;
     }
   }
