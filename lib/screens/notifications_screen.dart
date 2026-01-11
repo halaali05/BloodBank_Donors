@@ -19,24 +19,48 @@ import '../widgets/notifications/notification_item_cloud.dart';
 /// NOTE: Real-time updates are achieved through periodic polling (every 10 seconds)
 /// since Cloud Functions cannot return real-time streams.
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key});
+  /// Initial tab index (0 = All, 1 = Unread)
+  final int initialTabIndex;
+
+  const NotificationsScreen({super.key, this.initialTabIndex = 0});
 
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends State<NotificationsScreen> {
+class _NotificationsScreenState extends State<NotificationsScreen>
+    with SingleTickerProviderStateMixin {
   final NotificationsController _controller = NotificationsController();
 
   Timer? _refreshTimer;
   List<Map<String, dynamic>> _notifications = [];
   bool _isLoading = true;
   String? _error;
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(
+      length: 2,
+      initialIndex: widget.initialTabIndex,
+      vsync: this,
+    );
     _loadNotifications();
+
+    // Ensure tab is set to the correct index after the first frame
+    // This handles cases where the widget is rebuilt or navigation happens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.initialTabIndex != 0) {
+        // Use a small delay to ensure the TabBarView is fully built
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted && widget.initialTabIndex < _tabController.length) {
+            // Always animate to the initial tab index to ensure it's set correctly
+            _tabController.animateTo(widget.initialTabIndex);
+          }
+        });
+      }
+    });
 
     // Set up periodic refresh (every 30 seconds) for real-time updates
     // Increased interval to improve performance
@@ -48,8 +72,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   @override
+  void didUpdateWidget(NotificationsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If the initialTabIndex changed, animate to the new tab
+    if (oldWidget.initialTabIndex != widget.initialTabIndex) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _tabController.animateTo(widget.initialTabIndex);
+        }
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _refreshTimer?.cancel();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -140,81 +178,80 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     return Directionality(
       textDirection: TextDirection.ltr,
-      child: DefaultTabController(
-        length: 2,
-        child: Scaffold(
-          backgroundColor: AppTheme.softBg,
-          appBar: AppBar(
-            backgroundColor: Colors.white,
-            foregroundColor: Colors.black87,
-            elevation: 0,
-            centerTitle: true,
-            automaticallyImplyLeading: false,
-            leading: IconButton(
-              tooltip: 'Back',
-              icon: const Icon(Icons.arrow_back_ios_new),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            title: const Text(
-              'Notifications',
-              style: TextStyle(fontWeight: FontWeight.w900),
-            ),
-            actions: [
-              IconButton(
-                tooltip: 'Mark all as read',
-                icon: const Icon(Icons.done_all, color: AppTheme.deepRed),
-                onPressed: _handleMarkAllAsRead,
-              ),
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: Image.asset(
-                  'images/logoBLOOD.png',
-                  height: 34,
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ],
-            bottom: const TabBar(
-              labelColor: AppTheme.deepRed,
-              unselectedLabelColor: Colors.black54,
-              indicatorColor: AppTheme.deepRed,
-              tabs: [
-                Tab(text: 'All'),
-                Tab(text: 'Unread'),
-              ],
-            ),
+      child: Scaffold(
+        backgroundColor: AppTheme.softBg,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black87,
+          elevation: 0,
+          centerTitle: true,
+          automaticallyImplyLeading: false,
+          leading: IconButton(
+            tooltip: 'Back',
+            icon: const Icon(Icons.arrow_back_ios_new),
+            onPressed: () => Navigator.of(context).pop(),
           ),
-          body: _isLoading && _notifications.isEmpty
-              ? const LoadingIndicator()
-              : _error != null
-              ? ErrorBox(title: 'Error loading notifications', message: _error!)
-              : RefreshIndicator(
-                  onRefresh: _loadNotifications,
-                  child: _notifications.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No notifications yet.',
-                            style: TextStyle(color: Colors.black54),
-                          ),
-                        )
-                      : TabBarView(
-                          children: [
-                            _NotificationsList(
-                              notifications: _notifications,
-                              controller: _controller,
-                              onRefresh: _loadNotifications,
-                            ),
-                            _NotificationsList(
-                              notifications: _controller.getUnreadNotifications(
-                                _notifications,
-                              ),
-                              controller: _controller,
-                              onRefresh: _loadNotifications,
-                            ),
-                          ],
-                        ),
-                ),
+          title: const Text(
+            'Notifications',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'Mark all as read',
+              icon: const Icon(Icons.done_all, color: AppTheme.deepRed),
+              onPressed: _handleMarkAllAsRead,
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Image.asset(
+                'images/logoBLOOD.png',
+                height: 34,
+                fit: BoxFit.contain,
+              ),
+            ),
+          ],
+          bottom: TabBar(
+            controller: _tabController,
+            labelColor: AppTheme.deepRed,
+            unselectedLabelColor: Colors.black54,
+            indicatorColor: AppTheme.deepRed,
+            tabs: const [
+              Tab(text: 'All'),
+              Tab(text: 'Unread'),
+            ],
+          ),
         ),
+        body: _isLoading && _notifications.isEmpty
+            ? const LoadingIndicator()
+            : _error != null
+            ? ErrorBox(title: 'Error loading notifications', message: _error!)
+            : RefreshIndicator(
+                onRefresh: _loadNotifications,
+                child: _notifications.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No notifications yet.',
+                          style: TextStyle(color: Colors.black54),
+                        ),
+                      )
+                    : TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _NotificationsList(
+                            notifications: _notifications,
+                            controller: _controller,
+                            onRefresh: _loadNotifications,
+                          ),
+                          _NotificationsList(
+                            notifications: _controller.getUnreadNotifications(
+                              _notifications,
+                            ),
+                            controller: _controller,
+                            onRefresh: _loadNotifications,
+                          ),
+                        ],
+                      ),
+              ),
       ),
     );
   }
@@ -263,11 +300,8 @@ class _NotificationsList extends StatelessWidget {
               ? (id) => controller.markAsRead(id)
               : null,
           onRefresh: () {
-            // Refresh notifications list after marking as read
-            // Use a small delay to ensure Cloud Function has processed the update
-            Future.delayed(const Duration(milliseconds: 300), () {
-              onRefresh();
-            });
+            // Refresh notifications list immediately after marking as read
+            onRefresh();
           },
         );
       },

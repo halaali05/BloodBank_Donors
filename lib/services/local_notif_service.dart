@@ -4,6 +4,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../main.dart';
 import '../screens/welcome_screen.dart';
+import '../screens/notifications_screen.dart';
 import '../screens/donor_dashboard_screen.dart';
 import '../screens/blood_bank_dashboard_screen.dart';
 import '../services/auth_service.dart';
@@ -201,7 +202,7 @@ class LocalNotifService {
       return;
     }
 
-    // If authenticated, navigate to appropriate dashboard based on user role
+    // If authenticated, navigate to notifications screen with Unread tab selected
     try {
       final authService = AuthService();
       final userData = await authService.getUserData(user.uid);
@@ -215,12 +216,23 @@ class LocalNotifService {
         return;
       }
 
-      // Navigate to dashboard based on role
+      // Navigate to dashboard first, then push notifications screen on top
+      // This ensures back button works properly
       if (userData.role == models.UserRole.donor) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const DonorDashboardScreen()),
           (route) => false,
         );
+        // Push notifications screen on top after a short delay to ensure dashboard is built
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (context.mounted) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const NotificationsScreen(initialTabIndex: 1),
+              ),
+            );
+          }
+        });
       } else if (userData.role == models.UserRole.hospital) {
         final bloodBankName = userData.bloodBankName ?? 'Blood Bank';
         final location = userData.location ?? 'Unknown';
@@ -233,6 +245,16 @@ class LocalNotifService {
           ),
           (route) => false,
         );
+        // Push notifications screen on top after a short delay to ensure dashboard is built
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (context.mounted) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const NotificationsScreen(initialTabIndex: 1),
+              ),
+            );
+          }
+        });
       } else {
         // Unknown role, go to welcome screen
         Navigator.of(context).pushAndRemoveUntil(

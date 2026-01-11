@@ -266,7 +266,7 @@ exports.deleteRequest = onCall(async (request) => {
         // Try collection group query first (fastest, requires index)
         // If that fails, fall back to iterating through users (slower, no index needed)
         let notificationsDeleted = 0;
-        
+
         try {
             // Method 1: Try collection group query (requires index but is fastest)
             const notificationsQuery = db
@@ -303,7 +303,7 @@ exports.deleteRequest = onCall(async (request) => {
             // This is slower but ensures notifications are deleted even without index
             console.warn(`[deleteRequest] Collection group query failed: ${notifError.message || notifError}`);
             console.log(`[deleteRequest] Falling back to user-by-user notification deletion...`);
-            
+
             try {
                 // Get all users who might have notifications
                 const usersSnapshot = await db.collection("users").get();
@@ -479,7 +479,7 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
 
                 notificationBatch.set(notificationRef, {
                     title: `Blood request: ${bloodType}`,
-                    body: `Please ${donorName} donate as soon as possible ❤️`,
+                    body: `${data.bloodBankName || "Blood Bank"} needs your help ❤️`,
                     requestId: requestId,
                     createdAt: admin.firestore.FieldValue.serverTimestamp(),
                     read: false,
@@ -509,7 +509,7 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
                 messageBatch.set(messageRef, {
                     senderId: bloodBankId,
                     senderRole: "hospital",
-                    text: `Please ${donorName} donate as soon as possible ❤️`,
+                    text: `Please ${donorName}, ${data.bloodBankName || "Blood Bank"} needs your help ❤️`,
                     recipientId: donorId, // Track which donor this message is for
                     createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
