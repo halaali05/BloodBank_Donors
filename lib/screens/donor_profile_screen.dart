@@ -31,6 +31,8 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
   bool _isEditing = false; // Whether profile is in edit mode
   bool _saving = false; // Show loading while saving
   bool _didInit = false; // Track if form has been initialized
+  bool _profileUpdated =
+      false; // Track if profile was updated during this session
   Timer? _refreshTimer;
   Map<String, dynamic>? _userData;
   bool _isLoading = true;
@@ -116,7 +118,10 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
       await _loadUserProfile();
 
       if (!mounted) return;
-      setState(() => _isEditing = false);
+      setState(() {
+        _isEditing = false;
+        _profileUpdated = true; // Mark that profile was updated
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -151,7 +156,7 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context, _profileUpdated),
         ),
         centerTitle: true,
         title: const Text(

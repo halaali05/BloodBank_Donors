@@ -161,10 +161,16 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
 
   // ------------------ Navigation Handlers ------------------
   /// Navigates to profile screen
-  void _navigateToProfile() {
-    Navigator.of(
+  /// Refreshes user profile when returning if profile was updated
+  Future<void> _navigateToProfile() async {
+    final result = await Navigator.of(
       context,
-    ).push(MaterialPageRoute(builder: (_) => const DonorProfileScreen()));
+    ).push<bool>(MaterialPageRoute(builder: (_) => const DonorProfileScreen()));
+    
+    // If profile was updated, refresh user profile immediately
+    if (result == true && mounted) {
+      _loadUserProfile();
+    }
   }
 
   /// Navigates to notifications screen
