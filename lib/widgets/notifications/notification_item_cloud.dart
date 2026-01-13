@@ -19,7 +19,7 @@ class NotificationItemCloud extends StatelessWidget {
   /// Callback to refresh notifications after marking as read
   final VoidCallback? onRefresh;
 
-  NotificationItemCloud({
+  const NotificationItemCloud({
     super.key,
     required this.notification,
     required this.formatTime,
@@ -45,7 +45,7 @@ class NotificationItemCloud extends StatelessWidget {
     final body = data['body'] as String? ?? '';
 
     // Handle tap to open request details
-    Future<void> _handleCardTap() async {
+    Future<void> handleCardTap() async {
       if (requestId.isEmpty) return;
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
@@ -74,7 +74,7 @@ class NotificationItemCloud extends StatelessWidget {
     }
 
     // Handle message button tap
-    Future<void> _handleMessageTap() async {
+    Future<void> handleMessageTap() async {
       if (requestId.isEmpty) return;
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
@@ -118,7 +118,7 @@ class NotificationItemCloud extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           InkWell(
-            onTap: _handleCardTap,
+            onTap: handleCardTap,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -201,7 +201,7 @@ class NotificationItemCloud extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: ElevatedButton.icon(
-              onPressed: _handleMessageTap,
+              onPressed: handleMessageTap,
               icon: const Icon(Icons.chat_bubble_outline, size: 18),
               label: const Text('Messages'),
               style: AppTheme.primaryButtonStyle(

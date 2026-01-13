@@ -116,7 +116,7 @@ class LocationDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DropdownButtonFormField<String>(
-      value: selectedLocation,
+      initialValue: selectedLocation,
       decoration: AppTheme.underlineInputDecoration(
         hint: 'Location',
         icon: Icons.location_on_outlined,

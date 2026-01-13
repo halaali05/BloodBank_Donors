@@ -402,7 +402,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
 
                       // Hospital location dropdown
                       DropdownButtonFormField<String>(
-                        value: _selectedHospitalLocation,
+                        initialValue: _selectedHospitalLocation,
                         decoration: _decoration(
                           label: 'Hospital location',
                           icon: Icons.location_on_outlined,
