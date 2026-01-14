@@ -12,7 +12,6 @@ class CloudFunctionsService {
     String? fullName,
     String? location,
     String? bloodBankName,
-    String? medicalFileUrl,
   }) async {
     try {
       final callable = _functions.httpsCallable('createPendingProfile');
@@ -31,9 +30,6 @@ class CloudFunctionsService {
         }
         callData['fullName'] = fullName.trim();
         callData['location'] = location.trim();
-        if (medicalFileUrl != null && medicalFileUrl.trim().isNotEmpty) {
-          callData['medicalFileUrl'] = medicalFileUrl.trim();
-        }
       }
 
       // Add hospital-specific fields (required for hospitals)

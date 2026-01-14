@@ -8,6 +8,9 @@
 5. [Sequence Diagrams](#sequence-diagrams)
 6. [State Diagrams](#state-diagrams)
 7. [Component Summary](#component-summary)
+8. [Functions Report](#functions-report)
+
+> **📋 Functions Documentation**: For detailed explanation of all Cloud Functions, their purposes, parameters, and usage sequences, see [FUNCTIONS_REPORT.md](./FUNCTIONS_REPORT.md)
 
 ---
 
@@ -49,48 +52,133 @@ A Flutter-based mobile application that connects blood banks/hospitals with bloo
 
 ### Architecture Layers
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    PRESENTATION LAYER                         │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │   Screens    │  │   Widgets    │  │    Theme     │     │
-│  │   (UI/View)  │  │  (Reusable)  │  │  (Styling)   │     │
-│  └──────┬───────┘  └──────────────┘  └──────────────┘     │
-└─────────┼───────────────────────────────────────────────────┘
-          │
-┌─────────┼───────────────────────────────────────────────────┐
-│         │           BUSINESS LOGIC LAYER                    │
-│  ┌──────▼───────┐  ┌──────────────────┐                   │
-│  │ Controllers  │  │     Utils         │                   │
-│  │ (Logic)      │  │  (Helpers)        │                   │
-│  └──────┬───────┘  └──────────────────┘                   │
-└─────────┼───────────────────────────────────────────────────┘
-          │
-┌─────────┼───────────────────────────────────────────────────┐
-│         │           SERVICE LAYER                           │
-│  ┌──────▼───────┐  ┌──────────────────┐                   │
-│  │   Services   │  │ Cloud Functions  │                   │
-│  │  (API Layer) │  │   Service         │                   │
-│  └──────┬───────┘  └──────────────────┘                   │
-└─────────┼───────────────────────────────────────────────────┘
-          │
-┌─────────┼───────────────────────────────────────────────────┐
-│         │           BACKEND LAYER                         │
-│  ┌──────▼───────┐  ┌──────────────────┐                   │
-│  │ Cloud        │  │   Firebase        │                   │
-│  │ Functions    │  │   Services        │                   │
-│  │ (Server)     │  │   (Auth, FCM)     │                   │
-│  └──────┬───────┘  └──────────────────┘                   │
-└─────────┼───────────────────────────────────────────────────┘
-          │
-┌─────────┼───────────────────────────────────────────────────┐
-│         │           DATA LAYER                             │
-│  ┌──────▼───────┐                                          │
-│  │  Firestore   │                                          │
-│  │  (Database)  │                                          │
-│  └──────────────┘                                          │
-└─────────────────────────────────────────────────────────────┘
-```
+#### Layer 1: 🖥️ UI LAYER (Presentation)
+
+| Component | Location | Description | Connects To |
+|-----------|----------|-------------|-------------|
+| **Screens** | `lib/screens/` | User interface screens | → Controllers |
+| • LoginScreen | `login_screen.dart` | User login interface | LoginController |
+| • RegisterScreen | `register_screen.dart` | User registration interface | RegisterController |
+| • DonorDashboardScreen | `donor_dashboard_screen.dart` | Donor main dashboard | DonorDashboardController |
+| • BloodBankDashboardScreen | `blood_bank_dashboard_screen.dart` | Hospital main dashboard | BloodBankDashboardController |
+| • NewRequestScreen | `new_request_screen.dart` | Create blood request | Direct to Cloud Functions |
+| • RequestDetailsScreen | `request_details_screen.dart` | View request details | Controllers |
+| • ChatScreen | `chat_screen.dart` | Messaging interface | ChatController |
+| • NotificationsScreen | `notifications_screen.dart` | Notifications list | NotificationsController |
+| **Widgets** | `lib/widgets/` | Reusable UI components | Used by Screens |
+| • Auth Widgets | `widgets/auth/` | Login/Register components | Auth Screens |
+| • Dashboard Widgets | `widgets/dashboard/` | Dashboard components | Dashboard Screens |
+| • Chat Widgets | `widgets/chat/` | Chat components | Chat Screen |
+| **Theme** | `lib/theme/` | Application styling | Applied to all Screens |
+| • AppTheme | `app_theme.dart` | Color scheme, typography | All UI components |
+
+---
+
+#### Layer 2: ⚙️ BUSINESS LOGIC LAYER
+
+| Component | Location | Description | Connects To |
+|-----------|----------|-------------|-------------|
+| **Controllers** | `lib/controllers/` | Business logic & validation | → Services |
+| • LoginController | `login_controller.dart` | Login logic, validation | AuthService |
+| • RegisterController | `register_controller.dart` | Registration logic | AuthService |
+| • DonorDashboardController | `donor_dashboard_controller.dart` | Donor dashboard logic | RequestsService, NotificationService |
+| • BloodBankDashboardController | `blood_bank_dashboard_controller.dart` | Hospital dashboard logic | RequestsService |
+| • ChatController | `chat_controller.dart` | Messaging logic | CloudFunctionsService |
+| • NotificationsController | `notifications_controller.dart` | Notifications logic | NotificationService |
+| **Models** | `lib/models/` | Data structures | Used by Controllers & Services |
+| • User | `user_model.dart` | User profile data | All Controllers |
+| • BloodRequest | `blood_request_model.dart` | Blood request data | Request Controllers |
+| • LoginModels | `login_models.dart` | Login form data | LoginController |
+| • RegisterModels | `register_models.dart` | Registration form data | RegisterController |
+| **Utils** | `lib/utils/` | Helper functions | Used by Controllers |
+| • DialogHelper | `dialog_helper.dart` | Dialog utilities | Controllers |
+| • PasswordResetLinkHandler | `password_reset_link_handler.dart` | Password reset handling | ResetPasswordController |
+
+---
+
+#### Layer 3: 🔌 SERVICE LAYER (API)
+
+| Component | Location | Description | Connects To |
+|-----------|----------|-------------|-------------|
+| **Services** | `lib/services/` | API layer & external service calls | → Cloud Functions & Firebase |
+| • AuthService | `auth_service.dart` | Authentication operations | Firebase Auth, CloudFunctionsService |
+| • CloudFunctionsService | `cloud_functions_service.dart` | Cloud Functions client | Firebase Functions |
+| • RequestsService | `requests_service.dart` | Blood request operations | CloudFunctionsService |
+| • NotificationService | `notification_service.dart` | Notification operations | CloudFunctionsService |
+| • FCMService | `fcm_service.dart` | Push notification service | Firebase Cloud Messaging |
+| • LocalNotifService | `local_notif_service.dart` | Local notifications | Flutter Local Notifications |
+| • PasswordResetService | `password_reset_service.dart` | Password reset operations | CloudFunctionsService |
+
+---
+
+#### Layer 4: ☁️ BACKEND LAYER
+
+| Component | Location | Description | Connects To |
+|-----------|----------|-------------|-------------|
+| **Cloud Functions** | `functions/src/` | Server-side business logic | → Firestore |
+| • addRequest | `requests.js` | Create blood request | Firestore: `requests/{id}` |
+| • createPendingProfile | `auth.js` | Create pending user profile | Firestore: `pending_profiles/{uid}` |
+| • completeProfileAfterVerification | `auth.js` | Activate user profile | Firestore: `users/{uid}` |
+| • getUserData | `auth.js` | Get user profile data | Firestore: `users/{uid}` |
+| • updateLastLoginAt | `auth.js` | Update last login timestamp | Firestore: `users/{uid}` |
+| • sendMessage | `chat.js` | Send chat message | Firestore: `requests/{id}/messages` |
+| • getMessages | `chat.js` | Get chat messages | Firestore: `requests/{id}/messages` |
+| • sendRequestMessageToDonors | `requests.js` | Trigger: Notify donors on new request | Firestore: `notifications/{uid}/user_notifications` |
+| • deleteRequest | `requests.js` | Delete blood request | Firestore: `requests/{id}` |
+| **Firebase Services** | Firebase Platform | Firebase managed services | → Firestore |
+| • Firebase Auth | Firebase | User authentication | Firestore: User management |
+| • Firebase Cloud Messaging | Firebase | Push notifications | FCM Tokens in Firestore |
+| • Firebase Functions | Firebase | Serverless functions | Executes Cloud Functions |
+
+---
+
+#### Layer 5: 💾 DATA LAYER
+
+| Component | Location | Description | Used By |
+|-----------|----------|-------------|---------|
+| **Cloud Firestore** | Firebase Platform | NoSQL database | Cloud Functions |
+| • users/{uid} | Collection | Active user profiles | All Cloud Functions |
+| • pending_profiles/{uid} | Collection | Unverified user profiles | createPendingProfile, completeProfileAfterVerification |
+| • requests/{requestId} | Collection | Blood requests | addRequest, deleteRequest, getRequests |
+| • notifications/{userId}/user_notifications | Subcollection | User notifications | sendRequestMessageToDonors, NotificationService |
+| • requests/{requestId}/messages | Subcollection | Chat messages | sendMessage, getMessages |
+
+---
+
+### Key Connections Between Components
+
+**Data Flow:**
+1. **User Interaction** → Screens receive user input
+2. **Screen → Controller** → Screens delegate business logic to Controllers
+3. **Controller → Service** → Controllers call Services for API operations
+4. **Service → Cloud Functions** → Services make HTTP calls to Cloud Functions
+5. **Cloud Functions → Firestore** → Cloud Functions perform database operations
+6. **Firestore Triggers** → Automatic triggers (e.g., `sendRequestMessageToDonors`) respond to data changes
+
+**Key Architectural Principles:**
+- ✅ **Separation of Concerns**: Each layer has a single responsibility
+- ✅ **No Direct Database Access**: All database operations go through Cloud Functions
+- ✅ **Server-Side Validation**: Business rules enforced in Cloud Functions
+- ✅ **Type Safety**: Models ensure data consistency across layers
+- ✅ **Reusability**: Services and Widgets can be reused across features
+
+### ⚠️ Architecture Inconsistency Note
+
+**New Request Flow** currently bypasses the service layer architecture:
+
+- **Login/Register Flow**: `Screen → Controller → Service → CloudFunctionsService → Firebase Functions` ✅
+- **New Request Flow**: `Screen → Firebase Functions` (direct call) ❌
+
+**Why this happened:**
+- `NewRequestScreen` calls `FirebaseFunctions.instanceFor().httpsCallable('addRequest')` directly
+- It bypasses `RequestsService` and `CloudFunctionsService` that already exist
+- This breaks the established MVC pattern
+
+**Recommended fix:**
+- Use `RequestsService.instance.addRequest()` instead of direct Firebase Functions call
+- Or create a `NewRequestController` to follow the same pattern as Login/Register
+
+See [ARCHITECTURE_INCONSISTENCY.md](./ARCHITECTURE_INCONSISTENCY.md) for detailed explanation and fix options.
 
 ### Security Architecture
 - ✅ **All database operations** go through Cloud Functions (server-side)
@@ -728,6 +816,10 @@ A Flutter-based mobile application that connects blood banks/hospitals with bloo
 ---
 
 ## Sequence Diagrams
+
+> **📊 Sequence Diagrams**: 
+> - **Detailed Implementation Diagrams**: For sequence diagrams showing actual method calls and class interactions matching the codebase, see [DETAILED_SEQUENCE_DIAGRAMS.md](./DETAILED_SEQUENCE_DIAGRAMS.md)
+> - **Flow Diagrams**: For comprehensive Mermaid sequence diagrams covering Sign In, Login, Post Request, and Notification flows, see [SEQUENCE_DIAGRAMS.md](./SEQUENCE_DIAGRAMS.md)
 
 ### 1. User Login Sequence
 

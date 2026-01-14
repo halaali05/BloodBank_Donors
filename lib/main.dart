@@ -110,7 +110,7 @@ class HayatApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
-      title: 'Hayat',
+      title: 'Hayah',
       debugShowCheckedModeBanner: false,
       theme: _buildTheme(),
       home: const WelcomeScreen(),

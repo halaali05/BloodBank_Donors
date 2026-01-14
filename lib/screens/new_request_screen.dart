@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import '../theme/app_theme.dart';
+import '../controllers/new_request_controller.dart';
 
 /// Screen for blood banks to create new blood requests
 /// Allows selecting blood type, units, urgency, location, and details
@@ -23,6 +22,9 @@ class NewRequestScreen extends StatefulWidget {
 }
 
 class _NewRequestScreenState extends State<NewRequestScreen> {
+  // Controller for business logic
+  final NewRequestController _controller = NewRequestController();
+
   // Form state
   String _bloodType = 'A+'; // Selected blood type
   int _units = 1; // Number of units needed
@@ -53,105 +55,50 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
   }
 
   /// Submits the blood request to Firebase
-  /// Validates required fields, then calls Cloud Function to create request
+  /// Move business logic to NewRequestController for better maintainability
+  /// Screen → Controller → Service → CloudFunctionsService → Firebase Functions
   Future<void> _submit() async {
-    // Validate required fields
-    if (_selectedHospitalLocation == null ||
-        _selectedHospitalLocation!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select hospital location')),
-      );
-      return;
-    }
-
-    // Verify user is authenticated
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You must be logged in to create a request.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    final requestData = {
-      'requestId': DateTime.now().millisecondsSinceEpoch.toString(),
-      'bloodBankId': uid,
-      'bloodBankName': widget.bloodBankName,
-      'bloodType': _bloodType,
-      'units': _units,
-      'isUrgent': _isUrgent,
-      'details': _detailsController.text.trim(),
-      'hospitalLocation': _selectedHospitalLocation ?? '',
-    };
-
     setState(() => _isLoading = true);
 
     try {
-      final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
-      await functions.httpsCallable('addRequest').call(requestData);
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Request created successfully'),
-          backgroundColor: Colors.green,
-        ),
+      // Move business logic to NewRequestController for better maintainability
+      final result = await _controller.createRequest(
+        bloodBankName: widget.bloodBankName,
+        bloodType: _bloodType,
+        units: _units,
+        isUrgent: _isUrgent,
+        hospitalLocation: _selectedHospitalLocation ?? '',
+        details: _detailsController.text.trim(),
       );
 
-      // ✅ رجوع للداشبورد مباشرة
-      Navigator.of(context).pop();
-    } on FirebaseFunctionsException catch (e) {
       if (!mounted) return;
 
-      String errorMessage = 'Failed to create request. Please try again.';
+      if (result['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Request created successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
 
-      switch (e.code) {
-        case 'permission-denied':
-          errorMessage =
-              'You do not have permission to create requests. Only hospitals can create requests.';
-          break;
-        case 'invalid-argument':
-          errorMessage =
-              e.message ?? 'Please check your request details and try again.';
-          break;
-        case 'unauthenticated':
-          errorMessage = 'Please log in to create a request.';
-          break;
-        case 'internal':
-          errorMessage = 'Server error occurred. Please try again later.';
-          break;
-        default:
-          errorMessage = e.message ?? errorMessage;
+        // ✅ رجوع للداشبورد مباشرة
+        Navigator.of(context).pop();
+      } else {
+        // Show validation or error message from controller
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['errorMessage'] ?? 'Failed to create request'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMessage),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
     } catch (e) {
       if (!mounted) return;
 
-      final errorStr = e.toString().toLowerCase();
-      String errorMessage =
-          'Failed to create request. Please check your internet connection and try again.';
-
-      if (errorStr.contains('network') ||
-          errorStr.contains('connection') ||
-          errorStr.contains('timeout')) {
-        errorMessage =
-            'Network error. Please check your internet connection and try again.';
-      }
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(errorMessage),
+          content: Text('An unexpected error occurred: ${e.toString()}'),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 4),
         ),

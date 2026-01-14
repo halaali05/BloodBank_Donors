@@ -33,7 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // ------------------ Login Handler ------------------
   /// Handles login button press
-  /// Delegates business logic to LoginController
+  /// moves business logic to LoginController
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
@@ -47,7 +47,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Delegate login logic to controller
+      // moves login logic to controller
       final result = await _loginController.login(
         email: email,
         password: password,
@@ -168,7 +168,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   decoration: AppTheme.underlineInputDecoration(
-                    hint: 'Username',
+                    hint: 'E-Mail',
                     icon: Icons.person_outline,
                   ),
                 ),

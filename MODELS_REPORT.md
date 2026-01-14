@@ -53,7 +53,6 @@ class User {
   final String? bloodBankName;   // Optional - Blood bank name
   final String? location;        // Optional - User location
   final String? bloodType;       // Optional - Donor's blood type
-  final String? medicalFileUrl;  // Optional - Medical file URL
   final DateTime? createdAt;     // Optional - Account creation time
 }
 ```

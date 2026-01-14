@@ -36,7 +36,6 @@ class AuthService {
     required String email,
     required String password,
     required String location,
-    String? medicalFileUrl,
   }) async {
     UserCredential cred;
 
@@ -56,7 +55,6 @@ class AuthService {
         role: 'donor',
         fullName: fullName,
         location: location,
-        medicalFileUrl: medicalFileUrl,
       );
 
       // 3) Send verification email ONLY if Cloud Function succeeded

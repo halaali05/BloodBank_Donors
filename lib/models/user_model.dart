@@ -69,9 +69,6 @@ class User {
   /// Blood type (for donors, e.g., 'A+', 'O-')
   final String? bloodType;
 
-  /// URL to medical file/document (for donors)
-  final String? medicalFileUrl;
-
   /// The role of the user (donor or hospital)
   final UserRole role;
 
@@ -86,7 +83,6 @@ class User {
     this.bloodBankName,
     this.location,
     this.bloodType,
-    this.medicalFileUrl,
     this.createdAt,
   });
 
@@ -103,7 +99,6 @@ class User {
       bloodBankName: data['bloodBankName'] as String?,
       location: data['location'] as String?,
       bloodType: data['bloodType'] as String?,
-      medicalFileUrl: data['medicalFileUrl'] as String?,
       createdAt: _parseDate(data['createdAt']),
     );
   }
@@ -117,7 +112,6 @@ class User {
       if (bloodBankName != null) 'bloodBankName': bloodBankName,
       if (location != null) 'location': location,
       if (bloodType != null) 'bloodType': bloodType,
-      if (medicalFileUrl != null) 'medicalFileUrl': medicalFileUrl,
     };
   }
 }

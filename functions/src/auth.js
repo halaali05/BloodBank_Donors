@@ -33,10 +33,6 @@ exports.createPendingProfile = onCall(async (request) => {
         if (role === "donor") {
             payload.fullName = nonEmptyString(data.fullName, "fullName");
             payload.location = nonEmptyString(data.location, "location");
-            payload.medicalFileUrl =
-                typeof data.medicalFileUrl === "string"
-                    ? data.medicalFileUrl.trim()
-                    : null;
         } else {
             payload.bloodBankName = nonEmptyString(
                 data.bloodBankName,
