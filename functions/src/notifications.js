@@ -170,9 +170,6 @@ exports.getMessages = onCall(async (request) => {
       throw new HttpsError("not-found", "User profile not found.");
     }
 
-    const userData = userSnap.data() || {};
-    const userRole = userData.role || "donor";
-
     // Get all messages
     const messagesSnapshot = await requestRef
       .collection("messages")
@@ -389,9 +386,9 @@ exports.sendMessage = onCall(async (request) => {
       `[sendMessage] 🔍 Verification - Message read back from Firestore:`,
       {
         id: verifyDoc.id,
-        recipientId: verifyData ? verifyData.recipientId : null,
-        senderId: verifyData ? verifyData.senderId : null,
-        senderRole: verifyData ? verifyData.senderRole : null,
+        recipientId: verifyData?.recipientId || null,
+        senderId: verifyData?.senderId,
+        senderRole: verifyData?.senderRole,
       },
     );
 

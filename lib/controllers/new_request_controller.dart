@@ -28,10 +28,8 @@ class NewRequestController {
   String? validateRequest({String? hospitalLocation}) {
     final locationError = validateLocation(hospitalLocation);
     if (locationError != null) return locationError;
-
     final authError = validateAuthentication();
     if (authError != null) return authError;
-
     return null;
   }
 

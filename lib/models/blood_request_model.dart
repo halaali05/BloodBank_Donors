@@ -1,10 +1,8 @@
 import 'package:flutter/foundation.dart';
 
+/// Model class representing a blood donation request
 @immutable
 class BloodRequest {
-  final double? hospitalLatitude;
-  final double? hospitalLongitude;
-
   final String id;
   final String bloodBankId;
   final String bloodBankName;
@@ -13,6 +11,8 @@ class BloodRequest {
   final bool isUrgent;
   final String details;
   final String hospitalLocation;
+  final double? hospitalLatitude;
+  final double? hospitalLongitude;
 
   const BloodRequest({
     required this.id,
@@ -51,8 +51,8 @@ class BloodRequest {
       'isUrgent': isUrgent,
       'details': details,
       'hospitalLocation': hospitalLocation,
-      'hospitalLatitude': hospitalLatitude,
-      'hospitalLongitude': hospitalLongitude,
+      if (hospitalLatitude != null) 'hospitalLatitude': hospitalLatitude,
+      if (hospitalLongitude != null) 'hospitalLongitude': hospitalLongitude,
     };
   }
 }

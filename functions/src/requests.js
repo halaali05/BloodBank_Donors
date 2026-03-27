@@ -5,6 +5,10 @@ const { requireAuth, nonEmptyString, toHttpsError } = require("./utils");
 
 const db = admin.firestore();
 
+/**
+ * Haversine formula — calculates distance in km between two GPS coordinates.
+ * (kept for reference but no longer used for filtering)
+ */
 function haversineDistanceKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -14,12 +18,11 @@ function haversineDistanceKm(lat1, lon1, lat2, lon2) {
     Math.cos((lat1 * Math.PI) / 180) *
       Math.cos((lat2 * Math.PI) / 180) *
       Math.sin(dLon / 2) ** 2;
-
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 /**
- * addRequest - hospitals only
+ * addRequest - hospitals only.
  */
 exports.addRequest = onCall(async (request) => {
   try {
@@ -42,7 +45,6 @@ exports.addRequest = onCall(async (request) => {
 
     const units =
       typeof data.units === "number" ? data.units : parseInt(data.units, 10);
-
     if (isNaN(units) || units < 1) {
       throw new HttpsError(
         "invalid-argument",
@@ -78,7 +80,7 @@ exports.addRequest = onCall(async (request) => {
     });
 
     console.log(
-      `[addRequest] Request ${requestId} created. Notifications and messages will be created by trigger.`,
+      `[addRequest] Request ${requestId} created. hospitalLocation=${hospitalLocation}`,
     );
 
     return {
@@ -93,8 +95,7 @@ exports.addRequest = onCall(async (request) => {
 });
 
 /**
- * getDonors - Get list of all donors (hospitals only)
- * Optional: filter by bloodType if provided
+ * getDonors - Get list of all donors (hospitals only).
  */
 exports.getDonors = onCall(async (request) => {
   try {
@@ -120,23 +121,11 @@ exports.getDonors = onCall(async (request) => {
         : null;
 
     let query = db.collection("users").where("role", "==", "donor");
-
     if (bloodType) {
       query = query.where("bloodType", "==", bloodType);
-      console.log(
-        `[getDonors] Hospital ${uid} requesting donors with blood type: ${bloodType}`,
-      );
-    } else {
-      console.log(`[getDonors] Hospital ${uid} requesting all donors`);
     }
 
     const donorsSnapshot = await query.get();
-
-    console.log(
-      `[getDonors] Found ${donorsSnapshot.size} donors${
-        bloodType ? ` with blood type ${bloodType}` : ""
-      }`,
-    );
 
     const donors = donorsSnapshot.docs.map((doc) => {
       const donorData = doc.data();
@@ -149,11 +138,7 @@ exports.getDonors = onCall(async (request) => {
       };
     });
 
-    return {
-      ok: true,
-      donors,
-      count: donors.length,
-    };
+    return { ok: true, donors, count: donors.length };
   } catch (err) {
     console.error("[getDonors] ERROR:", err);
     throw toHttpsError(err, "Failed to get donors list.");
@@ -161,7 +146,7 @@ exports.getDonors = onCall(async (request) => {
 });
 
 /**
- * getRequests - pagination (all requests for donors)
+ * getRequests - pagination (all requests for donors).
  */
 exports.getRequests = onCall(async (request) => {
   try {
@@ -180,7 +165,9 @@ exports.getRequests = onCall(async (request) => {
 
     if (lastRequestId) {
       const lastDoc = await db.collection("requests").doc(lastRequestId).get();
-      if (lastDoc.exists) query = query.startAfter(lastDoc);
+      if (lastDoc.exists) {
+        query = query.startAfter(lastDoc);
+      }
     }
 
     const snapshot = await query.get();
@@ -204,12 +191,11 @@ exports.getRequests = onCall(async (request) => {
 });
 
 /**
- * getRequestsByBloodBankId - Get all requests for a specific blood bank
+ * getRequestsByBloodBankId - Get all requests for a specific blood bank.
  */
 exports.getRequestsByBloodBankId = onCall(async (request) => {
   try {
     const uid = requireAuth(request);
-    const data = request.data || {};
 
     const userSnap = await db.collection("users").doc(uid).get();
     if (!userSnap.exists) {
@@ -250,7 +236,7 @@ exports.getRequestsByBloodBankId = onCall(async (request) => {
 });
 
 /**
- * deleteRequest - delete a blood request (hospitals only, must own the request)
+ * deleteRequest - delete a blood request (hospitals only, must own the request).
  */
 exports.deleteRequest = onCall(async (request) => {
   try {
@@ -294,55 +280,41 @@ exports.deleteRequest = onCall(async (request) => {
       const notificationsQuery = db
         .collectionGroup("user_notifications")
         .where("requestId", "==", requestId);
-
       const notificationsSnapshot = await notificationsQuery.get();
 
       if (!notificationsSnapshot.empty) {
         const batchSize = 500;
         const deletePromises = [];
-
         for (let i = 0; i < notificationsSnapshot.docs.length; i += batchSize) {
           const batch = db.batch();
-          const batchDocs = notificationsSnapshot.docs.slice(i, i + batchSize);
-
-          batchDocs.forEach((doc) => {
+          notificationsSnapshot.docs.slice(i, i + batchSize).forEach((doc) => {
             batch.delete(doc.ref);
             notificationsDeleted++;
           });
-
           deletePromises.push(batch.commit());
         }
-
         if (deletePromises.length > 0) {
           await Promise.all(deletePromises);
         }
-
         console.log(
-          `[deleteRequest] Deleted ${notificationsDeleted} notification(s) using collection group query`,
+          `[deleteRequest] Deleted ${notificationsDeleted} notification(s)`,
         );
       }
     } catch (notifError) {
       console.warn(
-        `[deleteRequest] Collection group query failed: ${notifError.message || notifError}`,
+        `[deleteRequest] Collection group query failed: ${notifError.message}`,
       );
-      console.log(
-        "[deleteRequest] Falling back to user-by-user notification deletion...",
-      );
-
       try {
         const usersSnapshot = await db.collection("users").get();
         const deletePromises = [];
-
         for (const userDoc of usersSnapshot.docs) {
           const userId = userDoc.id;
-          const userNotificationsRef = db
+          const userNotifSnapshot = await db
             .collection("notifications")
             .doc(userId)
             .collection("user_notifications")
-            .where("requestId", "==", requestId);
-
-          const userNotifSnapshot = await userNotificationsRef.get();
-
+            .where("requestId", "==", requestId)
+            .get();
           if (!userNotifSnapshot.empty) {
             const batch = db.batch();
             userNotifSnapshot.docs.forEach((doc) => {
@@ -352,17 +324,12 @@ exports.deleteRequest = onCall(async (request) => {
             deletePromises.push(batch.commit());
           }
         }
-
         if (deletePromises.length > 0) {
           await Promise.all(deletePromises);
         }
-
-        console.log(
-          `[deleteRequest] Deleted ${notificationsDeleted} notification(s) using fallback method`,
-        );
       } catch (fallbackError) {
         console.error(
-          `[deleteRequest] Fallback method also failed: ${fallbackError.message || fallbackError}`,
+          `[deleteRequest] Fallback also failed: ${fallbackError.message}`,
         );
       }
     }
@@ -373,7 +340,6 @@ exports.deleteRequest = onCall(async (request) => {
     if (!messagesSnapshot.empty) {
       const batchSize = 500;
       const messageDeletePromises = [];
-
       for (let i = 0; i < messagesSnapshot.docs.length; i += batchSize) {
         const batch = db.batch();
         messagesSnapshot.docs.slice(i, i + batchSize).forEach((doc) => {
@@ -382,22 +348,14 @@ exports.deleteRequest = onCall(async (request) => {
         });
         messageDeletePromises.push(batch.commit());
       }
-
       if (messageDeletePromises.length > 0) {
         await Promise.all(messageDeletePromises);
       }
-
-      console.log(
-        `[deleteRequest] Deleted ${messagesDeleted} message(s) from request`,
-      );
+      console.log(`[deleteRequest] Deleted ${messagesDeleted} message(s)`);
     }
 
     await requestRef.delete();
     console.log("[deleteRequest] Request document deleted from Firestore");
-
-    console.log(
-      `[deleteRequest] Complete cleanup: ${notificationsDeleted} notifications, ${messagesDeleted} messages, 1 request document`,
-    );
 
     return {
       ok: true,
@@ -417,20 +375,19 @@ exports.deleteRequest = onCall(async (request) => {
 });
 
 /**
- * sendRequestMessageToDonors - Firestore trigger
- * Creates notifications and personalized messages when a new request is created
+ * sendRequestMessageToDonors - Firestore trigger.
+ * ✅ UPDATED: Filters donors by GOVERNORATE (location name) instead of GPS distance.
+ * Only donors in the same governorate as the hospital will receive notifications.
+ * Falls back to notifying ALL donors if hospitalLocation is missing.
  */
 exports.sendRequestMessageToDonors = onDocumentCreated(
-  {
-    document: "requests/{requestId}",
-  },
+  { document: "requests/{requestId}" },
   async (event) => {
     try {
       console.log("[sendRequestMessageToDonors] Trigger fired");
 
       const snapshot = event.data;
       const data = snapshot ? snapshot.data() : null;
-
       if (!data) {
         console.log("[sendRequestMessageToDonors] No data in event, exiting");
         return;
@@ -439,12 +396,13 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
       const requestId = event.params.requestId;
       const bloodType = data.bloodType;
       const bloodBankId = data.bloodBankId;
-      const hospitalLat = data.hospitalLatitude;
-      const hospitalLng = data.hospitalLongitude;
-      const MAX_DISTANCE_KM = 50;
+
+      // ✅ الجديد: استخرج اسم المحافظة من hospitalLocation
+      const hospitalLocation = (data.hospitalLocation || "").trim();
 
       console.log(
-        `[sendRequestMessageToDonors] Processing request: ${requestId}, bloodType: ${bloodType}, bloodBankId: ${bloodBankId}`,
+        `[sendRequestMessageToDonors] Request: ${requestId}, bloodType: ${bloodType}, ` +
+          `hospitalLocation: ${hospitalLocation}`,
       );
 
       const requestRef = db.collection("requests").doc(requestId);
@@ -458,6 +416,7 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
         const donorData = doc.data();
         const fcmToken = donorData.fcmToken;
 
+        // لازم يكون عنده FCM token عشان يستقبل الإشعار
         if (
           !fcmToken ||
           typeof fcmToken !== "string" ||
@@ -466,53 +425,58 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
           return false;
         }
 
-        if (
-          hospitalLat == null ||
-          hospitalLng == null ||
-          donorData.latitude == null ||
-          donorData.longitude == null
-        ) {
-          return false;
+        // ✅ إذا المستشفى ما عنده location، وصّل للكل كـ fallback
+        if (!hospitalLocation) {
+          console.log(
+            `[sendRequestMessageToDonors] No hospitalLocation set, notifying all donors`,
+          );
+          return true;
         }
 
-        const dist = haversineDistanceKm(
-          hospitalLat,
-          hospitalLng,
-          donorData.latitude,
-          donorData.longitude,
+        const donorLocation = (donorData.location || "").trim();
+
+        // إذا المتبرع ما عنده location، اشمله كـ fallback
+        if (!donorLocation) {
+          return true;
+        }
+
+        // ✅ المطابقة الرئيسية: محافظة المتبرع = محافظة المستشفى
+        const sameGovernorate =
+          donorLocation.toLowerCase() === hospitalLocation.toLowerCase();
+
+        console.log(
+          `[sendRequestMessageToDonors] Donor ${doc.id}: ` +
+            `donorLocation="${donorLocation}", hospitalLocation="${hospitalLocation}", ` +
+            `match=${sameGovernorate}`,
         );
 
-        return dist <= MAX_DISTANCE_KM;
+        return sameGovernorate;
       });
 
       console.log(
-        `[sendRequestMessageToDonors] Found ${allDonorsSnapshot.size} total donors, ${activeDonors.length} active/nearby donors`,
+        `[sendRequestMessageToDonors] Total donors: ${allDonorsSnapshot.size}, ` +
+          `matching governorate "${hospitalLocation}": ${activeDonors.length}`,
       );
 
       if (activeDonors.length === 0) {
         console.log(
-          "[sendRequestMessageToDonors] No active donors found, exiting",
+          `[sendRequestMessageToDonors] No donors found in governorate "${hospitalLocation}", exiting`,
         );
         return;
       }
 
       const tokens = [];
       const MAX_BATCH_SIZE = 500;
-
       let notificationBatch = db.batch();
       let messageBatch = db.batch();
       let notificationBatchCount = 0;
       let messageBatchCount = 0;
       const batchPromises = [];
 
+      // ✅ إنشاء الإشعارات للمتبرعين بنفس المحافظة فقط
       for (const donorDoc of activeDonors) {
         const donorData = donorDoc.data();
         const donorId = donorDoc.id;
-        const donorName = donorData.fullName || donorData.name || "Donor";
-
-        console.log(
-          `[sendRequestMessageToDonors] Processing notification for donor: ${donorName} (${donorId})`,
-        );
 
         if (donorData.fcmToken) {
           tokens.push(donorData.fcmToken);
@@ -531,7 +495,6 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           read: false,
         });
-
         notificationBatchCount++;
 
         if (notificationBatchCount >= MAX_BATCH_SIZE) {
@@ -541,14 +504,11 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
         }
       }
 
+      // ✅ إنشاء الرسائل للمتبرعين بنفس المحافظة فقط
       for (const donorDoc of activeDonors) {
         const donorData = donorDoc.data();
         const donorId = donorDoc.id;
         const donorName = donorData.fullName || donorData.name || "Donor";
-
-        console.log(
-          `[sendRequestMessageToDonors] Processing personalized message for donor: ${donorName} (${donorId})`,
-        );
 
         const messageRef = requestRef.collection("messages").doc();
         messageBatch.set(messageRef, {
@@ -558,7 +518,6 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
           recipientId: donorId,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
-
         messageBatchCount++;
 
         if (messageBatchCount >= MAX_BATCH_SIZE) {
@@ -571,22 +530,16 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
       if (notificationBatchCount > 0) {
         batchPromises.push(notificationBatch.commit());
       }
-
       if (messageBatchCount > 0) {
         batchPromises.push(messageBatch.commit());
       }
-
       if (batchPromises.length > 0) {
         await Promise.all(batchPromises);
-        console.log(
-          `[sendRequestMessageToDonors] Successfully created ${activeDonors.length} notifications for active donors`,
-        );
-        console.log(
-          `[sendRequestMessageToDonors] Successfully created ${activeDonors.length} personalized messages for active donors`,
-        );
-      } else {
-        console.log("[sendRequestMessageToDonors] No batches to commit");
       }
+
+      console.log(
+        `[sendRequestMessageToDonors] ✅ Created ${activeDonors.length} notifications and messages`,
+      );
 
       const uniqueTokens = [...new Set(tokens)].filter(
         (t) => typeof t === "string" && t.trim().length > 0,
@@ -602,7 +555,6 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
         const title = data.isUrgent
           ? "Urgent blood request"
           : "New blood request";
-
         const body = `${data.bloodBankName || "Blood Bank"} needs ${
           data.units || ""
         } units (${bloodType})`;
@@ -616,16 +568,11 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
             title,
             body,
           },
-          android: {
-            priority: "high",
-          },
+          android: { priority: "high" },
           apns: {
             payload: {
               aps: {
-                alert: {
-                  title,
-                  body,
-                },
+                alert: { title, body },
                 sound: "default",
                 badge: 1,
               },
@@ -634,41 +581,29 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
         };
 
         await sendInChunks(uniqueTokens, 500, async (chunk) => {
-          const messages = chunk.map((token) => ({
-            ...message,
-            token,
-          }));
-
+          const messages = chunk.map((token) => ({ ...message, token }));
           try {
             const res = await admin.messaging().sendAll(messages);
             console.log(
-              "[Push] sent:",
-              res.successCount,
-              "failed:",
-              res.failureCount,
+              `[Push] sent: ${res.successCount}, failed: ${res.failureCount}`,
             );
-
             res.responses.forEach((r, idx) => {
               if (!r.success) {
                 console.log(
                   "[Push] failed token:",
                   chunk[idx],
-                  r.error ? r.error.message : undefined,
+                  r.error ? r.error.message : "",
                 );
               }
             });
           } catch (err) {
             console.error("[Push] Error sending messages:", err);
-
             for (const token of chunk) {
               try {
-                await admin.messaging().send({
-                  ...message,
-                  token,
-                });
+                await admin.messaging().send({ ...message, token });
               } catch (individualErr) {
                 console.log(
-                  "[Push] Failed to send to token:",
+                  "[Push] Failed for token:",
                   token,
                   individualErr.message,
                 );
@@ -677,11 +612,13 @@ exports.sendRequestMessageToDonors = onDocumentCreated(
           }
         });
       } else {
-        console.log("[Push] No tokens found for donors.");
+        console.log(
+          `[Push] No tokens found for donors in "${hospitalLocation}".`,
+        );
       }
 
       console.log(
-        `[sendRequestMessageToDonors] Successfully sent notifications and personalized messages to ${activeDonors.length} donors`,
+        `[sendRequestMessageToDonors] Done. Notified ${activeDonors.length} donors in "${hospitalLocation}".`,
       );
     } catch (err) {
       console.error("[sendRequestMessageToDonors] ERROR:", err);
