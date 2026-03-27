@@ -12,6 +12,8 @@ class CloudFunctionsService {
     String? fullName,
     String? location,
     String? bloodBankName,
+    double? latitude,
+    double? longitude,
   }) async {
     try {
       final callable = _functions.httpsCallable('createPendingProfile');
@@ -30,6 +32,8 @@ class CloudFunctionsService {
         }
         callData['fullName'] = fullName.trim();
         callData['location'] = location.trim();
+        if (latitude != null) callData['latitude'] = latitude;
+        if (longitude != null) callData['longitude'] = longitude;
       }
 
       // Add hospital-specific fields (required for hospitals)
@@ -45,6 +49,8 @@ class CloudFunctionsService {
         }
         callData['bloodBankName'] = bloodBankName.trim();
         callData['location'] = location.trim();
+        if (latitude != null) callData['latitude'] = latitude;
+        if (longitude != null) callData['longitude'] = longitude;
       }
 
       final result = await callable.call(callData);
@@ -162,6 +168,8 @@ class CloudFunctionsService {
     required bool isUrgent,
     required String hospitalLocation,
     String details = '',
+    double? hospitalLatitude,
+    double? hospitalLongitude,
   }) async {
     try {
       final callable = _functions.httpsCallable('addRequest');
@@ -173,6 +181,8 @@ class CloudFunctionsService {
         'isUrgent': isUrgent,
         'details': details,
         'hospitalLocation': hospitalLocation,
+        if (hospitalLatitude != null) 'hospitalLatitude': hospitalLatitude,
+        if (hospitalLongitude != null) 'hospitalLongitude': hospitalLongitude,
       });
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {

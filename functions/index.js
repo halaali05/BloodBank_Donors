@@ -1,11 +1,11 @@
 const admin = require("firebase-admin");
-const { setGlobalOptions } = require("firebase-functions/v2");
+const {setGlobalOptions} = require("firebase-functions/v2");
 
 // Initialize Firebase Admin
 admin.initializeApp();
 
 // Set global options for all functions
-setGlobalOptions({ region: "us-central1" });
+setGlobalOptions({region: "us-central1"});
 
 // Import and export all functions from separate modules
 const authFunctions = require("./src/auth");
@@ -38,4 +38,4 @@ exports.markNotificationAsRead = notificationFunctions.markNotificationAsRead;
 exports.deleteNotification = notificationFunctions.deleteNotification;
 exports.sendMessage = notificationFunctions.sendMessage;
 exports.cleanupOrphanNotifications = notificationFunctions.cleanupOrphanNotifications;
-exports.cleanupOrphanMessages = notificationFunctions.cleanupOrphanMessages; 
+exports.cleanupOrphanMessages = notificationFunctions.cleanupOrphanMessages;

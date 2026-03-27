@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import '../models/register_models.dart';
+import '../theme/app_theme.dart';
 
 /// Controller for handling registration business logic
 /// Separates business logic from UI for better maintainability
@@ -89,6 +90,10 @@ class RegisterController {
     try {
       Map<String, dynamic> result;
 
+      // Look up GPS coordinates for the selected governorate
+      final double? lat = AppTheme.getLatitude(location);
+      final double? lng = AppTheme.getLongitude(location);
+
       if (userType == UserType.donor) {
         if (name == null || name.trim().isEmpty) {
           return RegisterResult(
@@ -103,6 +108,8 @@ class RegisterController {
           email: email.trim(),
           password: password,
           location: location,
+          latitude: lat,
+          longitude: lng,
         );
       } else {
         // Blood bank registration
@@ -119,6 +126,8 @@ class RegisterController {
           email: email.trim(),
           password: password,
           location: location,
+          latitude: lat,
+          longitude: lng,
         );
       }
 

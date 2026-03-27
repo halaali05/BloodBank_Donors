@@ -36,6 +36,8 @@ class AuthService {
     required String email,
     required String password,
     required String location,
+    double? latitude,
+    double? longitude,
   }) async {
     UserCredential cred;
 
@@ -55,6 +57,8 @@ class AuthService {
         role: 'donor',
         fullName: fullName,
         location: location,
+        latitude: latitude,
+        longitude: longitude,
       );
 
       // 3) Send verification email ONLY if Cloud Function succeeded
@@ -94,6 +98,8 @@ class AuthService {
     required String email,
     required String password,
     required String location,
+    double? latitude,
+    double? longitude,
   }) async {
     UserCredential cred;
 
@@ -113,6 +119,8 @@ class AuthService {
         role: 'hospital',
         bloodBankName: bloodBankName,
         location: location,
+        latitude: latitude,
+        longitude: longitude,
       );
 
       // 3) Send verification email ONLY if Cloud Function succeeded

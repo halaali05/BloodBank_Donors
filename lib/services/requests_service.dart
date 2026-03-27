@@ -39,6 +39,8 @@ class RequestsService {
       isUrgent: request.isUrgent,
       details: request.details,
       hospitalLocation: request.hospitalLocation,
+      hospitalLatitude: request.hospitalLatitude,
+      hospitalLongitude: request.hospitalLongitude,
     );
   }
 

@@ -1,4 +1,4 @@
-const { HttpsError } = require("firebase-functions/v2/https");
+const {HttpsError} = require("firebase-functions/v2/https");
 
 /**
  * Require authenticated caller (v2 callable uses request.auth).
@@ -6,10 +6,10 @@ const { HttpsError } = require("firebase-functions/v2/https");
  * @return {string} uid
  */
 function requireAuth(request) {
-    if (!request || !request.auth) {
-        throw new HttpsError("unauthenticated", "You must be logged in.");
-    }
-    return request.auth.uid;
+  if (!request || !request.auth) {
+    throw new HttpsError("unauthenticated", "You must be logged in.");
+  }
+  return request.auth.uid;
 }
 
 /**
@@ -19,10 +19,10 @@ function requireAuth(request) {
  * @return {string} trimmed string
  */
 function nonEmptyString(v, field) {
-    if (typeof v !== "string" || v.trim().length === 0) {
-        throw new HttpsError("invalid-argument", `${field} is required.`);
-    }
-    return v.trim();
+  if (typeof v !== "string" || v.trim().length === 0) {
+    throw new HttpsError("invalid-argument", `${field} is required.`);
+  }
+  return v.trim();
 }
 
 /**
@@ -32,18 +32,18 @@ function nonEmptyString(v, field) {
  * @return {HttpsError} https error
  */
 function toHttpsError(err, fallbackMessage) {
-    if (err instanceof HttpsError) return err;
+  if (err instanceof HttpsError) return err;
 
-    const msg =
-        err && typeof err.message === "string" && err.message.trim()
-            ? err.message.trim()
-            : fallbackMessage || "Server error occurred.";
+  const msg =
+        err && typeof err.message === "string" && err.message.trim() ?
+            err.message.trim() :
+            fallbackMessage || "Server error occurred.";
 
-    return new HttpsError("internal", msg);
+  return new HttpsError("internal", msg);
 }
 
 module.exports = {
-    requireAuth,
-    nonEmptyString,
-    toHttpsError,
+  requireAuth,
+  nonEmptyString,
+  toHttpsError,
 };

@@ -19,6 +19,31 @@ class AppTheme {
     "Ma'an",
     'Aqaba',
   ];
+
+  /// GPS coordinates (latitude, longitude) for each Jordanian governorate center
+  /// Used to calculate distance between donor and hospital for proximity-based notifications
+  static const Map<String, Map<String, double>> governorateCoordinates = {
+    'Amman': {'lat': 31.9539, 'lng': 35.9106},
+    'Zarqa': {'lat': 32.0728, 'lng': 36.0877},
+    'Irbid': {'lat': 32.5556, 'lng': 35.8500},
+    'Ajloun': {'lat': 32.3325, 'lng': 35.7517},
+    'Jerash': {'lat': 32.2811, 'lng': 35.8997},
+    'Mafraq': {'lat': 32.3419, 'lng': 36.2117},
+    'Balqa': {'lat': 32.0300, 'lng': 35.7289},
+    'Madaba': {'lat': 31.7181, 'lng': 35.7933},
+    'Karak': {'lat': 31.1853, 'lng': 35.7044},
+    'Tafilah': {'lat': 30.8392, 'lng': 35.6042},
+    "Ma'an": {'lat': 30.1969, 'lng': 35.7344},
+    'Aqaba': {'lat': 29.5321, 'lng': 35.0063},
+  };
+
+  /// Returns the latitude for a governorate name, or null if not found
+  static double? getLatitude(String governorate) =>
+      governorateCoordinates[governorate]?['lat'];
+
+  /// Returns the longitude for a governorate name, or null if not found
+  static double? getLongitude(String governorate) =>
+      governorateCoordinates[governorate]?['lng'];
   // ========== Colors ==========
   /// Primary brand color - deep red used for buttons, icons, and accents
   static const Color deepRed = Color(0xFF7A0009);

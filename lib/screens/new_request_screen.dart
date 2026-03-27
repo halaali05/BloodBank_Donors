@@ -69,6 +69,10 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
         isUrgent: _isUrgent,
         hospitalLocation: _selectedHospitalLocation ?? '',
         details: _detailsController.text.trim(),
+        hospitalLatitude: AppTheme.getLatitude(_selectedHospitalLocation ?? ''),
+        hospitalLongitude: AppTheme.getLongitude(
+          _selectedHospitalLocation ?? '',
+        ),
       );
 
       if (!mounted) return;

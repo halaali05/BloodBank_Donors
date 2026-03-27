@@ -63,8 +63,14 @@ class User {
   /// Name of the blood bank (for hospital users)
   final String? bloodBankName;
 
-  /// User's location
+  /// User's location (governorate name)
   final String? location;
+
+  /// Latitude coordinate of the user's location (auto-set from governorate)
+  final double? latitude;
+
+  /// Longitude coordinate of the user's location (auto-set from governorate)
+  final double? longitude;
 
   /// Blood type (for donors, e.g., 'A+', 'O-')
   final String? bloodType;
@@ -82,6 +88,8 @@ class User {
     this.fullName,
     this.bloodBankName,
     this.location,
+    this.latitude,
+    this.longitude,
     this.bloodType,
     this.createdAt,
   });
@@ -91,6 +99,15 @@ class User {
     final roleString = (data['role'] ?? '') as String;
     final role = roleString == 'hospital' ? UserRole.hospital : UserRole.donor;
 
+    // Parse latitude/longitude - may come as int or double from Firestore
+    double? parseDouble(dynamic v) {
+      if (v == null) return null;
+      if (v is double) return v;
+      if (v is int) return v.toDouble();
+      if (v is String) return double.tryParse(v);
+      return null;
+    }
+
     return User(
       uid: uid,
       email: (data['email'] ?? '') as String,
@@ -98,6 +115,8 @@ class User {
       fullName: data['fullName'] as String? ?? data['name'] as String?,
       bloodBankName: data['bloodBankName'] as String?,
       location: data['location'] as String?,
+      latitude: parseDouble(data['latitude']),
+      longitude: parseDouble(data['longitude']),
       bloodType: data['bloodType'] as String?,
       createdAt: _parseDate(data['createdAt']),
     );
@@ -111,6 +130,8 @@ class User {
       if (fullName != null) 'fullName': fullName,
       if (bloodBankName != null) 'bloodBankName': bloodBankName,
       if (location != null) 'location': location,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
       if (bloodType != null) 'bloodType': bloodType,
     };
   }
