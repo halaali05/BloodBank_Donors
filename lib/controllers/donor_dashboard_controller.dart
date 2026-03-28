@@ -84,6 +84,21 @@ class DonorDashboardController {
     }
   }
 
+  /// Records donor accept/reject for a request (Cloud Function).
+  Future<void> submitDonorResponse({
+    required String requestId,
+    required String response,
+  }) async {
+    final r = response.trim().toLowerCase();
+    if (r != 'accepted' && r != 'rejected') {
+      throw Exception('Invalid response');
+    }
+    await _cloudFunctions.setDonorRequestResponse(
+      requestId: requestId,
+      response: r,
+    );
+  }
+
   /// Fetches unread notifications count via Cloud Functions
   ///
   /// Security Architecture:

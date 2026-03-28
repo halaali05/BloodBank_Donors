@@ -6,11 +6,13 @@
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",
-    "deploy": "firebase deploy --only functions",
+    "deploy": "cd .. && firebase deploy --only functions",
+    "deploy:getRequestsByBloodBankId": "cd .. && firebase deploy --only functions:getRequestsByBloodBankId",
+    "deploy:respondersAndDonorLists": "cd .. && firebase deploy --only \"functions:getRequestsByBloodBankId,functions:getRequestDonorResponses\"",
     "logs": "firebase functions:log"
   },
   "engines": {
-    "node": "24"
+    "node": "22"
   },
   "main": "index.js",
   "dependencies": {

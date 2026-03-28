@@ -1,9 +1,41 @@
 const admin = require("firebase-admin");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { requireAuth, nonEmptyString, toHttpsError } = require("./utils");
 
 const db = admin.firestore();
+
+/**
+ * Builds { donorId, fullName, email } from users/{donorId}, with Auth fallback
+ * when Firestore is missing name or email (common for older accounts).
+ */
+async function buildDonorResponseEntry(donorId) {
+  const donorUserSnap = await db.collection("users").doc(donorId).get();
+  const ud = donorUserSnap.exists ? donorUserSnap.data() || {} : {};
+  let fullName =
+    (typeof ud.fullName === "string" && ud.fullName.trim()) ||
+    (typeof ud.name === "string" && ud.name.trim()) ||
+    "";
+  let email = typeof ud.email === "string" ? ud.email.trim() : "";
+  if (!email || !fullName) {
+    try {
+      const authUser = await admin.auth().getUser(donorId);
+      if (!email && typeof authUser.email === "string" && authUser.email) {
+        email = authUser.email.trim();
+      }
+      if (
+        !fullName &&
+        typeof authUser.displayName === "string" &&
+        authUser.displayName.trim()
+      ) {
+        fullName = authUser.displayName.trim();
+      }
+    } catch (_) {
+      // Donor may be deleted from Auth
+    }
+  }
+  if (!fullName) fullName = "Donor";
+  return { donorId, fullName, email };
+}
 
 /**
  * Haversine formula — calculates distance in km between two GPS coordinates.
@@ -66,7 +98,7 @@ exports.addRequest = onCall(async (request) => {
         ? data.hospitalLongitude
         : null;
 
-    await db.collection("requests").doc(requestId).set({
+    const requestPayload = {
       bloodBankId: uid,
       bloodBankName,
       bloodType,
@@ -76,12 +108,37 @@ exports.addRequest = onCall(async (request) => {
       hospitalLocation,
       hospitalLatitude,
       hospitalLongitude,
+      acceptedCount: 0,
+      rejectedCount: 0,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    };
+
+    await db.collection("requests").doc(requestId).set(requestPayload);
 
     console.log(
       `[addRequest] Request ${requestId} created. hospitalLocation=${hospitalLocation}`,
     );
+
+    // Notify donors in the same callable — more reliable than Firestore triggers
+    // (triggers can miss events, use wrong DB, or fail silently).
+    try {
+      await notifyDonorsForNewRequest(requestId, {
+        bloodBankId: uid,
+        bloodBankName,
+        bloodType,
+        units,
+        isUrgent,
+        details,
+        hospitalLocation,
+        hospitalLatitude,
+        hospitalLongitude,
+      });
+    } catch (notifyErr) {
+      console.error(
+        "[addRequest] notifyDonorsForNewRequest failed (request still saved):",
+        notifyErr,
+      );
+    }
 
     return {
       ok: true,
@@ -150,7 +207,7 @@ exports.getDonors = onCall(async (request) => {
  */
 exports.getRequests = onCall(async (request) => {
   try {
-    requireAuth(request);
+    const uid = requireAuth(request);
     const data = request.data || {};
 
     const limit =
@@ -171,17 +228,37 @@ exports.getRequests = onCall(async (request) => {
     }
 
     const snapshot = await query.get();
-    const requests = snapshot.docs.map((doc) => {
-      const d = doc.data() || {};
-      return {
-        id: doc.id,
-        ...d,
-        createdAt:
-          d.createdAt && typeof d.createdAt.toMillis === "function"
-            ? d.createdAt.toMillis()
-            : null,
-      };
-    });
+    const requests = await Promise.all(
+      snapshot.docs.map(async (doc) => {
+        const d = doc.data() || {};
+        let myResponse = null;
+        try {
+          const respSnap = await doc.ref
+            .collection("donorResponses")
+            .doc(uid)
+            .get();
+          if (respSnap.exists) {
+            const st = (respSnap.data() || {}).status;
+            if (st === "accepted" || st === "rejected") {
+              myResponse = st;
+            }
+          }
+        } catch (e) {
+          console.warn("[getRequests] donorResponse read:", e.message);
+        }
+        return {
+          id: doc.id,
+          ...d,
+          acceptedCount: typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
+          rejectedCount: typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
+          myResponse,
+          createdAt:
+            d.createdAt && typeof d.createdAt.toMillis === "function"
+              ? d.createdAt.toMillis()
+              : null,
+        };
+      }),
+    );
 
     return { requests, hasMore: snapshot.docs.length === limit };
   } catch (err) {
@@ -216,22 +293,180 @@ exports.getRequestsByBloodBankId = onCall(async (request) => {
       .orderBy("createdAt", "desc")
       .get();
 
-    const requests = snapshot.docs.map((doc) => {
-      const d = doc.data() || {};
-      return {
-        id: doc.id,
-        ...d,
-        createdAt:
-          d.createdAt && typeof d.createdAt.toMillis === "function"
-            ? d.createdAt.toMillis()
-            : null,
-      };
-    });
+    const requests = await Promise.all(
+      snapshot.docs.map(async (doc) => {
+        const d = doc.data() || {};
+        const responsesSnap = await doc.ref.collection("donorResponses").get();
+        const acceptedDonors = [];
+        const rejectedDonors = [];
+        for (const rdoc of responsesSnap.docs) {
+          const donorId = rdoc.id;
+          const st = (rdoc.data() || {}).status;
+          const entry = await buildDonorResponseEntry(donorId);
+          if (st === "accepted") {
+            acceptedDonors.push(entry);
+          } else if (st === "rejected") {
+            rejectedDonors.push(entry);
+          }
+        }
+        return {
+          id: doc.id,
+          ...d,
+          acceptedCount: typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
+          rejectedCount: typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
+          acceptedDonors,
+          rejectedDonors,
+          createdAt:
+            d.createdAt && typeof d.createdAt.toMillis === "function"
+              ? d.createdAt.toMillis()
+              : null,
+        };
+      }),
+    );
 
     return { requests, count: requests.length };
   } catch (err) {
     console.error("[getRequestsByBloodBankId] ERROR:", err);
     throw toHttpsError(err, "Failed to load requests.");
+  }
+});
+
+/**
+ * setDonorRequestResponse — donors accept or reject a blood request.
+ * Stores per-donor choice under requests/{id}/donorResponses/{uid}
+ * and maintains acceptedCount / rejectedCount on the request document.
+ */
+exports.setDonorRequestResponse = onCall(async (request) => {
+  try {
+    const uid = requireAuth(request);
+    const data = request.data || {};
+    const requestId = nonEmptyString(data.requestId, "requestId");
+    const responseRaw =
+      typeof data.response === "string" ? data.response.trim().toLowerCase() : "";
+    if (responseRaw !== "accepted" && responseRaw !== "rejected") {
+      throw new HttpsError(
+        "invalid-argument",
+        "response must be 'accepted' or 'rejected'",
+      );
+    }
+    const newStatus = responseRaw;
+
+    const userSnap = await db.collection("users").doc(uid).get();
+    const userData = userSnap.exists ? userSnap.data() || {} : {};
+    if (!userSnap.exists || userData.role !== "donor") {
+      throw new HttpsError(
+        "permission-denied",
+        "Only donors can respond to blood requests.",
+      );
+    }
+
+    const requestRef = db.collection("requests").doc(requestId);
+    const responseRef = requestRef.collection("donorResponses").doc(uid);
+
+    await db.runTransaction(async (t) => {
+      const reqSnap = await t.get(requestRef);
+      if (!reqSnap.exists) {
+        throw new HttpsError("not-found", "Request not found.");
+      }
+
+      const respSnap = await t.get(responseRef);
+      const oldStatus = respSnap.exists
+        ? (respSnap.data() || {}).status
+        : null;
+      if (oldStatus !== "accepted" && oldStatus !== "rejected") {
+        // ignore unknown prior values
+      }
+
+      if (oldStatus === newStatus) {
+        return;
+      }
+
+      const rd = reqSnap.data() || {};
+      let accepted = typeof rd.acceptedCount === "number" ? rd.acceptedCount : 0;
+      let rejected = typeof rd.rejectedCount === "number" ? rd.rejectedCount : 0;
+
+      if (oldStatus === "accepted") {
+        accepted = Math.max(0, accepted - 1);
+      } else if (oldStatus === "rejected") {
+        rejected = Math.max(0, rejected - 1);
+      }
+
+      if (newStatus === "accepted") {
+        accepted += 1;
+      } else {
+        rejected += 1;
+      }
+
+      t.update(requestRef, {
+        acceptedCount: accepted,
+        rejectedCount: rejected,
+      });
+
+      t.set(
+        responseRef,
+        {
+          status: newStatus,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    });
+
+    return { ok: true, status: newStatus };
+  } catch (err) {
+    console.error("[setDonorRequestResponse] ERROR:", err);
+    throw toHttpsError(err, "Failed to save response.");
+  }
+});
+
+/**
+ * getRequestDonorResponses — hospital only; donors who accepted / rejected (name + email).
+ */
+exports.getRequestDonorResponses = onCall(async (request) => {
+  try {
+    const uid = requireAuth(request);
+    const data = request.data || {};
+    const requestId = nonEmptyString(data.requestId, "requestId");
+
+    const userSnap = await db.collection("users").doc(uid).get();
+    if (!userSnap.exists || userSnap.data().role !== "hospital") {
+      throw new HttpsError(
+        "permission-denied",
+        "Only hospitals can view donor response lists.",
+      );
+    }
+
+    const requestRef = db.collection("requests").doc(requestId);
+    const requestSnap = await requestRef.get();
+    if (!requestSnap.exists) {
+      throw new HttpsError("not-found", "Request not found.");
+    }
+    if (requestSnap.data().bloodBankId !== uid) {
+      throw new HttpsError(
+        "permission-denied",
+        "You can only view responses for your own requests.",
+      );
+    }
+
+    const responsesSnap = await requestRef.collection("donorResponses").get();
+    const accepted = [];
+    const rejected = [];
+
+    for (const doc of responsesSnap.docs) {
+      const donorId = doc.id;
+      const st = (doc.data() || {}).status;
+      const entry = await buildDonorResponseEntry(donorId);
+      if (st === "accepted") {
+        accepted.push(entry);
+      } else if (st === "rejected") {
+        rejected.push(entry);
+      }
+    }
+
+    return { ok: true, accepted, rejected };
+  } catch (err) {
+    console.error("[getRequestDonorResponses] ERROR:", err);
+    throw toHttpsError(err, "Failed to load donor responses.");
   }
 });
 
@@ -334,6 +569,25 @@ exports.deleteRequest = onCall(async (request) => {
       }
     }
 
+    const responsesSnapshot = await requestRef.collection("donorResponses").get();
+    if (!responsesSnapshot.empty) {
+      const batchSize = 500;
+      const respDeletePromises = [];
+      for (let i = 0; i < responsesSnapshot.docs.length; i += batchSize) {
+        const batch = db.batch();
+        responsesSnapshot.docs.slice(i, i + batchSize).forEach((doc) => {
+          batch.delete(doc.ref);
+        });
+        respDeletePromises.push(batch.commit());
+      }
+      if (respDeletePromises.length > 0) {
+        await Promise.all(respDeletePromises);
+      }
+      console.log(
+        `[deleteRequest] Deleted ${responsesSnapshot.docs.length} donor response(s)`,
+      );
+    }
+
     const messagesSnapshot = await requestRef.collection("messages").get();
     let messagesDeleted = 0;
 
@@ -375,254 +629,261 @@ exports.deleteRequest = onCall(async (request) => {
 });
 
 /**
- * sendRequestMessageToDonors - Firestore trigger.
- * ✅ UPDATED: Filters donors by GOVERNORATE (location name) instead of GPS distance.
- * Only donors in the same governorate as the hospital will receive notifications.
- * Falls back to notifying ALL donors if hospitalLocation is missing.
+ * Normalizes governorate strings for comparison (spacing, apostrophes, case).
  */
-exports.sendRequestMessageToDonors = onDocumentCreated(
-  { document: "requests/{requestId}" },
-  async (event) => {
-    try {
-      console.log("[sendRequestMessageToDonors] Trigger fired");
+function normalizeGovernorateLabel(s) {
+  return (s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[\u2018\u2019]/g, "'");
+}
 
-      const snapshot = event.data;
-      const data = snapshot ? snapshot.data() : null;
-      if (!data) {
-        console.log("[sendRequestMessageToDonors] No data in event, exiting");
-        return;
-      }
+/**
+ * True if donor and hospital are in the same governorate (loose match).
+ */
+function donorMatchesHospitalLocation(donorData, hospitalLocationRaw) {
+  const hospitalLocation = (hospitalLocationRaw || "").trim();
+  if (!hospitalLocation) {
+    return true;
+  }
+  const donorLocation = (donorData.location || "").trim();
+  if (!donorLocation) {
+    return true;
+  }
+  const a = normalizeGovernorateLabel(donorLocation);
+  const b = normalizeGovernorateLabel(hospitalLocation);
+  if (a === b) return true;
+  if (a.length >= 2 && b.length >= 2 && (a.includes(b) || b.includes(a))) {
+    return true;
+  }
+  return false;
+}
 
-      const requestId = event.params.requestId;
-      const bloodType = data.bloodType;
-      const bloodBankId = data.bloodBankId;
+/**
+ * Creates in-app notification docs, request messages, and FCM pushes for donors.
+ * Called directly from addRequest (reliable). Filters by governorate; if no one
+ * matches but donors exist, falls back to all donors so notifications are not silent.
+ */
+async function notifyDonorsForNewRequest(requestId, data) {
+  if (!data || !requestId) {
+    console.log("[notifyDonorsForNewRequest] Missing requestId or data, skip");
+    return;
+  }
 
-      // ✅ الجديد: استخرج اسم المحافظة من hospitalLocation
-      const hospitalLocation = (data.hospitalLocation || "").trim();
+  const bloodType = data.bloodType;
+  const bloodBankId = data.bloodBankId;
+  const hospitalLocation = (data.hospitalLocation || "").trim();
 
-      console.log(
-        `[sendRequestMessageToDonors] Request: ${requestId}, bloodType: ${bloodType}, ` +
-          `hospitalLocation: ${hospitalLocation}`,
-      );
+  console.log(
+    `[notifyDonorsForNewRequest] Request: ${requestId}, bloodType: ${bloodType}, ` +
+      `hospitalLocation: ${hospitalLocation}`,
+  );
 
-      const requestRef = db.collection("requests").doc(requestId);
+  const requestRef = db.collection("requests").doc(requestId);
 
-      const allDonorsSnapshot = await db
-        .collection("users")
-        .where("role", "==", "donor")
-        .get();
+  const allDonorsSnapshot = await db
+    .collection("users")
+    .where("role", "==", "donor")
+    .get();
 
-      const activeDonors = allDonorsSnapshot.docs.filter((doc) => {
-        const donorData = doc.data();
-        const fcmToken = donorData.fcmToken;
+  let eligibleDonors = allDonorsSnapshot.docs.filter((doc) =>
+    donorMatchesHospitalLocation(doc.data(), hospitalLocation),
+  );
 
-        // لازم يكون عنده FCM token عشان يستقبل الإشعار
-        if (
-          !fcmToken ||
-          typeof fcmToken !== "string" ||
-          fcmToken.trim().length === 0
-        ) {
-          return false;
-        }
+  if (!hospitalLocation) {
+    console.log(
+      "[notifyDonorsForNewRequest] No hospitalLocation set, notifying all donors " +
+        `(eligible=${eligibleDonors.length})`,
+    );
+  }
 
-        // ✅ إذا المستشفى ما عنده location، وصّل للكل كـ fallback
-        if (!hospitalLocation) {
-          console.log(
-            `[sendRequestMessageToDonors] No hospitalLocation set, notifying all donors`,
-          );
-          return true;
-        }
+  if (
+    eligibleDonors.length === 0 &&
+    allDonorsSnapshot.size > 0 &&
+    hospitalLocation
+  ) {
+    console.warn(
+      `[notifyDonorsForNewRequest] No governorate match for "${hospitalLocation}"; ` +
+        "falling back to ALL donors so users still get notified.",
+    );
+    eligibleDonors = allDonorsSnapshot.docs;
+  }
 
-        const donorLocation = (donorData.location || "").trim();
+  console.log(
+    `[notifyDonorsForNewRequest] Total donors: ${allDonorsSnapshot.size}, ` +
+      `eligible for this request: ${eligibleDonors.length}`,
+  );
 
-        // إذا المتبرع ما عنده location، اشمله كـ fallback
-        if (!donorLocation) {
-          return true;
-        }
+  if (eligibleDonors.length === 0) {
+    console.log(
+      "[notifyDonorsForNewRequest] No donor users in database, nothing to send",
+    );
+    return;
+  }
 
-        // ✅ المطابقة الرئيسية: محافظة المتبرع = محافظة المستشفى
-        const sameGovernorate =
-          donorLocation.toLowerCase() === hospitalLocation.toLowerCase();
+  const tokens = [];
+  const MAX_BATCH_SIZE = 500;
+  let notificationBatch = db.batch();
+  let messageBatch = db.batch();
+  let notificationBatchCount = 0;
+  let messageBatchCount = 0;
+  const batchPromises = [];
 
-        console.log(
-          `[sendRequestMessageToDonors] Donor ${doc.id}: ` +
-            `donorLocation="${donorLocation}", hospitalLocation="${hospitalLocation}", ` +
-            `match=${sameGovernorate}`,
-        );
+  for (const donorDoc of eligibleDonors) {
+    const donorData = donorDoc.data();
+    const donorId = donorDoc.id;
 
-        return sameGovernorate;
-      });
+    const t = donorData.fcmToken;
+    if (typeof t === "string" && t.trim().length > 0) {
+      tokens.push(t.trim());
+    }
 
-      console.log(
-        `[sendRequestMessageToDonors] Total donors: ${allDonorsSnapshot.size}, ` +
-          `matching governorate "${hospitalLocation}": ${activeDonors.length}`,
-      );
+    const notificationRef = db
+      .collection("notifications")
+      .doc(donorId)
+      .collection("user_notifications")
+      .doc();
 
-      if (activeDonors.length === 0) {
-        console.log(
-          `[sendRequestMessageToDonors] No donors found in governorate "${hospitalLocation}", exiting`,
-        );
-        return;
-      }
+    notificationBatch.set(notificationRef, {
+      title: `Blood request: ${bloodType}`,
+      body: `${data.bloodBankName || "Blood Bank"} needs your help ❤️`,
+      requestId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+    });
+    notificationBatchCount++;
 
-      const tokens = [];
-      const MAX_BATCH_SIZE = 500;
-      let notificationBatch = db.batch();
-      let messageBatch = db.batch();
-      let notificationBatchCount = 0;
-      let messageBatchCount = 0;
-      const batchPromises = [];
+    if (notificationBatchCount >= MAX_BATCH_SIZE) {
+      batchPromises.push(notificationBatch.commit());
+      notificationBatch = db.batch();
+      notificationBatchCount = 0;
+    }
+  }
 
-      // ✅ إنشاء الإشعارات للمتبرعين بنفس المحافظة فقط
-      for (const donorDoc of activeDonors) {
-        const donorData = donorDoc.data();
-        const donorId = donorDoc.id;
+  for (const donorDoc of eligibleDonors) {
+    const donorData = donorDoc.data();
+    const donorId = donorDoc.id;
+    const donorName = donorData.fullName || donorData.name || "Donor";
 
-        if (donorData.fcmToken) {
-          tokens.push(donorData.fcmToken);
-        }
+    const messageRef = requestRef.collection("messages").doc();
+    messageBatch.set(messageRef, {
+      senderId: bloodBankId,
+      senderRole: "hospital",
+      text: `Please ${donorName}, ${data.bloodBankName || "Blood Bank"} needs your help ❤️`,
+      recipientId: donorId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    messageBatchCount++;
 
-        const notificationRef = db
-          .collection("notifications")
-          .doc(donorId)
-          .collection("user_notifications")
-          .doc();
+    if (messageBatchCount >= MAX_BATCH_SIZE) {
+      batchPromises.push(messageBatch.commit());
+      messageBatch = db.batch();
+      messageBatchCount = 0;
+    }
+  }
 
-        notificationBatch.set(notificationRef, {
-          title: `Blood request: ${bloodType}`,
-          body: `${data.bloodBankName || "Blood Bank"} needs your help ❤️`,
-          requestId,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          read: false,
-        });
-        notificationBatchCount++;
+  if (notificationBatchCount > 0) {
+    batchPromises.push(notificationBatch.commit());
+  }
+  if (messageBatchCount > 0) {
+    batchPromises.push(messageBatch.commit());
+  }
+  if (batchPromises.length > 0) {
+    await Promise.all(batchPromises);
+  }
 
-        if (notificationBatchCount >= MAX_BATCH_SIZE) {
-          batchPromises.push(notificationBatch.commit());
-          notificationBatch = db.batch();
-          notificationBatchCount = 0;
-        }
-      }
+  console.log(
+    `[notifyDonorsForNewRequest] Created ${eligibleDonors.length} notifications and messages`,
+  );
 
-      // ✅ إنشاء الرسائل للمتبرعين بنفس المحافظة فقط
-      for (const donorDoc of activeDonors) {
-        const donorData = donorDoc.data();
-        const donorId = donorDoc.id;
-        const donorName = donorData.fullName || donorData.name || "Donor";
+  const uniqueTokens = [...new Set(tokens)].filter(
+    (t) => typeof t === "string" && t.trim().length > 0,
+  );
 
-        const messageRef = requestRef.collection("messages").doc();
-        messageBatch.set(messageRef, {
-          senderId: bloodBankId,
-          senderRole: "hospital",
-          text: `Please ${donorName}, ${data.bloodBankName || "Blood Bank"} needs your help ❤️`,
-          recipientId: donorId,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-        messageBatchCount++;
+  async function sendInChunks(arr, size, fn) {
+    for (let i = 0; i < arr.length; i += size) {
+      await fn(arr.slice(i, i + size));
+    }
+  }
 
-        if (messageBatchCount >= MAX_BATCH_SIZE) {
-          batchPromises.push(messageBatch.commit());
-          messageBatch = db.batch();
-          messageBatchCount = 0;
-        }
-      }
+  if (uniqueTokens.length > 0) {
+    const title = data.isUrgent
+      ? "Urgent blood request"
+      : "New blood request";
+    const body = `${data.bloodBankName || "Blood Bank"} needs ${
+      data.units || ""
+    } units (${bloodType})`;
 
-      if (notificationBatchCount > 0) {
-        batchPromises.push(notificationBatch.commit());
-      }
-      if (messageBatchCount > 0) {
-        batchPromises.push(messageBatch.commit());
-      }
-      if (batchPromises.length > 0) {
-        await Promise.all(batchPromises);
-      }
-
-      console.log(
-        `[sendRequestMessageToDonors] ✅ Created ${activeDonors.length} notifications and messages`,
-      );
-
-      const uniqueTokens = [...new Set(tokens)].filter(
-        (t) => typeof t === "string" && t.trim().length > 0,
-      );
-
-      async function sendInChunks(arr, size, fn) {
-        for (let i = 0; i < arr.length; i += size) {
-          await fn(arr.slice(i, i + size));
-        }
-      }
-
-      if (uniqueTokens.length > 0) {
-        const title = data.isUrgent
-          ? "Urgent blood request"
-          : "New blood request";
-        const body = `${data.bloodBankName || "Blood Bank"} needs ${
-          data.units || ""
-        } units (${bloodType})`;
-
-        const message = {
-          data: {
-            type: "request",
-            requestId,
-            bloodType,
-            isUrgent: data.isUrgent ? "true" : "false",
-            title,
-            body,
+    const message = {
+      notification: { title, body },
+      data: {
+        type: "request",
+        requestId: String(requestId),
+        bloodType: String(bloodType || ""),
+        isUrgent: data.isUrgent ? "true" : "false",
+        title: String(title),
+        body: String(body),
+      },
+      android: {
+        priority: "high",
+        notification: {
+          channelId: "high_importance_channel",
+          sound: "default",
+          defaultSound: true,
+          defaultVibrateTimings: true,
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            alert: { title, body },
+            sound: "default",
+            badge: 1,
           },
-          android: { priority: "high" },
-          apns: {
-            payload: {
-              aps: {
-                alert: { title, body },
-                sound: "default",
-                badge: 1,
-              },
-            },
-          },
-        };
+        },
+      },
+    };
 
-        await sendInChunks(uniqueTokens, 500, async (chunk) => {
-          const messages = chunk.map((token) => ({ ...message, token }));
-          try {
-            const res = await admin.messaging().sendAll(messages);
+    await sendInChunks(uniqueTokens, 500, async (chunk) => {
+      const messages = chunk.map((token) => ({ ...message, token }));
+      try {
+        const res = await admin.messaging().sendAll(messages);
+        console.log(
+          `[Push] sent: ${res.successCount}, failed: ${res.failureCount}`,
+        );
+        res.responses.forEach((r, idx) => {
+          if (!r.success) {
             console.log(
-              `[Push] sent: ${res.successCount}, failed: ${res.failureCount}`,
+              "[Push] failed token:",
+              chunk[idx],
+              r.error ? r.error.message : "",
             );
-            res.responses.forEach((r, idx) => {
-              if (!r.success) {
-                console.log(
-                  "[Push] failed token:",
-                  chunk[idx],
-                  r.error ? r.error.message : "",
-                );
-              }
-            });
-          } catch (err) {
-            console.error("[Push] Error sending messages:", err);
-            for (const token of chunk) {
-              try {
-                await admin.messaging().send({ ...message, token });
-              } catch (individualErr) {
-                console.log(
-                  "[Push] Failed for token:",
-                  token,
-                  individualErr.message,
-                );
-              }
-            }
           }
         });
-      } else {
-        console.log(
-          `[Push] No tokens found for donors in "${hospitalLocation}".`,
-        );
+      } catch (err) {
+        console.error("[Push] Error sending messages:", err);
+        for (const token of chunk) {
+          try {
+            await admin.messaging().send({ ...message, token });
+          } catch (individualErr) {
+            console.log(
+              "[Push] Failed for token:",
+              token,
+              individualErr.message,
+            );
+          }
+        }
       }
+    });
+  } else {
+    console.log(
+      `[Push] No FCM tokens among ${eligibleDonors.length} notified donors (in-app notifications still written).`,
+    );
+  }
 
-      console.log(
-        `[sendRequestMessageToDonors] Done. Notified ${activeDonors.length} donors in "${hospitalLocation}".`,
-      );
-    } catch (err) {
-      console.error("[sendRequestMessageToDonors] ERROR:", err);
-      console.error("[sendRequestMessageToDonors] Error stack:", err.stack);
-    }
-  },
-);
+  console.log(
+    `[notifyDonorsForNewRequest] Done. Eligible: ${eligibleDonors.length}, ` +
+      `FCM tokens: ${uniqueTokens.length}, location="${hospitalLocation}".`,
+  );
+}

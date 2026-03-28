@@ -4,28 +4,25 @@ import '../../theme/app_theme.dart';
 import '../../models/blood_request_model.dart';
 import '../common/urgent_badge.dart';
 
-/// Card widget that displays a blood request
-/// Used in the blood bank dashboard to show all active requests
+/// Card widget that displays a blood request (blood bank dashboard).
 class RequestCard extends StatelessWidget {
-  /// The blood request data to display
   final BloodRequest request;
-  
-  /// Callback when delete button is pressed (only shown to request owner)
   final VoidCallback? onDelete;
-  
-  /// Callback when "View Donors" button is pressed
   final VoidCallback? onViewDonors;
+  final VoidCallback? onTapAcceptances;
+  final VoidCallback? onTapRejections;
 
   const RequestCard({
     super.key,
     required this.request,
     this.onDelete,
     this.onViewDonors,
+    this.onTapAcceptances,
+    this.onTapRejections,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Check if current user owns this request (can delete it)
     final bool canDelete =
         FirebaseAuth.instance.currentUser?.uid == request.bloodBankId;
     final bool isUrgent = request.isUrgent;
@@ -113,6 +110,49 @@ class RequestCard extends StatelessWidget {
                 ),
               ),
             ],
+            if (onTapAcceptances != null || onTapRejections != null) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'Donor responses',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.black54,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 16,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (onTapAcceptances != null)
+                    _CountLink(
+                      icon: Icons.check_circle_outline,
+                      label: 'Acceptances',
+                      count: request.acceptedCount,
+                      color: Colors.green.shade800,
+                      onTap: onTapAcceptances!,
+                    ),
+                  if (onTapRejections != null)
+                    _CountLink(
+                      icon: Icons.cancel_outlined,
+                      label: 'Rejections',
+                      count: request.rejectedCount,
+                      color: Colors.red.shade800,
+                      onTap: onTapRejections!,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Tap a count to see donor names and emails.',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.black.withOpacity(0.45),
+                ),
+              ),
+            ],
             if (onViewDonors != null) ...[
               const SizedBox(height: 10),
               Align(
@@ -135,6 +175,58 @@ class RequestCard extends StatelessWidget {
                 ),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CountLink extends StatelessWidget {
+  const _CountLink({
+    required this.icon,
+    required this.label,
+    required this.count,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final int count;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 6),
+            Text(
+              '$label: ',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+            Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+                color: color,
+                decoration: TextDecoration.underline,
+                decorationColor: color.withOpacity(0.5),
+              ),
+            ),
           ],
         ),
       ),

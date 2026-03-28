@@ -20,7 +20,7 @@ class ChatScreen extends StatefulWidget {
   /// ID of the blood request this chat is associated with
   final String requestId;
 
-  /// Initial message text (not used, kept for compatibility)
+  /// Reserved for callers (e.g. notification body); chat content loads from the server.
   final String initialMessage;
 
   /// Optional: If provided, filters messages to show only those for this specific donor
@@ -73,7 +73,22 @@ class _ChatScreenState extends State<ChatScreen> {
   // ------------------ Initialization ------------------
   /// Initializes chat by loading user role and messages
   Future<void> _initializeChat() async {
-    await _loadUserRole();
+    String? role;
+    try {
+      role = await _controller.getUserRole();
+      if (mounted) {
+        setState(() => _currentUserRole = role);
+      }
+    } catch (_) {
+      // Role optional for loading messages
+    }
+    if (role == 'donor') {
+      try {
+        await _controller.ensureDonorWelcomeMessage(widget.requestId);
+      } catch (_) {
+        // Non-fatal: trigger may have already created the message
+      }
+    }
     _loadMessages();
 
     // Set up periodic refresh (every 10 seconds) for real-time updates
@@ -97,13 +112,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       // Pass recipientId to filter messages when blood bank chats with specific donor
-      final messages = await _controller.fetchMessages(
+      final snapshot = await _controller.fetchMessages(
         widget.requestId,
         filterRecipientId: widget.recipientId,
       );
       if (mounted) {
         setState(() {
-          _messages = messages;
+          _messages = snapshot.messages;
+          _requestOwnerId =
+              snapshot.bloodBankId ?? _requestOwnerId;
           _isLoading = false;
         });
       }
@@ -114,21 +131,6 @@ class _ChatScreenState extends State<ChatScreen> {
           _isLoading = false;
         });
       }
-    }
-  }
-
-  /// Loads the current user's role (donor or hospital)
-  /// Used for message routing logic
-  Future<void> _loadUserRole() async {
-    try {
-      final role = await _controller.getUserRole();
-      if (mounted) {
-        setState(() {
-          _currentUserRole = role;
-        });
-      }
-    } catch (e) {
-      // Error loading user role - continue without it
     }
   }
 

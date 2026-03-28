@@ -80,13 +80,19 @@ class BloodBankDashboardController {
   Future<List<BloodRequest>> fetchRequests() async {
     try {
       final result = await _cloudFunctions.getRequestsByBloodBankId();
-      final requestsData = result['requests'] as List<dynamic>? ?? [];
+      final raw = result['requests'];
+      if (raw is! List) {
+        return [];
+      }
 
-      return requestsData.map((data) {
+      final out = <BloodRequest>[];
+      for (final data in raw) {
+        if (data is! Map) continue;
         final map = Map<String, dynamic>.from(data);
-        final id = map['id'] as String? ?? '';
-        return BloodRequest.fromMap(map, id);
-      }).toList();
+        final id = map['id']?.toString() ?? '';
+        out.add(BloodRequest.fromMap(map, id));
+      }
+      return out;
     } catch (e) {
       throw Exception('Failed to fetch requests: $e');
     }
@@ -105,11 +111,22 @@ class BloodBankDashboardController {
     final urgentCount = requests.where((r) => r.isUrgent).length;
     final normalCount = requests.where((r) => !r.isUrgent).length;
 
+    final totalAccepted = requests.fold<int>(
+      0,
+      (sum, r) => sum + r.acceptedCount,
+    );
+    final totalRejected = requests.fold<int>(
+      0,
+      (sum, r) => sum + r.rejectedCount,
+    );
+
     return {
       'totalUnits': totalUnits,
       'activeCount': requests.length,
       'urgentCount': urgentCount,
       'normalCount': normalCount,
+      'totalAccepted': totalAccepted,
+      'totalRejected': totalRejected,
     };
   }
 }

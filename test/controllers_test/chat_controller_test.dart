@@ -131,13 +131,15 @@ void main() {
           {'text': 'Hello', 'senderId': 'u1'},
           {'text': 'Hi', 'senderId': 'u2'},
         ],
+        'bloodBankId': 'bank1',
       },
     );
 
     final result = await controller.fetchMessages('r1');
 
-    expect(result.length, 2);
-    expect(result.first['text'], 'Hello');
+    expect(result.messages.length, 2);
+    expect(result.messages.first['text'], 'Hello');
+    expect(result.bloodBankId, 'bank1');
   });
 
   // --------------------------------------------------

@@ -128,8 +128,38 @@ void main() {
   expect(stats['totalUnits'], 6);     
   expect(stats['activeCount'], 3);    
   expect(stats['urgentCount'], 2);    
-  expect(stats['normalCount'], 1);    
+  expect(stats['normalCount'], 1);
+  expect(stats['totalAccepted'], 0);
+  expect(stats['totalRejected'], 0);
 });
+
+    test('calculateStatistics sums accept and reject counts', () {
+      final requests = [
+        BloodRequest.fromMap({
+          'bloodBankId': 'b1',
+          'bloodBankName': 'H',
+          'bloodType': 'A+',
+          'units': 1,
+          'isUrgent': false,
+          'acceptedCount': 3,
+          'rejectedCount': 1,
+        }, 'r1'),
+        BloodRequest.fromMap({
+          'bloodBankId': 'b1',
+          'bloodBankName': 'H',
+          'bloodType': 'O+',
+          'units': 1,
+          'isUrgent': false,
+          'acceptedCount': 2,
+          'rejectedCount': 4,
+        }, 'r2'),
+      ];
+
+      final stats = controller.calculateStatistics(requests);
+
+      expect(stats['totalAccepted'], 5);
+      expect(stats['totalRejected'], 5);
+    });
 
 test('verifyRequestOwnership returns true when ids match', () {
   when(() => mockAuth.currentUser).thenReturn(mockUser);

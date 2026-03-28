@@ -225,6 +225,25 @@ class CloudFunctionsService {
     }
   }
 
+  /// Donor accepts or rejects a blood request (counts update for the blood bank).
+  Future<Map<String, dynamic>> setDonorRequestResponse({
+    required String requestId,
+    required String response,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('setDonorRequestResponse');
+      final result = await callable.call({
+        'requestId': requestId,
+        'response': response,
+      });
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
+
   /// Get all notifications for the authenticated user
   ///
   /// Security Architecture:
@@ -269,6 +288,36 @@ class CloudFunctionsService {
         if (filterRecipientId != null && filterRecipientId.isNotEmpty)
           'filterRecipientId': filterRecipientId,
       });
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
+
+  /// Donor: ensures the personalized “Please {name}, {bank} needs your help” message exists.
+  Future<Map<String, dynamic>> ensureDonorWelcomeMessage({
+    required String requestId,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('ensureDonorWelcomeMessage');
+      final result = await callable.call({'requestId': requestId});
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
+
+  /// Hospital: donors who accepted / rejected this request (name + email).
+  Future<Map<String, dynamic>> getRequestDonorResponses({
+    required String requestId,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('getRequestDonorResponses');
+      final result = await callable.call({'requestId': requestId});
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {
       throw _handleFunctionsException(e);

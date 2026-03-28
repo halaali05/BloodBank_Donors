@@ -2,6 +2,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/cloud_functions_service.dart';
 import '../services/auth_service.dart';
 
+/// Result of loading messages for a request (includes blood bank id for routing).
+class ChatMessagesSnapshot {
+  final List<Map<String, dynamic>> messages;
+  final String? bloodBankId;
+
+  const ChatMessagesSnapshot({
+    required this.messages,
+    this.bloodBankId,
+  });
+}
+
 /// Controller for chat screen business logic
 /// Separates business logic from UI for better maintainability
 ///
@@ -43,12 +54,11 @@ class ChatController {
   /// - [filterRecipientId]: Optional. When provided, filters messages to show only those
   ///   for this specific recipient (used when blood bank chats with a specific donor)
   ///
-  /// Returns:
-  /// - List of message maps
+  /// Returns messages and request owner id (blood bank) when present.
   ///
   /// Throws:
   /// - Exception if fetch fails
-  Future<List<Map<String, dynamic>>> fetchMessages(
+  Future<ChatMessagesSnapshot> fetchMessages(
     String requestId, {
     String? filterRecipientId,
   }) async {
@@ -58,11 +68,20 @@ class ChatController {
         filterRecipientId: filterRecipientId,
       );
       final messagesData = result['messages'] as List<dynamic>? ?? [];
+      final bloodBankId = result['bloodBankId'] as String?;
 
-      return messagesData.map((m) => Map<String, dynamic>.from(m)).toList();
+      return ChatMessagesSnapshot(
+        messages: messagesData.map((m) => Map<String, dynamic>.from(m)).toList(),
+        bloodBankId: bloodBankId,
+      );
     } catch (e) {
       throw Exception('Failed to fetch messages: $e');
     }
+  }
+
+  /// Creates the same welcome line as the new-request trigger, if missing.
+  Future<void> ensureDonorWelcomeMessage(String requestId) async {
+    await _cloudFunctions.ensureDonorWelcomeMessage(requestId: requestId);
   }
 
   /// Gets the current user's role (donor or hospital)

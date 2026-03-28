@@ -4,21 +4,30 @@ import '../../models/blood_request_model.dart';
 import '../common/urgent_badge.dart';
 
 /// Card widget that displays a blood request in the donor dashboard
-/// Shows request details and allows donors to start a conversation
+/// Shows request details, accept/reject, and optional Messages action.
 class DonorRequestCard extends StatelessWidget {
-  /// The blood request data to display
   final BloodRequest request;
-
-  /// Callback when "Messages" button is pressed
   final VoidCallback? onMessage;
+  final VoidCallback? onAccept;
+  final VoidCallback? onReject;
+  final bool isSubmittingResponse;
 
-  const DonorRequestCard({super.key, required this.request, this.onMessage});
+  const DonorRequestCard({
+    super.key,
+    required this.request,
+    this.onMessage,
+    this.onAccept,
+    this.onReject,
+    this.isSubmittingResponse = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isUrgent = request.isUrgent == true;
     final cardBg = isUrgent ? AppTheme.urgentCardBg : Colors.white;
     final border = isUrgent ? const Color(0xFFFFCDD2) : const Color(0xFFE6EAF2);
+    final my = request.myResponse;
+    final showResponseRow = onAccept != null && onReject != null;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -103,17 +112,124 @@ class DonorRequestCard extends StatelessWidget {
                     style: const TextStyle(fontSize: 13, height: 1.35),
                   ),
                 ],
-                if (onMessage != null) ...[
+                if (showResponseRow) ...[
                   const SizedBox(height: 10),
+                  if (my == null)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed:
+                                isSubmittingResponse ? null : onReject,
+                            icon: const Icon(Icons.close, size: 15),
+                            label: const Text(
+                              'Reject',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFFC62828),
+                              side: const BorderSide(
+                                color: Color(0xFFC62828),
+                                width: 1,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
+                              ),
+                              minimumSize: const Size(0, 34),
+                              tapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2E7D32),
+                              foregroundColor: Colors.white,
+                              elevation: 1,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
+                              ),
+                              minimumSize: const Size(0, 34),
+                              tapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            onPressed:
+                                isSubmittingResponse ? null : onAccept,
+                            icon: const Icon(Icons.check, size: 15),
+                            label: const Text(
+                              'Accept',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _FinalChoicePill(
+                            icon: Icons.close,
+                            label: 'Reject',
+                            isChosen: my == 'rejected',
+                            isRejectStyle: true,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: _FinalChoicePill(
+                            icon: Icons.check,
+                            label: 'Accept',
+                            isChosen: my == 'accepted',
+                            isRejectStyle: false,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+                if (isSubmittingResponse && showResponseRow)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: LinearProgressIndicator(minHeight: 3),
+                  ),
+                if (onMessage != null) ...[
+                  const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerRight,
                     child: ElevatedButton.icon(
-                      style: AppTheme.primaryButtonStyle(),
+                      style: AppTheme.primaryButtonStyle().copyWith(
+                        padding: WidgetStateProperty.all(
+                          const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                        minimumSize: WidgetStateProperty.all(
+                          const Size(0, 36),
+                        ),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      ),
                       onPressed: onMessage,
-                      icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                      icon: const Icon(Icons.chat_bubble_outline, size: 16),
                       label: const Text(
                         'Messages',
-                        style: TextStyle(fontWeight: FontWeight.w800),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                   ),
@@ -122,6 +238,93 @@ class DonorRequestCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Non-interactive pill matching compact Accept/Reject size; shows final choice.
+class _FinalChoicePill extends StatelessWidget {
+  const _FinalChoicePill({
+    required this.icon,
+    required this.label,
+    required this.isChosen,
+    required this.isRejectStyle,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool isChosen;
+  final bool isRejectStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isRejectStyle) {
+      final border = const Color(0xFFC62828);
+      final fg = isChosen ? border : border.withValues(alpha: 0.35);
+      final bg = isChosen ? const Color(0xFFFFEBEE) : Colors.grey.shade100;
+      return Material(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          height: 34,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: isChosen ? border : Colors.grey.shade400),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: fg),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: fg,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final green = isChosen ? const Color(0xFF1B5E20) : const Color(0xFF2E7D32);
+    final bg = isChosen ? green : Colors.grey.shade400;
+    final fg = Colors.white.withValues(alpha: isChosen ? 1 : 0.9);
+    return Material(
+      color: bg,
+      borderRadius: BorderRadius.circular(8),
+      elevation: isChosen ? 2 : 0,
+      child: SizedBox(
+        height: 34,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: fg),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: fg,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

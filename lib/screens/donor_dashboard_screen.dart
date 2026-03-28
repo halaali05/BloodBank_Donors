@@ -47,6 +47,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
   int _unreadNotificationsCount = 0;
   bool _isLoading = true;
   String? _error;
+  String? _respondingRequestId;
 
   @override
   void initState() {
@@ -182,16 +183,48 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
 
   /// Navigates to chat screen for a specific request
   void _navigateToChat(BloodRequest request) {
-    final currentUserId = _controller.getCurrentUserId();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ChatScreen(
           requestId: request.id,
-          initialMessage: 'Please donate as soon as possible',
-          recipientId: currentUserId,
+          initialMessage: '',
         ),
       ),
     );
+  }
+
+  Future<void> _submitDonorResponse(BloodRequest request, String status) async {
+    if (_respondingRequestId != null) return;
+    if (request.myResponse != null) return;
+    setState(() => _respondingRequestId = request.id);
+    try {
+      await _controller.submitDonorResponse(
+        requestId: request.id,
+        response: status,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            status == 'accepted'
+                ? 'Marked as accepted. The blood bank can see this count.'
+                : 'Marked as declined.',
+          ),
+        ),
+      );
+      await _loadRequests();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _respondingRequestId = null);
+      }
+    }
   }
 
   // ------------------ UI Build ------------------
@@ -272,6 +305,12 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
                           padding: const EdgeInsets.only(bottom: 12),
                           child: DonorRequestCard(
                             request: request,
+                            isSubmittingResponse:
+                                _respondingRequestId == request.id,
+                            onAccept: () =>
+                                _submitDonorResponse(request, 'accepted'),
+                            onReject: () =>
+                                _submitDonorResponse(request, 'rejected'),
                             onMessage: () => _navigateToChat(request),
                           ),
                         ),

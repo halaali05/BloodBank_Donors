@@ -117,7 +117,8 @@ class LocalNotifService {
           showWhen: true,
           autoCancel: true,
           ongoing: false,
-          styleInformation: const BigTextStyleInformation(''),
+          ticker: title,
+          styleInformation: BigTextStyleInformation(body),
         ),
         iOS: const DarwinNotificationDetails(
           presentAlert: true,

@@ -1,5 +1,9 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../controllers/login_controller.dart';
+import '../services/fcm_service.dart';
 import '../models/login_models.dart';
 import '../utils/dialog_helper.dart';
 import '../theme/app_theme.dart';
@@ -56,6 +60,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (result.success && result.navigationRoute != null) {
+        if (!kIsWeb) {
+          unawaited(FCMService.instance.syncPushTokenWithServer());
+        }
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => result.navigationRoute!),
           (route) => false,

@@ -33,11 +33,15 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // Extract notification content from data payload
-    final requestId = message.data['requestId'] as String? ?? '';
-    final title = message.data['title'] as String? ?? 'Blood Request';
+    final requestId = message.data['requestId']?.toString() ?? '';
+    final title =
+        message.data['title']?.toString() ??
+        message.notification?.title ??
+        'Blood Request';
     final body =
-        message.data['body'] as String? ?? 'New blood request available';
+        message.data['body']?.toString() ??
+        message.notification?.body ??
+        'New blood request available';
 
     // Initialize local notification service
     // This must be done in the background handler to ensure channel exists
@@ -57,7 +61,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       await LocalNotifService.instance.show(
         title: 'Blood Request',
         body: 'New blood request available',
-        payload: message.data['requestId'] as String? ?? '',
+        payload: message.data['requestId']?.toString() ?? '',
       );
     } catch (_) {
       // Failed to show fallback notification - silently fail
@@ -84,6 +88,11 @@ void main() async {
   // Register background message handler only on mobile platforms (not web)
   if (!kIsWeb) {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
+
+  // Create Android notification channel before any FCM can arrive (data-only path).
+  if (!kIsWeb) {
+    await LocalNotifService.instance.init();
   }
 
   // Initialize Firebase Cloud Messaging for push notifications

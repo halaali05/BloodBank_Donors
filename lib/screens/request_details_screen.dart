@@ -104,8 +104,6 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
-
     if (_isLoading) {
       return const Scaffold(
         backgroundColor: AppTheme.softBg,
@@ -230,8 +228,7 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
                         MaterialPageRoute(
                           builder: (_) => ChatScreen(
                             requestId: widget.requestId,
-                            initialMessage: 'Please donate as soon as possible',
-                            recipientId: currentUserId,
+                            initialMessage: '',
                           ),
                         ),
                       );

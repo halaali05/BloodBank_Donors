@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'contacts_screen.dart';
 import 'new_request_screen.dart';
 import 'login_screen.dart';
+import 'request_responders_screen.dart';
 import '../models/blood_request_model.dart';
 import '../controllers/blood_bank_dashboard_controller.dart';
 import '../theme/app_theme.dart';
@@ -189,6 +190,10 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                                   .calculateStatistics(_requests)['urgentCount']!,
                               normalCount: _controller
                                   .calculateStatistics(_requests)['normalCount']!,
+                              totalAccepted: _controller
+                                  .calculateStatistics(_requests)['totalAccepted']!,
+                              totalRejected: _controller
+                                  .calculateStatistics(_requests)['totalRejected']!,
                             ),
                           ),
 
@@ -249,6 +254,36 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                                   request: request,
                                   onDelete: () =>
                                       _handleDeleteRequest(context, request),
+                                  onTapAcceptances: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => RequestRespondersScreen(
+                                          requestId: request.id,
+                                          subtitle:
+                                              '${request.bloodType} · ${request.units} units · ${request.bloodBankName}',
+                                          initialTabIndex: 0,
+                                          accepted: request.acceptedDonors,
+                                          rejected: request.rejectedDonors,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  onTapRejections: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => RequestRespondersScreen(
+                                          requestId: request.id,
+                                          subtitle:
+                                              '${request.bloodType} · ${request.units} units · ${request.bloodBankName}',
+                                          initialTabIndex: 1,
+                                          accepted: request.acceptedDonors,
+                                          rejected: request.rejectedDonors,
+                                        ),
+                                      ),
+                                    );
+                                  },
                                   onViewDonors: () {
                                     Navigator.push(
                                       context,
@@ -278,12 +313,16 @@ class _StatsGrid extends StatelessWidget {
     required this.activeCount,
     required this.urgentCount,
     required this.normalCount,
+    required this.totalAccepted,
+    required this.totalRejected,
   });
 
   final int totalUnits;
   final int activeCount;
   final int urgentCount;
   final int normalCount;
+  final int totalAccepted;
+  final int totalRejected;
 
   @override
   Widget build(BuildContext context) {
@@ -320,6 +359,20 @@ class _StatsGrid extends StatelessWidget {
               value: '$normalCount',
               icon: Icons.check_circle,
               tint: const Color(0xFF2E7D32),
+              width: cardWidth,
+            ),
+            StatCard(
+              title: 'Donor acceptances',
+              value: '$totalAccepted',
+              icon: Icons.thumb_up_alt_outlined,
+              tint: const Color(0xFF2E7D32),
+              width: cardWidth,
+            ),
+            StatCard(
+              title: 'Donor rejections',
+              value: '$totalRejected',
+              icon: Icons.thumb_down_alt_outlined,
+              tint: const Color(0xFFC62828),
               width: cardWidth,
             ),
           ],

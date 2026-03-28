@@ -261,15 +261,23 @@ exports.getMessages = onCall(async (request) => {
       // Donor sees:
       // 1. Messages without recipientId (general messages)
       // 2. Messages with recipientId matching their uid (personalized messages)
-      const hasRecipientId = msg.recipientId && msg.recipientId.trim() !== "";
+      const donorUid = String(uid).trim();
+      const msgRecipient = msg.recipientId != null
+        ? String(msg.recipientId).trim()
+        : "";
+      const hasRecipientId = msgRecipient.length > 0;
       if (!hasRecipientId) {
         return true; // General message - visible to all
       }
 
-      return msg.recipientId === uid; // Personalized message - only for this donor
+      return msgRecipient === donorUid;
     });
 
-    return { messages: filteredMessages, count: filteredMessages.length };
+    return {
+      messages: filteredMessages,
+      count: filteredMessages.length,
+      bloodBankId: requestData.bloodBankId || null,
+    };
   } catch (err) {
     console.error("[getMessages] ERROR:", err);
     throw toHttpsError(err, "Failed to load messages.");
@@ -399,6 +407,84 @@ exports.sendMessage = onCall(async (request) => {
   } catch (err) {
     console.error("[sendMessage] ERROR:", err);
     throw toHttpsError(err, "Failed to send message.");
+  }
+});
+
+/**
+ * ensureDonorWelcomeMessage — If this donor has no personalized hospital message
+ * for the request yet, create the same line as sendRequestMessageToDonors (idempotent).
+ * Lets Messages from the donor dashboard match notification/chat content.
+ */
+exports.ensureDonorWelcomeMessage = onCall(async (request) => {
+  try {
+    const uid = requireAuth(request);
+    const data = request.data || {};
+    const requestId = nonEmptyString(data.requestId, "requestId");
+
+    const userSnap = await db.collection("users").doc(uid).get();
+    if (!userSnap.exists) {
+      throw new HttpsError("not-found", "User profile not found.");
+    }
+    const userData = userSnap.data() || {};
+    if (userData.role !== "donor") {
+      throw new HttpsError(
+        "permission-denied",
+        "Only donors can ensure welcome messages.",
+      );
+    }
+
+    const requestRef = db.collection("requests").doc(requestId);
+    const requestSnap = await requestRef.get();
+    if (!requestSnap.exists) {
+      throw new HttpsError("not-found", "Request not found.");
+    }
+
+    const rd = requestSnap.data() || {};
+    const bloodBankId = rd.bloodBankId;
+    if (!bloodBankId || typeof bloodBankId !== "string") {
+      throw new HttpsError("failed-precondition", "Invalid request data.");
+    }
+
+    const snapshot = await requestRef
+      .collection("messages")
+      .orderBy("createdAt", "desc")
+      .limit(80)
+      .get();
+
+    const donorUid = String(uid).trim();
+    const bankId = String(bloodBankId).trim();
+
+    const hasPersonalFromBank = snapshot.docs.some((doc) => {
+      const m = doc.data() || {};
+      const recip =
+        m.recipientId != null ? String(m.recipientId).trim() : "";
+      const send = m.senderId != null ? String(m.senderId).trim() : "";
+      const role = m.senderRole || "";
+      return recip === donorUid && send === bankId && role === "hospital";
+    });
+
+    if (hasPersonalFromBank) {
+      return { ok: true, created: false };
+    }
+
+    const donorName =
+      userData.fullName || userData.name || "Donor";
+    const bloodBankName = rd.bloodBankName || "Blood Bank";
+    const text =
+      `Please ${donorName}, ${bloodBankName} needs your help ❤️`;
+
+    await requestRef.collection("messages").add({
+      senderId: bloodBankId,
+      senderRole: "hospital",
+      recipientId: uid,
+      text,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return { ok: true, created: true };
+  } catch (err) {
+    console.error("[ensureDonorWelcomeMessage] ERROR:", err);
+    throw toHttpsError(err, "Failed to ensure welcome message.");
   }
 });
 
