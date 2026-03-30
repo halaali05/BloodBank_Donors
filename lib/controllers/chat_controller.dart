@@ -129,7 +129,6 @@ class ChatController {
     required String text,
     String? recipientId,
     String? requestOwnerId,
-    String? currentUserRole,
   }) async {
     try {
       final user = getCurrentUser();
@@ -137,33 +136,11 @@ class ChatController {
         throw Exception('User not authenticated');
       }
 
-      // CRITICAL: Preserve recipientId if provided (for personalized messages)
-      // This ensures blood bank messages to specific donors are personalized
-      String? messageRecipientId;
-
-      if (recipientId != null && recipientId.isNotEmpty) {
-        // recipientId is provided - use it (personalized message to specific donor)
-        messageRecipientId = recipientId.trim();
-      } else {
-        // No recipientId provided
-        // Determine if current user is the request owner (blood bank)
-        final isRequestOwner =
-            requestOwnerId != null && requestOwnerId == user.uid;
-
-        if (!isRequestOwner && requestOwnerId != null) {
-          // Donor sending message without recipientId - route to blood bank
-          messageRecipientId = requestOwnerId;
-        }
-        // If blood bank sends without recipientId, messageRecipientId stays null (general message)
-      }
-
-      // CRITICAL: Verify recipientId is not lost
-      if (recipientId != null &&
-          recipientId.isNotEmpty &&
-          messageRecipientId == null) {
-        // Restore it if it was lost
-        messageRecipientId = recipientId.trim();
-      }
+      final messageRecipientId = _resolveRecipientId(
+        currentUserId: user.uid,
+        recipientId: recipientId,
+        requestOwnerId: requestOwnerId,
+      );
 
       await _cloudFunctions.sendMessage(
         requestId: requestId,
@@ -173,6 +150,28 @@ class ChatController {
     } catch (e) {
       throw Exception('Failed to send message: $e');
     }
+  }
+
+  String? _resolveRecipientId({
+    required String currentUserId,
+    String? recipientId,
+    String? requestOwnerId,
+  }) {
+    final trimmedRecipientId = recipientId?.trim();
+    if (trimmedRecipientId != null && trimmedRecipientId.isNotEmpty) {
+      // Personalized message to a specific recipient.
+      return trimmedRecipientId;
+    }
+
+    final isRequestOwner =
+        requestOwnerId != null && requestOwnerId == currentUserId;
+    if (!isRequestOwner && requestOwnerId != null) {
+      // Donor sends to request owner (blood bank) when no explicit recipient is provided.
+      return requestOwnerId;
+    }
+
+    // Request owner sends broadcast message.
+    return null;
   }
 
   // ------------------ Data Processing ------------------

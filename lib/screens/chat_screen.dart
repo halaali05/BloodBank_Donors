@@ -55,7 +55,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // Request and user info
   String? _requestOwnerId; // ID of the blood bank that created the request
-  String? _currentUserRole; // Current user's role (donor or hospital)
 
   @override
   void initState() {
@@ -76,9 +75,6 @@ class _ChatScreenState extends State<ChatScreen> {
     String? role;
     try {
       role = await _controller.getUserRole();
-      if (mounted) {
-        setState(() => _currentUserRole = role);
-      }
     } catch (_) {
       // Role optional for loading messages
     }
@@ -156,7 +152,6 @@ class _ChatScreenState extends State<ChatScreen> {
         text: text,
         recipientId: recipientIdToSend,
         requestOwnerId: _requestOwnerId,
-        currentUserRole: _currentUserRole,
       );
 
       _textController.clear();
@@ -245,30 +240,9 @@ class _ChatScreenState extends State<ChatScreen> {
                               itemCount: _messages.length,
                               itemBuilder: (context, index) {
                                 final msg = _messages[index];
-                                final createdAt = msg['createdAt'];
-                                DateTime? dateTime;
-
-                                // Handle different timestamp formats
-                                if (createdAt != null) {
-                                  if (createdAt is DateTime) {
-                                    dateTime = createdAt;
-                                  } else if (createdAt is int) {
-                                    dateTime =
-                                        DateTime.fromMillisecondsSinceEpoch(
-                                          createdAt,
-                                        );
-                                  } else if (createdAt is Map) {
-                                    // Firestore Timestamp format
-                                    final seconds =
-                                        createdAt['_seconds'] as int?;
-                                    if (seconds != null) {
-                                      dateTime =
-                                          DateTime.fromMillisecondsSinceEpoch(
-                                            seconds * 1000,
-                                          );
-                                    }
-                                  }
-                                }
+                                final dateTime = _parseCreatedAt(
+                                  msg['createdAt'],
+                                );
 
                                 return MessageBubble(
                                   message: msg,
@@ -292,5 +266,20 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
+  }
+
+  DateTime? _parseCreatedAt(dynamic createdAt) {
+    if (createdAt == null) return null;
+    if (createdAt is DateTime) return createdAt;
+    if (createdAt is int) {
+      return DateTime.fromMillisecondsSinceEpoch(createdAt);
+    }
+    if (createdAt is Map) {
+      final seconds = createdAt['_seconds'] as int?;
+      if (seconds != null) {
+        return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+      }
+    }
+    return null;
   }
 }
