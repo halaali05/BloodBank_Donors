@@ -16,6 +16,7 @@ import '../widgets/common/section_header.dart';
 import '../widgets/common/empty_state.dart';
 import '../widgets/dashboard/donor_header.dart';
 import '../widgets/dashboard/donor_request_card.dart';
+import 'donor_map_screen.dart';
 
 /// Main dashboard screen for donors
 ///
@@ -38,8 +39,10 @@ class DonorDashboardScreen extends StatefulWidget {
   State<DonorDashboardScreen> createState() => _DonorDashboardScreenState();
 }
 
-class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
+class _DonorDashboardScreenState extends State<DonorDashboardScreen>
+    with SingleTickerProviderStateMixin {
   final DonorDashboardController _controller = DonorDashboardController();
+  late final TabController _tabController;
   Timer? _refreshTimer;
   Timer? _notificationsTimer;
   List<BloodRequest> _requests = [];
@@ -52,6 +55,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _loadRequests();
     _loadUserProfile();
     _loadUnreadNotificationsCount();
@@ -84,6 +88,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
 
   @override
   void dispose() {
+    _tabController.dispose();
     _refreshTimer?.cancel();
     _notificationsTimer?.cancel();
     super.dispose();
@@ -167,7 +172,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
     final result = await Navigator.of(
       context,
     ).push<bool>(MaterialPageRoute(builder: (_) => const DonorProfileScreen()));
-    
+
     // If profile was updated, refresh user profile immediately
     if (result == true && mounted) {
       _loadUserProfile();
@@ -185,10 +190,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
   void _navigateToChat(BloodRequest request) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ChatScreen(
-          requestId: request.id,
-          initialMessage: '',
-        ),
+        builder: (_) => ChatScreen(requestId: request.id, initialMessage: ''),
       ),
     );
   }
@@ -216,9 +218,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-        ),
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
       );
     } finally {
       if (mounted) {
@@ -247,6 +247,23 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
             ),
           ),
         ),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppTheme.deepRed,
+          labelColor: AppTheme.deepRed,
+          unselectedLabelColor: Colors.black45,
+          labelStyle: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+          ),
+          tabs: const [
+            Tab(
+              icon: Icon(Icons.list_alt_outlined, size: 18),
+              text: 'Requests',
+            ),
+            Tab(icon: Icon(Icons.map_outlined, size: 18), text: 'Map'),
+          ],
+        ),
         actions: [
           // Profile button
           IconButton(
@@ -264,60 +281,70 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
           ),
         ],
       ),
-      body: SafeArea(
-        // FutureBuilder with periodic refresh for real-time updates
-        // All reads go through Cloud Functions (server-side)
-        child: _isLoading && _requests.isEmpty
-            ? const LoadingIndicator()
-            : _error != null
-            ? ErrorBox(title: 'Error loading requests', message: _error!)
-            : RefreshIndicator(
-                onRefresh: _loadRequests,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppTheme.padding,
-                    AppTheme.padding,
-                    AppTheme.padding,
-                    18,
-                  ),
-                  children: [
-                    // Header with donor name and statistics
-                    _buildHeader(user),
-                    const SizedBox(height: 14),
-                    SectionHeader(
-                      title: 'Blood Requests',
-                      subtitle: _requests.isEmpty
-                          ? 'No requests yet'
-                          : 'Latest posts from blood banks',
-                    ),
-                    const SizedBox(height: 10),
-                    // Requests list or empty state
-                    if (_requests.isEmpty)
-                      const EmptyState(
-                        icon: Icons.bloodtype_outlined,
-                        title: 'No blood requests yet',
-                        subtitle:
-                            'When a blood bank posts a request, it will appear here.',
-                      )
-                    else
-                      ..._requests.map(
-                        (request) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: DonorRequestCard(
-                            request: request,
-                            isSubmittingResponse:
-                                _respondingRequestId == request.id,
-                            onAccept: () =>
-                                _submitDonorResponse(request, 'accepted'),
-                            onReject: () =>
-                                _submitDonorResponse(request, 'rejected'),
-                            onMessage: () => _navigateToChat(request),
-                          ),
-                        ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // ── Tab 1: List view ──────────────────────────────────────────────
+          SafeArea(
+            child: _isLoading && _requests.isEmpty
+                ? const LoadingIndicator()
+                : _error != null
+                ? ErrorBox(title: 'Error loading requests', message: _error!)
+                : RefreshIndicator(
+                    onRefresh: _loadRequests,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppTheme.padding,
+                        AppTheme.padding,
+                        AppTheme.padding,
+                        18,
                       ),
-                  ],
-                ),
-              ),
+                      children: [
+                        _buildHeader(user),
+                        const SizedBox(height: 14),
+                        SectionHeader(
+                          title: 'Blood Requests',
+                          subtitle: _requests.isEmpty
+                              ? 'No requests yet'
+                              : 'Latest posts from blood banks',
+                        ),
+                        const SizedBox(height: 10),
+                        if (_requests.isEmpty)
+                          const EmptyState(
+                            icon: Icons.bloodtype_outlined,
+                            title: 'No blood requests yet',
+                            subtitle:
+                                'When a blood bank posts a request, it will appear here.',
+                          )
+                        else
+                          ..._requests.map(
+                            (request) => Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: DonorRequestCard(
+                                request: request,
+                                isSubmittingResponse:
+                                    _respondingRequestId == request.id,
+                                onAccept: () =>
+                                    _submitDonorResponse(request, 'accepted'),
+                                onReject: () =>
+                                    _submitDonorResponse(request, 'rejected'),
+                                onMessage: () => _navigateToChat(request),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+          ),
+
+          // ── Tab 2: Map view ───────────────────────────────────────────────
+          DonorMapScreen(
+            requests: _requests,
+            donorGovernorate: _userProfile?['location'] as String?,
+            respondingRequestId: _respondingRequestId,
+            onRespond: _submitDonorResponse,
+          ),
+        ],
       ),
     );
   }

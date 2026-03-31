@@ -34,6 +34,7 @@ class RegisterController {
     String? name, // Donor's full name
     String? bloodBankName, // Blood bank's name
     String? location,
+    bool bloodBankHasMapPin = false,
   }) {
     if (email.isEmpty || password.isEmpty) {
       return 'Please enter both email and password.';
@@ -63,8 +64,8 @@ class RegisterController {
       if (bloodBankName == null || bloodBankName.trim().isEmpty) {
         return 'Please enter the blood bank name.';
       }
-      if (location == null || location.isEmpty) {
-        return 'Please select the blood bank location.';
+      if (!bloodBankHasMapPin) {
+        return 'Please pin the hospital location on the map.';
       }
     }
 
@@ -86,13 +87,15 @@ class RegisterController {
     String? name,
     String? bloodBankName,
     required String location,
+    double? exactLatitude,
+    double? exactLongitude,
   }) async {
     try {
       Map<String, dynamic> result;
 
-      // Look up GPS coordinates for the selected governorate
-      final double? lat = AppTheme.getLatitude(location);
-      final double? lng = AppTheme.getLongitude(location);
+      // Use exact map coordinates if provided, otherwise fall back to governorate centre
+      final double? lat = exactLatitude ?? AppTheme.getLatitude(location);
+      final double? lng = exactLongitude ?? AppTheme.getLongitude(location);
 
       if (userType == UserType.donor) {
         if (name == null || name.trim().isEmpty) {

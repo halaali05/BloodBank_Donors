@@ -15,12 +15,16 @@ class AppBarWithLogo extends StatelessWidget implements PreferredSizeWidget {
   /// Whether to center the title
   final bool centerTitle;
 
+  /// Optional bottom widget (e.g. TabBar)
+  final PreferredSizeWidget? bottom;
+
   const AppBarWithLogo({
     super.key,
     required this.title,
     this.actions,
     this.leading,
     this.centerTitle = false,
+    this.bottom,
   });
 
   @override
@@ -34,6 +38,7 @@ class AppBarWithLogo extends StatelessWidget implements PreferredSizeWidget {
       centerTitle: centerTitle,
       leading: leading,
       leadingWidth: leading != null ? 90 : null,
+      bottom: bottom,
       title: Row(
         children: [
           if (leading == null)
@@ -55,5 +60,6 @@ class AppBarWithLogo extends StatelessWidget implements PreferredSizeWidget {
   }
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize =>
+      Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0));
 }

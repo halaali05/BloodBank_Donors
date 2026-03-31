@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import '../controllers/register_controller.dart';
 import '../models/register_models.dart';
 import '../utils/dialog_helper.dart';
@@ -6,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../widgets/auth/login_widgets.dart';
 import '../widgets/auth/register_widgets.dart';
 import '../services/auth_service.dart';
+import 'map_location_picker_screen.dart';
 
 /// Registration screen where new users create accounts
 /// Supports both donor and blood bank registration
@@ -35,6 +37,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
 
+  // Map location (for blood bank registration)
+  LatLng? _pickedLatLng;
+  String? _pickedAddressLabel;
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -43,6 +49,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  // ------------------ Map Location Picker ------------------
+  Future<void> _openMapPicker() async {
+    final result = await Navigator.of(context).push<LocationPickerResult>(
+      MaterialPageRoute(
+        builder: (_) =>
+            MapLocationPickerScreen(initialGovernorate: _selectedLocation),
+      ),
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _pickedLatLng = result.coordinates;
+        _pickedAddressLabel = result.displayAddress;
+        // Derive governorate name from the address label for the location field
+        final match = AppTheme.governorateCoordinates.keys.firstWhere(
+          (g) => result.displayAddress.contains(g),
+          orElse: () => '',
+        );
+        if (match.isNotEmpty) _selectedLocation = match;
+      });
+    }
   }
 
   // ------------------ Registration Handler ------------------
@@ -62,6 +90,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       name: _type == UserType.donor ? name : null,
       bloodBankName: _type == UserType.bloodBank ? bloodBankName : null,
       location: _selectedLocation,
+      bloodBankHasMapPin: _pickedLatLng != null,
     );
 
     if (validationError != null) {
@@ -83,6 +112,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
         name: _type == UserType.donor ? name : null,
         bloodBankName: _type == UserType.bloodBank ? bloodBankName : null,
         location: _selectedLocation ?? '',
+        // Pass exact map coordinates for blood bank if picked
+        exactLatitude: _type == UserType.bloodBank
+            ? _pickedLatLng?.latitude
+            : null,
+        exactLongitude: _type == UserType.bloodBank
+            ? _pickedLatLng?.longitude
+            : null,
       );
 
       if (!mounted) return;
@@ -193,12 +229,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  LocationDropdown(
-                    selectedLocation: _selectedLocation,
-                    onChanged: (value) {
-                      setState(() => _selectedLocation = value);
-                    },
-                  ),
+                  // Location: map picker for blood bank, dropdown for donor
+                  if (_type == UserType.donor)
+                    LocationDropdown(
+                      selectedLocation: _selectedLocation,
+                      onChanged: (value) {
+                        setState(() => _selectedLocation = value);
+                      },
+                    )
+                  else
+                    _BloodBankLocationButton(
+                      addressLabel: _pickedAddressLabel,
+                      onTap: _openMapPicker,
+                    ),
                   const SizedBox(height: 22),
                   PrimaryButton(
                     text: 'CREATE ACCOUNT',
@@ -211,6 +254,65 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Button that shows the picked address or a prompt to open the map picker.
+/// Used for blood bank registration only.
+class _BloodBankLocationButton extends StatelessWidget {
+  final String? addressLabel;
+  final VoidCallback onTap;
+
+  const _BloodBankLocationButton({
+    required this.addressLabel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPick = addressLabel != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 54,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: hasPick ? const Color(0xFFFFEBEE) : AppTheme.fieldFill,
+          border: Border(
+            bottom: BorderSide(
+              color: hasPick ? AppTheme.deepRed : AppTheme.lineColor,
+              width: hasPick ? 2 : 1,
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              hasPick ? Icons.location_on : Icons.location_on_outlined,
+              color: hasPick ? AppTheme.deepRed : Colors.grey[600],
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                hasPick ? addressLabel! : 'Tap to pin hospital on map',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: hasPick ? AppTheme.deepRed : Colors.grey[600],
+                  fontWeight: hasPick ? FontWeight.w600 : FontWeight.normal,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Icon(
+              Icons.map_outlined,
+              color: AppTheme.deepRed.withOpacity(0.7),
+              size: 20,
+            ),
+          ],
         ),
       ),
     );
