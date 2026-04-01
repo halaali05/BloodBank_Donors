@@ -61,7 +61,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (result.success && result.navigationRoute != null) {
         if (!kIsWeb) {
-          unawaited(FCMService.instance.syncPushTokenWithServer());
+          try {
+            await FCMService.instance
+                .ensureTokenSynced(attempts: 4, delay: const Duration(seconds: 2))
+                .timeout(const Duration(seconds: 6));
+          } catch (_) {}
         }
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => result.navigationRoute!),

@@ -244,6 +244,21 @@ class CloudFunctionsService {
     }
   }
 
+  /// Hospital marks a request as completed.
+  Future<Map<String, dynamic>> markRequestCompleted({
+    required String requestId,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('markRequestCompleted');
+      final result = await callable.call({'requestId': requestId});
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
+
   /// Get all notifications for the authenticated user
   ///
   /// Security Architecture:

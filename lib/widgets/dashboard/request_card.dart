@@ -11,6 +11,7 @@ class RequestCard extends StatelessWidget {
   final VoidCallback? onViewDonors;
   final VoidCallback? onTapAcceptances;
   final VoidCallback? onTapRejections;
+  final VoidCallback? onMarkCompleted;
 
   const RequestCard({
     super.key,
@@ -19,6 +20,7 @@ class RequestCard extends StatelessWidget {
     this.onViewDonors,
     this.onTapAcceptances,
     this.onTapRejections,
+    this.onMarkCompleted,
   });
 
   @override
@@ -26,6 +28,7 @@ class RequestCard extends StatelessWidget {
     final bool canDelete =
         FirebaseAuth.instance.currentUser?.uid == request.bloodBankId;
     final bool isUrgent = request.isUrgent;
+    final bool isCompleted = request.isCompleted;
 
     return Directionality(
       textDirection: TextDirection.ltr,
@@ -65,6 +68,28 @@ class RequestCard extends StatelessWidget {
                 ),
                 if (isUrgent) ...[
                   const UrgentBadge(),
+                  const SizedBox(width: 6),
+                ],
+                if (isCompleted) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.green.shade300),
+                    ),
+                    child: Text(
+                      'Completed',
+                      style: TextStyle(
+                        color: Colors.green.shade800,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
                   const SizedBox(width: 6),
                 ],
                 if (canDelete && onDelete != null) ...[
@@ -155,24 +180,43 @@ class RequestCard extends StatelessWidget {
             ],
             if (onViewDonors != null) ...[
               const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: onViewDonors,
-                  icon: const Icon(
-                    Icons.people_outline,
-                    size: 16,
-                    color: AppTheme.deepRed,
-                  ),
-                  label: const Text(
-                    'Donors',
-                    style: TextStyle(
-                      fontSize: 12,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (!isCompleted && onMarkCompleted != null)
+                    TextButton.icon(
+                      onPressed: onMarkCompleted,
+                      icon: const Icon(
+                        Icons.check_circle_outline,
+                        size: 16,
+                        color: Colors.green,
+                      ),
+                      label: const Text(
+                        'Complete',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.green,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  TextButton.icon(
+                    onPressed: onViewDonors,
+                    icon: const Icon(
+                      Icons.people_outline,
+                      size: 16,
                       color: AppTheme.deepRed,
-                      fontWeight: FontWeight.w800,
+                    ),
+                    label: const Text(
+                      'Donors',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.deepRed,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
             ],
           ],

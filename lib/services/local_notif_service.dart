@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../main.dart';
@@ -7,6 +8,7 @@ import '../screens/welcome_screen.dart';
 import '../screens/notifications_screen.dart';
 import '../screens/donor_dashboard_screen.dart';
 import '../screens/blood_bank_dashboard_screen.dart';
+import '../screens/chat_screen.dart';
 import '../services/auth_service.dart';
 import '../models/user_model.dart' as models;
 
@@ -133,7 +135,25 @@ class LocalNotifService {
   /// Handle notification click and navigate based on authentication state
   /// - If authenticated: Navigate to appropriate dashboard (donor or blood bank)
   /// - If not authenticated: Navigate to welcome screen
-  void _handleNotificationClick(String requestId) async {
+  void _handleNotificationClick(String payload) async {
+    String requestId = '';
+    String type = 'request';
+    String senderId = '';
+    String recipientId = '';
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is Map<String, dynamic>) {
+        requestId = decoded['requestId']?.toString() ?? '';
+        type = decoded['type']?.toString() ?? 'request';
+        senderId = decoded['senderId']?.toString() ?? '';
+        recipientId = decoded['recipientId']?.toString() ?? '';
+      } else {
+        requestId = payload;
+      }
+    } catch (_) {
+      requestId = payload;
+    }
+
     final context = navigatorKey.currentContext;
     if (context == null) {
       // Navigator context not available yet - retry after a short delay
@@ -217,8 +237,56 @@ class LocalNotifService {
         return;
       }
 
-      // Navigate to dashboard first, then push notifications screen on top
-      // This ensures back button works properly
+      // Chat notifications open chat directly; request notifications open list.
+      if (type == 'chat' && requestId.isNotEmpty) {
+        if (userData.role == models.UserRole.donor) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const DonorDashboardScreen()),
+            (route) => false,
+          );
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (context.mounted) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      ChatScreen(requestId: requestId, initialMessage: ''),
+                ),
+              );
+            }
+          });
+          return;
+        }
+        if (userData.role == models.UserRole.hospital) {
+          final bloodBankName = userData.bloodBankName ?? 'Blood Bank';
+          final location = userData.location ?? 'Unknown';
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (_) => BloodBankDashboardScreen(
+                bloodBankName: bloodBankName,
+                location: location,
+              ),
+            ),
+            (route) => false,
+          );
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (context.mounted) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ChatScreen(
+                    requestId: requestId,
+                    initialMessage: '',
+                    recipientId: senderId.isNotEmpty
+                        ? senderId
+                        : (recipientId.isNotEmpty ? recipientId : null),
+                  ),
+                ),
+              );
+            }
+          });
+          return;
+        }
+      }
+
       if (userData.role == models.UserRole.donor) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const DonorDashboardScreen()),

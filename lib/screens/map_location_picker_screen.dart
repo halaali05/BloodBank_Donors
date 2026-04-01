@@ -1,8 +1,10 @@
 import 'dart:ui' as ui;
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import '../theme/app_theme.dart';
 
 /// Result returned from the map location picker
@@ -34,9 +36,11 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
   static const LatLng _jordanCenter = LatLng(31.9539, 35.9106);
 
   final MapController _mapController = MapController();
+  final TextEditingController _searchController = TextEditingController();
 
   LatLng? _pickedLocation;
   bool _locating = false;
+  double _currentZoom = 12;
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -51,6 +55,18 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
   LatLng get _initialCenter => widget.initialGovernorate != null
       ? _governorateCenter(widget.initialGovernorate!)
       : _jordanCenter;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentZoom = 12;
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   /// Builds a human-readable address label from [latlng] by finding the
   /// nearest governorate centre (simple Euclidean distance).
@@ -75,6 +91,82 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
     final dlat = a.latitude - b.latitude;
     final dlng = a.longitude - b.longitude;
     return dlat * dlat + dlng * dlng;
+  }
+
+  void _zoomIn() {
+    final next = (_currentZoom + 1).clamp(3.0, 18.0);
+    _mapController.move(_mapController.camera.center, next);
+  }
+
+  void _zoomOut() {
+    final next = (_currentZoom - 1).clamp(3.0, 18.0);
+    _mapController.move(_mapController.camera.center, next);
+  }
+
+  Future<void> _onSearchArea(String query) async {
+    final q = _normalizeSearch(query);
+    if (q.isEmpty) return;
+    String? foundKey;
+    for (final key in AppTheme.governorateCoordinates.keys) {
+      final normalizedKey = _normalizeSearch(key);
+      if (normalizedKey.contains(q) || q.contains(normalizedKey)) {
+        foundKey = key;
+        break;
+      }
+    }
+    if (foundKey != null) {
+      final center = _governorateCenter(foundKey);
+      _searchController.text = foundKey;
+      _mapController.move(center, 12.5);
+      return;
+    }
+
+    // Fallback to geocoding for any Arabic/English place text in Jordan.
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'q': query.trim(),
+        'format': 'jsonv2',
+        'limit': '1',
+        'countrycodes': 'jo',
+      });
+      final response = await http.get(
+        uri,
+        headers: const {'User-Agent': 'bloodbank-donors-app'},
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is List && data.isNotEmpty) {
+          final first = data.first;
+          if (first is Map<String, dynamic>) {
+            final lat = double.tryParse(first['lat']?.toString() ?? '');
+            final lon = double.tryParse(first['lon']?.toString() ?? '');
+            if (lat != null && lon != null) {
+              final latLng = LatLng(lat, lon);
+              if (!mounted) return;
+              _mapController.move(latLng, 14);
+              setState(() => _pickedLocation = latLng);
+              return;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Area not found. Try another name.')),
+      );
+    }
+  }
+
+  String _normalizeSearch(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll("'", '')
+        .replaceAll('’', '')
+        .replaceAll('`', '')
+        .replaceAll(' ', '');
   }
 
   // ── GPS ────────────────────────────────────────────────────────────────────
@@ -165,6 +257,12 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
             options: MapOptions(
               initialCenter: _initialCenter,
               initialZoom: 12,
+              onPositionChanged: (position, _) {
+                final z = position.zoom;
+                if (mounted) {
+                  setState(() => _currentZoom = z);
+                }
+              },
               onTap: (_, latlng) {
                 setState(() => _pickedLocation = latlng);
               },
@@ -210,23 +308,73 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
             child: _InfoBanner(hasPick: _pickedLocation != null),
           ),
 
+          Positioned(
+            top: 80,
+            left: 16,
+            right: 16,
+            child: Material(
+              color: Colors.white,
+              elevation: 2,
+              borderRadius: BorderRadius.circular(12),
+              child: TextField(
+                controller: _searchController,
+                textInputAction: TextInputAction.search,
+                onSubmitted: _onSearchArea,
+                onEditingComplete: () => _onSearchArea(_searchController.text),
+                decoration: InputDecoration(
+                  hintText: 'Search area (e.g. Irbid)',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.arrow_forward),
+                    onPressed: () => _onSearchArea(_searchController.text),
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
           // ── GPS button ───────────────────────────────────────────────────
           Positioned(
             right: 16,
             bottom: 110,
-            child: FloatingActionButton.small(
-              heroTag: 'gps',
-              backgroundColor: Colors.white,
-              foregroundColor: AppTheme.deepRed,
-              tooltip: 'Use my location',
-              onPressed: _locating ? null : _goToMyLocation,
-              child: _locating
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.my_location),
+            child: Column(
+              children: [
+                FloatingActionButton.small(
+                  heroTag: 'mapPickerZoomIn',
+                  backgroundColor: Colors.white,
+                  foregroundColor: AppTheme.deepRed,
+                  onPressed: _zoomIn,
+                  child: const Icon(Icons.add),
+                ),
+                const SizedBox(height: 8),
+                FloatingActionButton.small(
+                  heroTag: 'mapPickerZoomOut',
+                  backgroundColor: Colors.white,
+                  foregroundColor: AppTheme.deepRed,
+                  onPressed: _zoomOut,
+                  child: const Icon(Icons.remove),
+                ),
+                const SizedBox(height: 8),
+                FloatingActionButton.small(
+                  heroTag: 'gps',
+                  backgroundColor: Colors.white,
+                  foregroundColor: AppTheme.deepRed,
+                  tooltip: 'Use my location',
+                  onPressed: _locating ? null : _goToMyLocation,
+                  child: _locating
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.my_location),
+                ),
+              ],
             ),
           ),
 

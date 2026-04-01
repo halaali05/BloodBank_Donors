@@ -229,7 +229,6 @@ test('sendMessage routes donor message to blood bank', () async {
     requestId: 'r1',
     text: 'Hello',
     requestOwnerId: 'bank1',
-    currentUserRole: 'donor',
   );
 
   verify(() => mockCloudFunctions.sendMessage(

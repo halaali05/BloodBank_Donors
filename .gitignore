@@ -50,5 +50,4 @@ lib/firebase_options.dart
 firebase.json
 
 # Generated
-web/
 .metadata

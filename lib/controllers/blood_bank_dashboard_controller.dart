@@ -64,6 +64,21 @@ class BloodBankDashboardController {
     }
   }
 
+  /// Marks a blood request as completed using Cloud Functions.
+  Future<Map<String, dynamic>> markRequestCompleted({
+    required String requestId,
+  }) async {
+    if (requestId.isEmpty) {
+      throw Exception('Request ID is required');
+    }
+    try {
+      return await _cloudFunctions.markRequestCompleted(requestId: requestId);
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Failed to complete request: ${e.toString()}');
+    }
+  }
+
   // ------------------ Data Fetching ------------------
   /// Fetches all requests for the current blood bank via Cloud Functions
   ///
@@ -108,8 +123,9 @@ class BloodBankDashboardController {
   /// - normalCount: Number of non-urgent requests
   Map<String, int> calculateStatistics(List<BloodRequest> requests) {
     final totalUnits = requests.fold<int>(0, (sum, r) => sum + r.units);
-    final urgentCount = requests.where((r) => r.isUrgent).length;
-    final normalCount = requests.where((r) => !r.isUrgent).length;
+    final activeRequests = requests.where((r) => !r.isCompleted).toList();
+    final urgentCount = activeRequests.where((r) => r.isUrgent).length;
+    final normalCount = activeRequests.where((r) => !r.isUrgent).length;
 
     final totalAccepted = requests.fold<int>(
       0,
@@ -122,7 +138,7 @@ class BloodBankDashboardController {
 
     return {
       'totalUnits': totalUnits,
-      'activeCount': requests.length,
+      'activeCount': activeRequests.length,
       'urgentCount': urgentCount,
       'normalCount': normalCount,
       'totalAccepted': totalAccepted,

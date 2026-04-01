@@ -198,6 +198,14 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
   Future<void> _submitDonorResponse(BloodRequest request, String status) async {
     if (_respondingRequestId != null) return;
     if (request.myResponse != null) return;
+    if (request.isCompleted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This request is completed. Responses are disabled.'),
+        ),
+      );
+      return;
+    }
     setState(() => _respondingRequestId = request.id);
     try {
       await _controller.submitDonorResponse(

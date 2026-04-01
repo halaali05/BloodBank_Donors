@@ -29,6 +29,7 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
   final MapController _mapController = MapController();
   bool _showAllRegions = false;
   BloodRequest? _selectedRequest;
+  double _currentZoom = 8.0;
 
   static const LatLng _jordanCenter = LatLng(31.9539, 35.9106);
 
@@ -42,11 +43,25 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
 
   double get _initialZoom => widget.donorGovernorate != null ? 11.0 : 8.0;
 
+  @override
+  void initState() {
+    super.initState();
+    _currentZoom = _initialZoom;
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
   List<BloodRequest> get _visibleRequests {
+    final activeRequests = widget.requests
+        .where((r) => !r.isCompleted)
+        .toList();
     if (_showAllRegions || widget.donorGovernorate == null) {
-      return widget.requests;
+      return activeRequests;
     }
-    return widget.requests.where((r) {
+    return activeRequests.where((r) {
       return r.hospitalLocation.contains(widget.donorGovernorate!) ||
           widget.donorGovernorate!.contains(r.hospitalLocation);
     }).toList();
@@ -61,6 +76,16 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
     return _jordanCenter;
   }
 
+  void _zoomIn() {
+    final next = (_currentZoom + 1).clamp(3.0, 18.0);
+    _mapController.move(_mapController.camera.center, next);
+  }
+
+  void _zoomOut() {
+    final next = (_currentZoom - 1).clamp(3.0, 18.0);
+    _mapController.move(_mapController.camera.center, next);
+  }
+
   @override
   Widget build(BuildContext context) {
     final visible = _visibleRequests;
@@ -72,6 +97,12 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
           options: MapOptions(
             initialCenter: _initialCenter,
             initialZoom: _initialZoom,
+            onPositionChanged: (position, _) {
+              final z = position.zoom;
+              if (mounted) {
+                setState(() => _currentZoom = z);
+              }
+            },
             onTap: (_, __) => setState(() => _selectedRequest = null),
           ),
           children: [
@@ -124,6 +155,30 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
               onClose: () => setState(() => _selectedRequest = null),
             ),
           ),
+
+        Positioned(
+          right: 12,
+          bottom: _selectedRequest == null ? 24 : 236,
+          child: Column(
+            children: [
+              FloatingActionButton.small(
+                heroTag: 'donorMapZoomIn',
+                backgroundColor: Colors.white,
+                foregroundColor: AppTheme.deepRed,
+                onPressed: _zoomIn,
+                child: const Icon(Icons.add),
+              ),
+              const SizedBox(height: 8),
+              FloatingActionButton.small(
+                heroTag: 'donorMapZoomOut',
+                backgroundColor: Colors.white,
+                foregroundColor: AppTheme.deepRed,
+                onPressed: _zoomOut,
+                child: const Icon(Icons.remove),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

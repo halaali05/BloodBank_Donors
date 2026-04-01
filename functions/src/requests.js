@@ -1,8 +1,84 @@
 const admin = require("firebase-admin");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { requireAuth, nonEmptyString, toHttpsError } = require("./utils");
 
 const db = admin.firestore();
+
+const REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function isRequestExpired(createdAtValue) {
+  if (!createdAtValue || typeof createdAtValue.toMillis !== "function") {
+    return false;
+  }
+  return Date.now() - createdAtValue.toMillis() > REQUEST_TTL_MS;
+}
+
+async function deleteRequestCascade(requestRef, requestId) {
+  let notificationsDeleted = 0;
+
+  try {
+    const notificationsQuery = db
+      .collectionGroup("user_notifications")
+      .where("requestId", "==", requestId);
+    const notificationsSnapshot = await notificationsQuery.get();
+
+    if (!notificationsSnapshot.empty) {
+      const batchSize = 500;
+      const deletePromises = [];
+      for (let i = 0; i < notificationsSnapshot.docs.length; i += batchSize) {
+        const batch = db.batch();
+        notificationsSnapshot.docs.slice(i, i + batchSize).forEach((doc) => {
+          batch.delete(doc.ref);
+          notificationsDeleted++;
+        });
+        deletePromises.push(batch.commit());
+      }
+      if (deletePromises.length > 0) {
+        await Promise.all(deletePromises);
+      }
+    }
+  } catch (notifError) {
+    console.warn(
+      `[deleteRequestCascade] Collection group query failed: ${notifError.message}`,
+    );
+  }
+
+  const responsesSnapshot = await requestRef.collection("donorResponses").get();
+  if (!responsesSnapshot.empty) {
+    const batchSize = 500;
+    const respDeletePromises = [];
+    for (let i = 0; i < responsesSnapshot.docs.length; i += batchSize) {
+      const batch = db.batch();
+      responsesSnapshot.docs.slice(i, i + batchSize).forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      respDeletePromises.push(batch.commit());
+    }
+    if (respDeletePromises.length > 0) {
+      await Promise.all(respDeletePromises);
+    }
+  }
+
+  const messagesSnapshot = await requestRef.collection("messages").get();
+  if (!messagesSnapshot.empty) {
+    const batchSize = 500;
+    const messageDeletePromises = [];
+    for (let i = 0; i < messagesSnapshot.docs.length; i += batchSize) {
+      const batch = db.batch();
+      messagesSnapshot.docs.slice(i, i + batchSize).forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      messageDeletePromises.push(batch.commit());
+    }
+    if (messageDeletePromises.length > 0) {
+      await Promise.all(messageDeletePromises);
+    }
+  }
+
+  await requestRef.delete();
+  return { notificationsDeleted };
+}
 
 /**
  * Builds { donorId, fullName, email } from users/{donorId}, with Auth fallback
@@ -110,6 +186,8 @@ exports.addRequest = onCall(async (request) => {
       hospitalLongitude,
       acceptedCount: 0,
       rejectedCount: 0,
+      isCompleted: false,
+      completedAt: null,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
@@ -231,6 +309,9 @@ exports.getRequests = onCall(async (request) => {
     const requests = await Promise.all(
       snapshot.docs.map(async (doc) => {
         const d = doc.data() || {};
+        if (isRequestExpired(d.createdAt)) {
+          return null;
+        }
         let myResponse = null;
         try {
           const respSnap = await doc.ref
@@ -260,7 +341,10 @@ exports.getRequests = onCall(async (request) => {
       }),
     );
 
-    return { requests, hasMore: snapshot.docs.length === limit };
+    return {
+      requests: requests.filter((r) => r !== null),
+      hasMore: snapshot.docs.length === limit,
+    };
   } catch (err) {
     console.error("[getRequests] ERROR:", err);
     throw toHttpsError(err, "Failed to load requests.");
@@ -296,6 +380,9 @@ exports.getRequestsByBloodBankId = onCall(async (request) => {
     const requests = await Promise.all(
       snapshot.docs.map(async (doc) => {
         const d = doc.data() || {};
+        if (isRequestExpired(d.createdAt)) {
+          return null;
+        }
         const responsesSnap = await doc.ref.collection("donorResponses").get();
         const acceptedDonors = [];
         const rejectedDonors = [];
@@ -324,7 +411,8 @@ exports.getRequestsByBloodBankId = onCall(async (request) => {
       }),
     );
 
-    return { requests, count: requests.length };
+    const liveRequests = requests.filter((r) => r !== null);
+    return { requests: liveRequests, count: liveRequests.length };
   } catch (err) {
     console.error("[getRequestsByBloodBankId] ERROR:", err);
     throw toHttpsError(err, "Failed to load requests.");
@@ -367,6 +455,13 @@ exports.setDonorRequestResponse = onCall(async (request) => {
       const reqSnap = await t.get(requestRef);
       if (!reqSnap.exists) {
         throw new HttpsError("not-found", "Request not found.");
+      }
+      const requestData = reqSnap.data() || {};
+      if (requestData.isCompleted === true) {
+        throw new HttpsError(
+          "failed-precondition",
+          "This request is already completed and no longer accepts responses.",
+        );
       }
 
       const respSnap = await t.get(responseRef);
@@ -416,6 +511,54 @@ exports.setDonorRequestResponse = onCall(async (request) => {
   } catch (err) {
     console.error("[setDonorRequestResponse] ERROR:", err);
     throw toHttpsError(err, "Failed to save response.");
+  }
+});
+
+/**
+ * markRequestCompleted - hospitals only, must own the request.
+ * Marks request as completed so it is no longer actionable for donors.
+ */
+exports.markRequestCompleted = onCall(async (request) => {
+  try {
+    const uid = requireAuth(request);
+    const data = request.data || {};
+    const requestId = nonEmptyString(data.requestId, "requestId");
+
+    const userSnap = await db.collection("users").doc(uid).get();
+    const userData = userSnap.exists ? userSnap.data() || {} : {};
+    if (!userSnap.exists || userData.role !== "hospital") {
+      throw new HttpsError(
+        "permission-denied",
+        "Only hospitals can complete requests.",
+      );
+    }
+
+    const requestRef = db.collection("requests").doc(requestId);
+    await db.runTransaction(async (t) => {
+      const reqSnap = await t.get(requestRef);
+      if (!reqSnap.exists) {
+        throw new HttpsError("not-found", "Request not found.");
+      }
+      const rd = reqSnap.data() || {};
+      if (rd.bloodBankId !== uid) {
+        throw new HttpsError(
+          "permission-denied",
+          "You can only complete your own requests.",
+        );
+      }
+      if (rd.isCompleted === true) {
+        return;
+      }
+      t.update(requestRef, {
+        isCompleted: true,
+        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    return { ok: true, isCompleted: true };
+  } catch (err) {
+    console.error("[markRequestCompleted] ERROR:", err);
+    throw toHttpsError(err, "Failed to mark request as completed.");
   }
 });
 
@@ -509,106 +652,10 @@ exports.deleteRequest = onCall(async (request) => {
       );
     }
 
-    let notificationsDeleted = 0;
-
-    try {
-      const notificationsQuery = db
-        .collectionGroup("user_notifications")
-        .where("requestId", "==", requestId);
-      const notificationsSnapshot = await notificationsQuery.get();
-
-      if (!notificationsSnapshot.empty) {
-        const batchSize = 500;
-        const deletePromises = [];
-        for (let i = 0; i < notificationsSnapshot.docs.length; i += batchSize) {
-          const batch = db.batch();
-          notificationsSnapshot.docs.slice(i, i + batchSize).forEach((doc) => {
-            batch.delete(doc.ref);
-            notificationsDeleted++;
-          });
-          deletePromises.push(batch.commit());
-        }
-        if (deletePromises.length > 0) {
-          await Promise.all(deletePromises);
-        }
-        console.log(
-          `[deleteRequest] Deleted ${notificationsDeleted} notification(s)`,
-        );
-      }
-    } catch (notifError) {
-      console.warn(
-        `[deleteRequest] Collection group query failed: ${notifError.message}`,
-      );
-      try {
-        const usersSnapshot = await db.collection("users").get();
-        const deletePromises = [];
-        for (const userDoc of usersSnapshot.docs) {
-          const userId = userDoc.id;
-          const userNotifSnapshot = await db
-            .collection("notifications")
-            .doc(userId)
-            .collection("user_notifications")
-            .where("requestId", "==", requestId)
-            .get();
-          if (!userNotifSnapshot.empty) {
-            const batch = db.batch();
-            userNotifSnapshot.docs.forEach((doc) => {
-              batch.delete(doc.ref);
-              notificationsDeleted++;
-            });
-            deletePromises.push(batch.commit());
-          }
-        }
-        if (deletePromises.length > 0) {
-          await Promise.all(deletePromises);
-        }
-      } catch (fallbackError) {
-        console.error(
-          `[deleteRequest] Fallback also failed: ${fallbackError.message}`,
-        );
-      }
-    }
-
-    const responsesSnapshot = await requestRef.collection("donorResponses").get();
-    if (!responsesSnapshot.empty) {
-      const batchSize = 500;
-      const respDeletePromises = [];
-      for (let i = 0; i < responsesSnapshot.docs.length; i += batchSize) {
-        const batch = db.batch();
-        responsesSnapshot.docs.slice(i, i + batchSize).forEach((doc) => {
-          batch.delete(doc.ref);
-        });
-        respDeletePromises.push(batch.commit());
-      }
-      if (respDeletePromises.length > 0) {
-        await Promise.all(respDeletePromises);
-      }
-      console.log(
-        `[deleteRequest] Deleted ${responsesSnapshot.docs.length} donor response(s)`,
-      );
-    }
-
-    const messagesSnapshot = await requestRef.collection("messages").get();
-    let messagesDeleted = 0;
-
-    if (!messagesSnapshot.empty) {
-      const batchSize = 500;
-      const messageDeletePromises = [];
-      for (let i = 0; i < messagesSnapshot.docs.length; i += batchSize) {
-        const batch = db.batch();
-        messagesSnapshot.docs.slice(i, i + batchSize).forEach((doc) => {
-          batch.delete(doc.ref);
-          messagesDeleted++;
-        });
-        messageDeletePromises.push(batch.commit());
-      }
-      if (messageDeletePromises.length > 0) {
-        await Promise.all(messageDeletePromises);
-      }
-      console.log(`[deleteRequest] Deleted ${messagesDeleted} message(s)`);
-    }
-
-    await requestRef.delete();
+    const { notificationsDeleted } = await deleteRequestCascade(
+      requestRef,
+      requestId,
+    );
     console.log("[deleteRequest] Request document deleted from Firestore");
 
     return {
@@ -627,6 +674,37 @@ exports.deleteRequest = onCall(async (request) => {
     );
   }
 });
+
+/**
+ * cleanupExpiredRequests - deletes requests older than 7 days.
+ */
+exports.cleanupExpiredRequests = onSchedule(
+  {
+    schedule: "30 3 * * *",
+    timeZone: "Asia/Amman",
+    region: "us-central1",
+  },
+  async () => {
+    try {
+      const cutoff = Date.now() - REQUEST_TTL_MS;
+      const snapshot = await db.collection("requests").get();
+      let deleted = 0;
+      for (const doc of snapshot.docs) {
+        const data = doc.data() || {};
+        const createdAt = data.createdAt;
+        if (!createdAt || typeof createdAt.toMillis !== "function") continue;
+        if (createdAt.toMillis() > cutoff) continue;
+        await deleteRequestCascade(doc.ref, doc.id);
+        deleted += 1;
+      }
+      console.log(`[cleanupExpiredRequests] done. deleted=${deleted}`);
+      return null;
+    } catch (err) {
+      console.error("[cleanupExpiredRequests] ERROR:", err);
+      return null;
+    }
+  },
+);
 
 /**
  * Normalizes governorate strings for comparison (spacing, apostrophes, case).

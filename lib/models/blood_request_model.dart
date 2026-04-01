@@ -25,6 +25,9 @@ class BloodRequest {
   /// Current donor's response for this request: `accepted`, `rejected`, or null (from getRequests only).
   final String? myResponse;
 
+  /// Whether this request has been marked completed by the blood bank.
+  final bool isCompleted;
+
   /// Donors who accepted (name + email) — from getRequestsByBloodBankId for hospitals.
   final List<DonorResponseEntry> acceptedDonors;
 
@@ -45,6 +48,7 @@ class BloodRequest {
     this.acceptedCount = 0,
     this.rejectedCount = 0,
     this.myResponse,
+    this.isCompleted = false,
     this.acceptedDonors = const [],
     this.rejectedDonors = const [],
   });
@@ -65,6 +69,7 @@ class BloodRequest {
       acceptedCount: _coerceInt(data['acceptedCount'], 0),
       rejectedCount: _coerceInt(data['rejectedCount'], 0),
       myResponse: _parseMyResponse(data['myResponse']),
+      isCompleted: _coerceBool(data['isCompleted']),
       acceptedDonors: _parseDonorEntries(data['acceptedDonors']),
       rejectedDonors: _parseDonorEntries(data['rejectedDonors']),
     );
@@ -126,6 +131,7 @@ class BloodRequest {
       'isUrgent': isUrgent,
       'details': details,
       'hospitalLocation': hospitalLocation,
+      'isCompleted': isCompleted,
       if (hospitalLatitude != null) 'hospitalLatitude': hospitalLatitude,
       if (hospitalLongitude != null) 'hospitalLongitude': hospitalLongitude,
     };

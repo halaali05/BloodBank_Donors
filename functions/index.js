@@ -28,8 +28,10 @@ exports.getDonors = requestFunctions.getDonors;
 exports.getRequests = requestFunctions.getRequests;
 exports.getRequestsByBloodBankId = requestFunctions.getRequestsByBloodBankId;
 exports.setDonorRequestResponse = requestFunctions.setDonorRequestResponse;
+exports.markRequestCompleted = requestFunctions.markRequestCompleted;
 exports.getRequestDonorResponses = requestFunctions.getRequestDonorResponses;
 exports.deleteRequest = requestFunctions.deleteRequest;
+exports.cleanupExpiredRequests = requestFunctions.cleanupExpiredRequests;
 
 // Export all notification and messaging functions
 exports.getNotifications = notificationFunctions.getNotifications;

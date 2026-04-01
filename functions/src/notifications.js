@@ -261,11 +261,18 @@ exports.getMessages = onCall(async (request) => {
       // Donor sees:
       // 1. Messages without recipientId (general messages)
       // 2. Messages with recipientId matching their uid (personalized messages)
+      // 3. Their own sent messages (senderId == donor uid)
       const donorUid = String(uid).trim();
       const msgRecipient = msg.recipientId != null
         ? String(msg.recipientId).trim()
         : "";
+      const msgSender = msg.senderId != null
+        ? String(msg.senderId).trim()
+        : "";
       const hasRecipientId = msgRecipient.length > 0;
+      if (msgSender === donorUid) {
+        return true; // Always show donor's own outgoing messages
+      }
       if (!hasRecipientId) {
         return true; // General message - visible to all
       }
@@ -332,12 +339,27 @@ exports.sendMessage = onCall(async (request) => {
 
     const userData = userSnap.data() || {};
     const senderRole = userData.role || "donor";
+    const senderName =
+      userData.fullName || userData.name || userData.bloodBankName || "User";
 
     // Verify request exists
     const requestRef = db.collection("requests").doc(requestId);
     const requestSnap = await requestRef.get();
+    const requestData = requestSnap.data() || {};
+
     if (!requestSnap.exists) {
       throw new HttpsError("not-found", "Request not found.");
+    }
+
+    let effectiveRecipientId = recipientId;
+    if (!effectiveRecipientId && senderRole === "donor") {
+      const ownerId =
+        typeof requestData.bloodBankId === "string"
+          ? requestData.bloodBankId.trim()
+          : "";
+      if (ownerId) {
+        effectiveRecipientId = ownerId;
+      }
     }
 
     // Build message object
@@ -353,16 +375,16 @@ exports.sendMessage = onCall(async (request) => {
     console.log(
       `[sendMessage] 🔍 About to store message. recipientId value: ${recipientId}`,
     );
-    if (recipientId) {
-      messageData.recipientId = recipientId;
+    if (effectiveRecipientId) {
+      messageData.recipientId = effectiveRecipientId;
       console.log(
-        `[sendMessage] ✅ Storing PERSONALIZED message with recipientId: ${recipientId}`,
+        `[sendMessage] ✅ Storing PERSONALIZED message with recipientId: ${effectiveRecipientId}`,
       );
       console.log(
         `[sendMessage] ✅ messageData.recipientId = ${messageData.recipientId}`,
       );
       console.log(
-        `[sendMessage] ✅ This message will ONLY be visible to donor: ${recipientId}`,
+        `[sendMessage] ✅ This message will ONLY be visible to recipient: ${effectiveRecipientId}`,
       );
     } else {
       console.log(
@@ -399,6 +421,108 @@ exports.sendMessage = onCall(async (request) => {
         senderRole: verifyData?.senderRole,
       },
     );
+
+    // Push notification for direct messages only (no persistence in notifications list).
+    // Broadcast messages intentionally skip push to avoid noisy blasts.
+    const recipientCandidates = new Set();
+    if (effectiveRecipientId) recipientCandidates.add(effectiveRecipientId);
+    if (
+      senderRole === "donor" &&
+      typeof requestData.bloodBankId === "string" &&
+      requestData.bloodBankId.trim()
+    ) {
+      recipientCandidates.add(requestData.bloodBankId.trim());
+    }
+    if (recipientCandidates.size > 0) {
+      try {
+        for (const recipientUid of recipientCandidates) {
+          console.log(
+            `[sendMessage] 🔔 Preparing push. sender=${uid} recipient=${recipientUid}`,
+          );
+          const recipientUserSnap = await db
+            .collection("users")
+            .doc(recipientUid)
+            .get();
+          const recipientData = recipientUserSnap.exists ?
+            recipientUserSnap.data() || {} :
+            {};
+          console.log(
+            `[sendMessage] 🔔 Recipient doc exists=${recipientUserSnap.exists} role=${recipientData.role || "unknown"}`,
+          );
+          const token = typeof recipientData.fcmToken === "string" ?
+            recipientData.fcmToken.trim() :
+            "";
+          if (!token) {
+            console.warn(
+              `[sendMessage] 🔕 Push skipped: recipient has no fcmToken (uid=${recipientUid})`,
+            );
+            continue;
+          }
+          const title = senderRole === "hospital" ?
+            `${requestData.bloodBankName || senderName}` :
+            senderName;
+          const body = text.trim().length > 120 ?
+            `${text.trim().slice(0, 117)}...` :
+            text.trim();
+          const messagePayload = {
+            token,
+            notification: {title, body},
+            data: {
+              type: "chat",
+              requestId: String(requestId),
+              title: String(title),
+              body: String(body),
+              senderId: String(uid),
+              recipientId: String(recipientUid),
+            },
+            android: {
+              priority: "high",
+              notification: {
+                channelId: "high_importance_channel",
+                sound: "default",
+              },
+            },
+            apns: {
+              payload: {
+                aps: {
+                  alert: {title, body},
+                  sound: "default",
+                },
+              },
+            },
+            webpush: {
+              headers: {
+                Urgency: "high",
+              },
+              notification: {
+                title,
+                body,
+                requireInteraction: true,
+                tag: `chat_${String(requestId)}`,
+              },
+              fcmOptions: {
+                // Open app on click. Service worker then routes using notificationData.
+                link: "/",
+              },
+              data: {
+                type: "chat",
+                requestId: String(requestId),
+                title: String(title),
+                body: String(body),
+                senderId: String(uid),
+                recipientId: String(recipientUid),
+              },
+            },
+          };
+          const pushMessageId = await admin.messaging().send(messagePayload);
+          console.log(
+            `[sendMessage] 🔔 Push sent successfully to recipient=${recipientUid} messageId=${pushMessageId}`,
+          );
+        }
+      } catch (pushErr) {
+        console.warn("[sendMessage] Push send failed:", pushErr.message);
+      }
+    }
 
     return {
       ok: true,

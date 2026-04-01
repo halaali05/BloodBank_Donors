@@ -208,45 +208,23 @@ exports.updateFcmToken = onCall(async (request) => {
       throw new HttpsError("invalid-argument", "FCM token is required.");
     }
 
+    console.log(
+      `[updateFcmToken] uid=${uid} tokenPrefix=${fcmToken.substring(0, 16)}`,
+    );
+
     const userRef = db.collection("users").doc(uid);
     const userSnap = await userRef.get();
 
     if (!userSnap.exists) {
-      return {
-        ok: true,
-        message:
-          "User profile not yet activated. Token will be saved after activation.",
-      };
+      throw new HttpsError(
+        "failed-precondition",
+        "User profile not found. Complete profile activation first.",
+      );
     }
 
-    const duplicateTokenUsers = await db
-      .collection("users")
-      .where("fcmToken", "==", fcmToken)
-      .get();
-
-    if (!duplicateTokenUsers.empty) {
-      const cleanupBatch = db.batch();
-      let cleanedCount = 0;
-      duplicateTokenUsers.docs.forEach((doc) => {
-        if (doc.id !== uid) {
-          cleanupBatch.set(
-            doc.ref,
-            {
-              fcmToken: admin.firestore.FieldValue.delete(),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            },
-            { merge: true },
-          );
-          cleanedCount++;
-        }
-      });
-      if (cleanedCount > 0) {
-        await cleanupBatch.commit();
-        console.log(
-          `[updateFcmToken] Removed duplicate token from ${cleanedCount} user(s)`,
-        );
-      }
-    }
+    // Do NOT remove this token from other users.
+    // During testing or multi-account/device scenarios, aggressive duplicate cleanup
+    // can silently break notifications for one account.
 
     await userRef.set(
       {
@@ -255,6 +233,20 @@ exports.updateFcmToken = onCall(async (request) => {
       },
       { merge: true },
     );
+
+    const verifySnap = await userRef.get();
+    const savedToken = verifySnap.exists &&
+      typeof verifySnap.data().fcmToken === "string" ?
+      verifySnap.data().fcmToken.trim() :
+      "";
+    if (!savedToken) {
+      throw new HttpsError(
+        "internal",
+        "FCM token was not persisted to user profile.",
+      );
+    }
+
+    console.log(`[updateFcmToken] token saved for uid=${uid}`);
 
     return { ok: true, message: "FCM token updated." };
   } catch (err) {

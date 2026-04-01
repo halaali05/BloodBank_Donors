@@ -24,6 +24,7 @@ class DonorRequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUrgent = request.isUrgent == true;
+    final isCompleted = request.isCompleted;
     final cardBg = isUrgent ? AppTheme.urgentCardBg : Colors.white;
     final border = isUrgent ? const Color(0xFFFFCDD2) : const Color(0xFFE6EAF2);
     final my = request.myResponse;
@@ -73,6 +74,28 @@ class DonorRequestCard extends StatelessWidget {
                       ),
                     ),
                     if (isUrgent) const UrgentBadge(),
+                    if (isCompleted) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: Colors.green.shade300),
+                        ),
+                        child: Text(
+                          'Completed',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.green.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -114,6 +137,26 @@ class DonorRequestCard extends StatelessWidget {
                 ],
                 if (showResponseRow) ...[
                   const SizedBox(height: 10),
+                  if (isCompleted)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Text(
+                        'Donation completed.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.green.shade800,
+                        ),
+                      ),
+                    )
+                  else
                   if (my == null)
                     Row(
                       children: [

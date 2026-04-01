@@ -16,6 +16,7 @@ import '../widgets/common/section_header.dart';
 import '../widgets/dashboard/header_card.dart';
 import '../widgets/dashboard/stat_card.dart';
 import '../widgets/dashboard/request_card.dart';
+import '../services/fcm_service.dart';
 
 class BloodBankDashboardScreen extends StatefulWidget {
   final String bloodBankName;
@@ -45,6 +46,16 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
   void initState() {
     super.initState();
     _loadRequests();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await FCMService.instance.initFCM();
+        await FCMService.instance.ensureTokenSynced(
+          attempts: 5,
+          delay: const Duration(seconds: 2),
+        );
+      } catch (_) {}
+    });
 
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) _loadRequests();
@@ -136,13 +147,112 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
     }
   }
 
+  Future<void> _syncNotificationToken() async {
+    bool ok = false;
+    String failureReason = '';
+    try {
+      ok = await FCMService.instance.ensureTokenSynced(
+        attempts: 3,
+        delay: const Duration(seconds: 1),
+      );
+      failureReason = FCMService.instance.getLastSyncError().trim();
+      if (failureReason == '(none)') {
+        failureReason = '';
+      }
+    } catch (e) {
+      failureReason = e.toString();
+    }
+    if (!mounted) return;
+
+    final shownReason = failureReason.trim().isEmpty
+        ? 'FCM token not generated yet.'
+        : failureReason.trim();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok ? 'Notification token synced successfully.' : 'Token sync failed: $shownReason',
+        ),
+        backgroundColor: ok ? Colors.green : Colors.red,
+      ),
+    );
+  }
+
+  Future<void> _handleCompleteRequest(
+    BuildContext context,
+    BloodRequest request,
+  ) async {
+    if (request.isCompleted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Mark Request Completed'),
+        content: const Text(
+          'This will mark the post as completed for donors and disable new donor responses. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.green),
+            child: const Text('Complete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      await _controller.markRequestCompleted(requestId: request.id);
+      if (context.mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Request marked as completed.')),
+        );
+      }
+      await _loadRequests();
+    } catch (e) {
+      if (context.mounted) Navigator.pop(context);
+      if (mounted) {
+        final message = e.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              message.isEmpty
+                  ? 'Failed to complete request. Please try again.'
+                  : message,
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final stats = _controller.calculateStatistics(_requests);
+    final activeRequests = _requests.where((r) => !r.isCompleted).toList();
+    final completedRequests = _requests.where((r) => r.isCompleted).toList();
+
     return Scaffold(
       backgroundColor: AppTheme.offWhite,
       appBar: AppBarWithLogo(
         title: 'Blood Bank',
         actions: [
+          IconButton(
+            tooltip: 'Sync notifications',
+            icon: const Icon(
+              Icons.notifications_active_outlined,
+              color: AppTheme.deepRed,
+            ),
+            onPressed: _syncNotificationToken,
+          ),
           IconButton(
             tooltip: 'Logout',
             icon: const Icon(Icons.logout, color: AppTheme.deepRed),
@@ -182,18 +292,12 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                           Directionality(
                             textDirection: TextDirection.ltr,
                             child: _StatsGrid(
-                              totalUnits: _controller
-                                  .calculateStatistics(_requests)['totalUnits']!,
-                              activeCount: _controller
-                                  .calculateStatistics(_requests)['activeCount']!,
-                              urgentCount: _controller
-                                  .calculateStatistics(_requests)['urgentCount']!,
-                              normalCount: _controller
-                                  .calculateStatistics(_requests)['normalCount']!,
-                              totalAccepted: _controller
-                                  .calculateStatistics(_requests)['totalAccepted']!,
-                              totalRejected: _controller
-                                  .calculateStatistics(_requests)['totalRejected']!,
+                              totalUnits: stats['totalUnits']!,
+                              activeCount: stats['activeCount']!,
+                              urgentCount: stats['urgentCount']!,
+                              normalCount: stats['normalCount']!,
+                              totalAccepted: stats['totalAccepted']!,
+                              totalRejected: stats['totalRejected']!,
                             ),
                           ),
 
@@ -204,7 +308,7 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                             textDirection: TextDirection.ltr,
                             child: SectionHeader(
                               title: 'Active Requests',
-                              subtitle: _requests.isEmpty
+                              subtitle: activeRequests.isEmpty
                                   ? 'No active requests'
                                   : 'Manage your blood current posts',
                               rightWidget: ElevatedButton.icon(
@@ -233,7 +337,7 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                           const SizedBox(height: 10),
 
                           /// POSTS (UNCHANGED)
-                          if (_requests.isEmpty)
+                          if (activeRequests.isEmpty)
                             const EmptyState(
                               icon: Icons.inbox_outlined,
                               title: 'No active requests',
@@ -245,11 +349,87 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                               shrinkWrap: true,
                               physics:
                                   const NeverScrollableScrollPhysics(),
-                              itemCount: _requests.length,
+                              itemCount: activeRequests.length,
                               separatorBuilder: (_, __) =>
                                   const SizedBox(height: 12),
                               itemBuilder: (context, index) {
-                                final request = _requests[index];
+                                final request = activeRequests[index];
+                                return RequestCard(
+                                  request: request,
+                                  onDelete: () =>
+                                      _handleDeleteRequest(context, request),
+                                  onMarkCompleted: () =>
+                                      _handleCompleteRequest(context, request),
+                                  onTapAcceptances: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => RequestRespondersScreen(
+                                          requestId: request.id,
+                                          subtitle:
+                                              '${request.bloodType} · ${request.units} units · ${request.bloodBankName}',
+                                          initialTabIndex: 0,
+                                          accepted: request.acceptedDonors,
+                                          rejected: request.rejectedDonors,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  onTapRejections: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => RequestRespondersScreen(
+                                          requestId: request.id,
+                                          subtitle:
+                                              '${request.bloodType} · ${request.units} units · ${request.bloodBankName}',
+                                          initialTabIndex: 1,
+                                          accepted: request.acceptedDonors,
+                                          rejected: request.rejectedDonors,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  onViewDonors: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => ContactsScreen(
+                                          requestId: request.id,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          const SizedBox(height: 20),
+                          Directionality(
+                            textDirection: TextDirection.ltr,
+                            child: SectionHeader(
+                              title: 'Completed Requests',
+                              subtitle: completedRequests.isEmpty
+                                  ? 'No completed requests yet'
+                                  : 'These posts are closed for donors',
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          if (completedRequests.isEmpty)
+                            const EmptyState(
+                              icon: Icons.check_circle_outline,
+                              title: 'No completed requests',
+                              subtitle:
+                                  'Completed posts will appear here after you mark them done.',
+                            )
+                          else
+                            ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: completedRequests.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 12),
+                              itemBuilder: (context, index) {
+                                final request = completedRequests[index];
                                 return RequestCard(
                                   request: request,
                                   onDelete: () =>
