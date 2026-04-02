@@ -242,6 +242,8 @@ class FCMService {
   void _onForegroundMessage(RemoteMessage message) {
     final String requestId = message.data['requestId']?.toString() ?? '';
     final String type = message.data['type']?.toString() ?? 'request';
+    final bool isUrgentRequest =
+        message.data['isUrgent']?.toString().toLowerCase() == 'true';
 
     final String title =
         message.data['title']?.toString() ??
@@ -275,6 +277,8 @@ class FCMService {
       title: title,
       body: body,
       payload: jsonEncode(payload),
+      isRequestNotification: type == 'request',
+      isEmergencyRequest: type == 'request' && isUrgentRequest,
     );
   }
 

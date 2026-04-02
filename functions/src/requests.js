@@ -180,6 +180,11 @@ exports.addRequest = onCall(async (request) => {
       bloodType,
       units,
       isUrgent,
+      // Emergency requests are auto-verified by backend policy.
+      isVerified: isUrgent,
+      verifiedAt: isUrgent
+        ? admin.firestore.FieldValue.serverTimestamp()
+        : null,
       details,
       hospitalLocation,
       hospitalLatitude,
@@ -827,6 +832,7 @@ async function notifyDonorsForNewRequest(requestId, data) {
       title: `Blood request: ${bloodType}`,
       body: `${data.bloodBankName || "Blood Bank"} needs your help ❤️`,
       requestId,
+      isUrgent: data.isUrgent === true,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       read: false,
     });
@@ -892,6 +898,14 @@ async function notifyDonorsForNewRequest(requestId, data) {
     const body = `${data.bloodBankName || "Blood Bank"} needs ${
       data.units || ""
     } units (${bloodType})`;
+    const isUrgent = data.isUrgent === true;
+    const requestChannelId = isUrgent
+      ? "emergency_requests_channel"
+      : "normal_requests_channel";
+    const requestSound = isUrgent ? "emergency_alert" : "normal_alert";
+    const requestVibration = isUrgent
+      ? [0, 600, 300, 600]
+      : [0, 200];
 
     const message = {
       notification: { title, body },
@@ -900,16 +914,17 @@ async function notifyDonorsForNewRequest(requestId, data) {
         requestId: String(requestId),
         bloodType: String(bloodType || ""),
         isUrgent: data.isUrgent ? "true" : "false",
+        notificationSound: requestSound,
+        vibrationProfile: isUrgent ? "emergency" : "normal",
         title: String(title),
         body: String(body),
       },
       android: {
         priority: "high",
         notification: {
-          channelId: "high_importance_channel",
-          sound: "default",
-          defaultSound: true,
-          defaultVibrateTimings: true,
+          channelId: requestChannelId,
+          sound: requestSound,
+          vibrateTimingsMillis: requestVibration,
         },
       },
       apns: {
@@ -917,6 +932,7 @@ async function notifyDonorsForNewRequest(requestId, data) {
           aps: {
             alert: { title, body },
             sound: "default",
+            "thread-id": isUrgent ? "emergency-request" : "normal-request",
             badge: 1,
           },
         },

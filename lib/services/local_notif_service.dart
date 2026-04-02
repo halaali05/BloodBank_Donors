@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../main.dart';
@@ -19,12 +20,40 @@ class LocalNotifService {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
-  static const AndroidNotificationChannel _channel = AndroidNotificationChannel(
+  static const String emergencyRequestSound = 'emergency_alert';
+  static const String normalRequestSound = 'normal_alert';
+
+  static const AndroidNotificationChannel _chatChannel =
+      AndroidNotificationChannel(
     'high_importance_channel',
     'High Importance Notifications',
-    description: 'Used for important notifications.',
+    description: 'Used for chat and important notifications.',
     importance: Importance.max,
     playSound: true,
+    enableVibration: true,
+    showBadge: true,
+  );
+
+  static const AndroidNotificationChannel _normalRequestChannel =
+      AndroidNotificationChannel(
+    'normal_requests_channel',
+    'Normal Request Notifications',
+    description: 'Used for normal blood request alerts.',
+    importance: Importance.high,
+    playSound: true,
+    sound: RawResourceAndroidNotificationSound(normalRequestSound),
+    enableVibration: true,
+    showBadge: true,
+  );
+
+  static const AndroidNotificationChannel _emergencyRequestChannel =
+      AndroidNotificationChannel(
+    'emergency_requests_channel',
+    'Emergency Request Notifications',
+    description: 'Used for emergency blood request alerts.',
+    importance: Importance.max,
+    playSound: true,
+    sound: RawResourceAndroidNotificationSound(emergencyRequestSound),
     enableVibration: true,
     showBadge: true,
   );
@@ -83,7 +112,9 @@ class LocalNotifService {
       // ✅ Create channel - This is CRITICAL for notifications to appear
       // The channel must exist before any notifications can be displayed
       // This works even when app is closed
-      await androidPlugin?.createNotificationChannel(_channel);
+      await androidPlugin?.createNotificationChannel(_chatChannel);
+      await androidPlugin?.createNotificationChannel(_normalRequestChannel);
+      await androidPlugin?.createNotificationChannel(_emergencyRequestChannel);
 
       _inited = true;
     } catch (e) {
@@ -97,10 +128,34 @@ class LocalNotifService {
     required String title,
     required String body,
     String? payload,
+    bool isEmergencyRequest = false,
+    bool isRequestNotification = false,
   }) async {
     await init();
 
     if (kIsWeb) return;
+
+    final bool useRequestChannel = isRequestNotification;
+    final String channelId = !useRequestChannel
+        ? _chatChannel.id
+        : (isEmergencyRequest
+              ? _emergencyRequestChannel.id
+              : _normalRequestChannel.id);
+    final String channelName = !useRequestChannel
+        ? _chatChannel.name
+        : (isEmergencyRequest
+              ? _emergencyRequestChannel.name
+              : _normalRequestChannel.name);
+    final String? channelDescription = !useRequestChannel
+        ? _chatChannel.description
+        : (isEmergencyRequest
+              ? _emergencyRequestChannel.description
+              : _normalRequestChannel.description);
+    final AndroidNotificationSound? androidSound = !useRequestChannel
+        ? null
+        : RawResourceAndroidNotificationSound(
+            isEmergencyRequest ? emergencyRequestSound : normalRequestSound,
+          );
 
     await _plugin.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
@@ -108,14 +163,20 @@ class LocalNotifService {
       body,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          _channel.id,
-          _channel.name,
-          channelDescription: _channel.description,
+          channelId,
+          channelName,
+          channelDescription: channelDescription,
           importance: Importance.max,
           priority: Priority.high,
           icon: '@mipmap/ic_launcher',
           playSound: true,
+          sound: androidSound,
           enableVibration: true,
+          vibrationPattern: useRequestChannel
+              ? (isEmergencyRequest
+                    ? Int64List.fromList(const [0, 800, 350, 800, 350, 800])
+                    : Int64List.fromList(const [0, 250]))
+              : null,
           showWhen: true,
           autoCancel: true,
           ongoing: false,

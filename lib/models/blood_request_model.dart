@@ -11,6 +11,7 @@ class BloodRequest {
   final String bloodType;
   final int units;
   final bool isUrgent;
+  final bool isVerified;
   final String details;
   final String hospitalLocation;
   final double? hospitalLatitude;
@@ -41,6 +42,7 @@ class BloodRequest {
     required this.bloodType,
     required this.units,
     required this.isUrgent,
+    this.isVerified = false,
     this.details = '',
     this.hospitalLocation = '',
     this.hospitalLatitude,
@@ -62,6 +64,7 @@ class BloodRequest {
       bloodType: data['bloodType']?.toString() ?? '',
       units: units < 1 ? 1 : units,
       isUrgent: _coerceBool(data['isUrgent']),
+      isVerified: _coerceBool(data['isVerified']) || _coerceBool(data['isUrgent']),
       details: data['details']?.toString() ?? '',
       hospitalLocation: data['hospitalLocation']?.toString() ?? '',
       hospitalLatitude: _coerceDouble(data['hospitalLatitude']),
@@ -129,6 +132,7 @@ class BloodRequest {
       'bloodType': bloodType,
       'units': units,
       'isUrgent': isUrgent,
+      'isVerified': isVerified || isUrgent,
       'details': details,
       'hospitalLocation': hospitalLocation,
       'isCompleted': isCompleted,

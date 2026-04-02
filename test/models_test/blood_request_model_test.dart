@@ -24,6 +24,7 @@ void main() {
       expect(request.bloodType, 'A+');
       expect(request.units, 4);
       expect(request.isUrgent, true);
+      expect(request.isVerified, true);
       expect(request.details, 'Emergency surgery');
       expect(request.hospitalLocation, 'Amman');
       expect(request.acceptedCount, 0);
@@ -93,6 +94,33 @@ void main() {
       expect(request.myResponse, 'accepted');
     });
 
+    test('fromMap treats emergency request as verified', () {
+      final request = BloodRequest.fromMap({
+        'bloodBankId': 'b',
+        'bloodBankName': 'Bank',
+        'bloodType': 'AB+',
+        'units': 2,
+        'isUrgent': true,
+      }, 'r2');
+
+      expect(request.isUrgent, true);
+      expect(request.isVerified, true);
+    });
+
+    test('fromMap keeps explicit verification for normal request', () {
+      final request = BloodRequest.fromMap({
+        'bloodBankId': 'b',
+        'bloodBankName': 'Bank',
+        'bloodType': 'AB-',
+        'units': 2,
+        'isUrgent': false,
+        'isVerified': true,
+      }, 'r3');
+
+      expect(request.isUrgent, false);
+      expect(request.isVerified, true);
+    });
+
     ///returns correct map structure
     test('toMap returns correct map structure', () {
       final request = BloodRequest(
@@ -113,6 +141,7 @@ void main() {
       expect(map['bloodType'], 'B-');
       expect(map['units'], 3);
       expect(map['isUrgent'], true);
+      expect(map['isVerified'], true);
       expect(map['details'], 'Critical case');
       expect(map['hospitalLocation'], 'Zarqa');
     });
