@@ -7,6 +7,20 @@ const db = admin.firestore();
 
 const REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * Callables / JSON may send "true", 1, etc. Urgent FCM + Firestore must stay aligned.
+ */
+function coerceUrgent(value) {
+  if (value === true) return true;
+  if (value === false || value == null) return false;
+  if (typeof value === "string") {
+    const s = value.trim().toLowerCase();
+    return s === "true" || s === "1" || s === "yes";
+  }
+  if (typeof value === "number") return value === 1;
+  return false;
+}
+
 function isRequestExpired(createdAtValue) {
   if (!createdAtValue || typeof createdAtValue.toMillis !== "function") {
     return false;
@@ -117,6 +131,7 @@ async function buildDonorResponseEntry(donorId) {
  * Haversine formula — calculates distance in km between two GPS coordinates.
  * (kept for reference but no longer used for filtering)
  */
+// eslint-disable-next-line no-unused-vars -- reference only
 function haversineDistanceKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -160,7 +175,7 @@ exports.addRequest = onCall(async (request) => {
       );
     }
 
-    const isUrgent = data.isUrgent === true;
+    const isUrgent = coerceUrgent(data.isUrgent);
     const hospitalLocation = nonEmptyString(
       data.hospitalLocation,
       "hospitalLocation",
@@ -749,13 +764,15 @@ async function notifyDonorsForNewRequest(requestId, data) {
     return;
   }
 
+  const isUrgent = coerceUrgent(data.isUrgent);
+
   const bloodType = data.bloodType;
   const bloodBankId = data.bloodBankId;
   const hospitalLocation = (data.hospitalLocation || "").trim();
 
   console.log(
     `[notifyDonorsForNewRequest] Request: ${requestId}, bloodType: ${bloodType}, ` +
-      `hospitalLocation: ${hospitalLocation}`,
+      `hospitalLocation: ${hospitalLocation}, isUrgent: ${isUrgent}`,
   );
 
   const requestRef = db.collection("requests").doc(requestId);
@@ -827,6 +844,7 @@ async function notifyDonorsForNewRequest(requestId, data) {
       title: `Blood request: ${bloodType}`,
       body: `${data.bloodBankName || "Blood Bank"} needs your help ❤️`,
       requestId,
+      isUrgent,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       read: false,
     });
@@ -886,12 +904,23 @@ async function notifyDonorsForNewRequest(requestId, data) {
   }
 
   if (uniqueTokens.length > 0) {
-    const title = data.isUrgent
-      ? "Urgent blood request"
-      : "New blood request";
+    const title = isUrgent ? "Urgent blood request" : "New blood request";
     const body = `${data.bloodBankName || "Blood Bank"} needs ${
       data.units || ""
     } units (${bloodType})`;
+
+    const androidNotification = {
+      channelId: isUrgent ?
+        "emergency_request_channel_v3" :
+        "normal_request_channel",
+      icon: "ic_launcher",
+      sound: isUrgent ? "emergency_request" : "normal_request",
+      defaultSound: false,
+      defaultVibrateTimings: false,
+    };
+    if (isUrgent) {
+      androidNotification.vibrateTimingsMillis = [0, 500, 250, 500];
+    }
 
     const message = {
       notification: { title, body },
@@ -899,24 +928,20 @@ async function notifyDonorsForNewRequest(requestId, data) {
         type: "request",
         requestId: String(requestId),
         bloodType: String(bloodType || ""),
-        isUrgent: data.isUrgent ? "true" : "false",
+        isUrgent: isUrgent ? "true" : "false",
         title: String(title),
         body: String(body),
       },
       android: {
         priority: "high",
-        notification: {
-          channelId: "high_importance_channel",
-          sound: "default",
-          defaultSound: true,
-          defaultVibrateTimings: true,
-        },
+        notification: androidNotification,
       },
       apns: {
         payload: {
           aps: {
             alert: { title, body },
-            sound: "default",
+            sound: isUrgent ? "emergency_request.mp3" : "normal_request.mp3",
+            "interruption-level": isUrgent ? "time-sensitive" : "active",
             badge: 1,
           },
         },

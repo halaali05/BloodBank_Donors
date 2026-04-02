@@ -478,15 +478,18 @@ exports.sendMessage = onCall(async (request) => {
             android: {
               priority: "high",
               notification: {
-                channelId: "high_importance_channel",
-                sound: "default",
+                // Must match a channel created in LocalNotifService (Flutter).
+                channelId: "normal_request_channel",
+                icon: "ic_launcher",
+                sound: "normal_request",
+                defaultSound: false,
               },
             },
             apns: {
               payload: {
                 aps: {
                   alert: {title, body},
-                  sound: "default",
+                  sound: "normal_request.mp3",
                 },
               },
             },

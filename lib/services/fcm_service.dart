@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -25,6 +26,7 @@ class FCMService {
   );
 
   bool _listenersRegistered = false;
+  bool _authStateListenerRegistered = false;
   bool _initialLaunchMessageHandled = false;
 
   String _lastSyncError = '';
@@ -51,6 +53,16 @@ class FCMService {
         (RemoteMessage m) => _handleNotificationClick(m.data),
       );
       messaging.onTokenRefresh.listen(_onTokenRefresh);
+    }
+
+    // Auth often restores after [main]; sync token whenever a user session exists.
+    if (!_authStateListenerRegistered) {
+      _authStateListenerRegistered = true;
+      FirebaseAuth.instance.authStateChanges().listen((User? user) {
+        if (user != null) {
+          unawaited(_syncTokenToServer());
+        }
+      });
     }
 
     final NotificationSettings settings = await messaging.requestPermission(
@@ -242,6 +254,8 @@ class FCMService {
   void _onForegroundMessage(RemoteMessage message) {
     final String requestId = message.data['requestId']?.toString() ?? '';
     final String type = message.data['type']?.toString() ?? 'request';
+    final bool isUrgent =
+        (message.data['isUrgent']?.toString().toLowerCase() ?? '') == 'true';
 
     final String title =
         message.data['title']?.toString() ??
@@ -275,6 +289,7 @@ class FCMService {
       title: title,
       body: body,
       payload: jsonEncode(payload),
+      isUrgent: type == 'request' ? isUrgent : false,
     );
   }
 

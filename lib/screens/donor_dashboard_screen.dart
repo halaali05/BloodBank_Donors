@@ -80,6 +80,10 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         await FCMService.instance.initFCM();
+        await FCMService.instance.ensureTokenSynced(
+          attempts: 5,
+          delay: const Duration(seconds: 2),
+        );
       } catch (e) {
         // Failed to initialize FCM - non-critical, continue
       }

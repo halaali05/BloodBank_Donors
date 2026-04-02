@@ -51,3 +51,7 @@ firebase.json
 
 # Generated
 .metadata
+
+# Local tooling (too large for GitHub; install ffmpeg from https://ffmpeg.org/)
+/tools/ffmpeg/
+/tools/ffmpeg.zip

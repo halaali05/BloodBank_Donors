@@ -35,6 +35,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     );
 
     final requestId = message.data['requestId']?.toString() ?? '';
+    final bool isUrgent =
+        (message.data['isUrgent']?.toString().toLowerCase() ?? '') == 'true';
+    final String type = message.data['type']?.toString() ?? 'request';
     final title =
         message.data['title']?.toString() ??
         message.notification?.title ??
@@ -52,8 +55,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await LocalNotifService.instance.show(
       title: title,
       body: body,
+      isUrgent: type == 'request' && isUrgent,
       payload: jsonEncode({
-        'type': message.data['type']?.toString() ?? 'request',
+        'type': type,
         'requestId': requestId,
         'senderId': message.data['senderId']?.toString() ?? '',
         'recipientId': message.data['recipientId']?.toString() ?? '',
@@ -67,6 +71,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       await LocalNotifService.instance.show(
         title: 'Blood Request',
         body: 'New blood request available',
+        isUrgent: (message.data['type']?.toString() ?? 'request') == 'request' &&
+            (message.data['isUrgent']?.toString().toLowerCase() ?? '') ==
+                'true',
         payload: jsonEncode({
           'type': message.data['type']?.toString() ?? 'request',
           'requestId': message.data['requestId']?.toString() ?? '',

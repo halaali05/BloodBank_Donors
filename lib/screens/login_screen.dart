@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../controllers/login_controller.dart';
 import '../services/fcm_service.dart';
@@ -60,13 +59,15 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (result.success && result.navigationRoute != null) {
-        if (!kIsWeb) {
-          try {
-            await FCMService.instance
-                .ensureTokenSynced(attempts: 4, delay: const Duration(seconds: 2))
-                .timeout(const Duration(seconds: 6));
-          } catch (_) {}
-        }
+        try {
+          // Must finish before navigating: server uses fcmToken on users/{uid} for pushes.
+          // Do not use a short timeout — 4×2s retries alone exceed 6s and silently broke sync.
+          await FCMService.instance.ensureTokenSynced(
+            attempts: 5,
+            delay: const Duration(seconds: 1),
+          );
+        } catch (_) {}
+        if (!mounted) return;
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => result.navigationRoute!),
           (route) => false,

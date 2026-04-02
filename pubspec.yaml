@@ -1,7 +1,7 @@
 name: bloodbank_donors
 description: "A new Flutter project."
 publish_to: "none"
-version: 1.0.0+1
+version: 1.0.2+3
 
 environment:
   sdk: ^3.9.2
@@ -30,8 +30,17 @@ dev_dependencies:
   mocktail: ^1.0.3
   fake_cloud_firestore: ^4.0.0
   firebase_auth_mocks: ^0.15.1
+  flutter_launcher_icons: ^0.14.3
 
 flutter:
   uses-material-design: true
   assets:
     - images/logoBLOOD.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: images/logoBLOOD.png
+  adaptive_icon_background: "#E60012"
+  adaptive_icon_foreground: images/logoBLOOD.png
+  remove_alpha_ios: true

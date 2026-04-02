@@ -25,6 +25,8 @@ module.exports = {
     "space-before-function-paren": "off",
     "operator-linebreak": "off",
     "padded-blocks": "off",
+    // Windows checkouts often use CRLF; Google preset expects LF — avoid noisy false positives.
+    "linebreak-style": "off",
   },
   overrides: [
     {

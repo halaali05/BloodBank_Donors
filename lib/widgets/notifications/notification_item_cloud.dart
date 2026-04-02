@@ -36,7 +36,9 @@ class NotificationItemCloud extends StatelessWidget {
     final requestId = (data['requestId'] as String?) ?? '';
     final createdAt = data['createdAt'] as int?;
     final createdAtText = formatTime(context, createdAt);
-    final isUrgent = data['isUrgent'] == true;
+    final isUrgent =
+        data['isUrgent'] == true ||
+        (data['isUrgent']?.toString().toLowerCase() ?? '') == 'true';
     final cardBg = isUrgent ? AppTheme.urgentCardBg : Colors.white;
     final iconData = isUrgent
         ? Icons.warning_amber_rounded
