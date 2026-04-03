@@ -34,79 +34,86 @@ class RequestCard extends StatelessWidget {
       textDirection: TextDirection.ltr,
       child: Container(
         padding: const EdgeInsets.all(14),
-        decoration: AppTheme.cardDecoration(),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+
+         // 🔴 border إذا urgent
+          border: isUrgent? Border.all(color: const Color.fromARGB(255, 194, 87, 79), width: 1.5) : null,
+
+        boxShadow: [
+        BoxShadow(
+        color: isUrgent? const Color.fromARGB(255, 189, 79, 71).withOpacity(0.5): Colors.black12,
+        blurRadius: isUrgent ? 12 : 6,
+        offset: const Offset(0, 3),
+      ),
+  ],
+),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppTheme.deepRed.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    request.bloodType,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      color: AppTheme.deepRed,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    '${request.units} units needed',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-                if (isUrgent) ...[
-                  const UrgentBadge(),
-                  const SizedBox(width: 6),
-                ],
-                if (isCompleted) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: Colors.green.shade300),
-                    ),
-                    child: Text(
-                      'Completed',
-                      style: TextStyle(
-                        color: Colors.green.shade800,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-                if (canDelete && onDelete != null) ...[
-                  IconButton(
-                    tooltip: 'Delete',
-                    constraints: const BoxConstraints(),
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      size: 20,
-                      color: Colors.red,
-                    ),
-                    onPressed: onDelete,
-                  ),
-                ],
-              ],
-            ),
+           Row(
+  children: [
+    // 🩸 Blood Type Badge
+    Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isUrgent
+            ? Colors.red.withOpacity(0.15)
+            : AppTheme.deepRed.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        request.bloodType,
+        style: const TextStyle(
+          fontWeight: FontWeight.w900,
+          fontSize: 16,
+          color: AppTheme.deepRed,
+        ),
+      ),
+    ),
+
+    const SizedBox(width: 12),
+
+    // 🔢 Units
+    Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${request.units}',
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const Text(
+          'units needed',
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.black54,
+          ),
+        ),
+      ],
+    ),
+
+    const Spacer(),
+
+    if (isUrgent) ...[
+      const UrgentBadge(),
+      const SizedBox(width: 6),
+    ],
+    if (canDelete && onDelete != null)
+  IconButton(
+    tooltip: 'Delete',
+    icon: const Icon(
+      Icons.delete_outline,
+      color: Colors.red,
+      size: 20,
+    ),
+    onPressed: onDelete,
+  ),
+  ],
+),
             const SizedBox(height: 8),
             Row(
               children: [

@@ -1,21 +1,26 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
 import 'contacts_screen.dart';
 import 'new_request_screen.dart';
 import 'login_screen.dart';
 import 'request_responders_screen.dart';
+import 'stats_screen.dart';
+
 import '../models/blood_request_model.dart';
 import '../controllers/blood_bank_dashboard_controller.dart';
 import '../theme/app_theme.dart';
+
 import '../widgets/common/app_bar_with_logo.dart';
 import '../widgets/common/error_box.dart';
 import '../widgets/common/loading_indicator.dart';
 import '../widgets/common/empty_state.dart';
 import '../widgets/common/section_header.dart';
+
 import '../widgets/dashboard/header_card.dart';
-import '../widgets/dashboard/stat_card.dart';
 import '../widgets/dashboard/request_card.dart';
+
 import '../services/fcm_service.dart';
 
 class BloodBankDashboardScreen extends StatefulWidget {
@@ -95,9 +100,7 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
   }
 
   Future<void> _handleDeleteRequest(
-    BuildContext context,
-    BloodRequest request,
-  ) async {
+      BuildContext context, BloodRequest request) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -131,8 +134,60 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
       await _controller.deleteRequest(requestId: request.id);
       if (context.mounted) Navigator.pop(context);
       await _loadRequests();
+    } catch (_) {
+      if (context.mounted) Navigator.pop(context);
+    }
+  }
+
+  Future<void> _handleCompleteRequest(
+      BuildContext context, BloodRequest request) async {
+    if (request.isCompleted) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Mark Request Completed'),
+        content: const Text(
+          'This will mark the post as completed and disable new responses. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.green),
+            child: const Text('Complete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      await _controller.markRequestCompleted(requestId: request.id);
+      if (context.mounted) Navigator.pop(context);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Request marked as completed.')),
+      );
+
+      await _loadRequests();
     } catch (e) {
       if (context.mounted) Navigator.pop(context);
+
+      final message = e.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message.isEmpty ? 'Failed.' : message)),
+      );
     }
   }
 
@@ -149,96 +204,40 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
 
   Future<void> _syncNotificationToken() async {
     bool ok = false;
-    String failureReason = '';
+    String error = '';
+
     try {
-      ok = await FCMService.instance.ensureTokenSynced(
-        attempts: 3,
-        delay: const Duration(seconds: 1),
-      );
-      failureReason = FCMService.instance.getLastSyncError().trim();
-      if (failureReason == '(none)') {
-        failureReason = '';
-      }
+      ok = await FCMService.instance.ensureTokenSynced();
+      error = FCMService.instance.getLastSyncError();
     } catch (e) {
-      failureReason = e.toString();
+      error = e.toString();
     }
+
     if (!mounted) return;
 
-    final shownReason = failureReason.trim().isEmpty
-        ? 'FCM token not generated yet.'
-        : failureReason.trim();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          ok ? 'Notification token synced successfully.' : 'Token sync failed: $shownReason',
-        ),
+        content: Text(ok ? 'Synced successfully' : 'Failed: $error'),
         backgroundColor: ok ? Colors.green : Colors.red,
       ),
     );
   }
 
-  Future<void> _handleCompleteRequest(
-    BuildContext context,
-    BloodRequest request,
-  ) async {
-    if (request.isCompleted) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Mark Request Completed'),
-        content: const Text(
-          'This will mark the post as completed for donors and disable new donor responses. Continue?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.green),
-            child: const Text('Complete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-    try {
-      await _controller.markRequestCompleted(requestId: request.id);
-      if (context.mounted) Navigator.pop(context);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Request marked as completed.')),
-        );
-      }
-      await _loadRequests();
-    } catch (e) {
-      if (context.mounted) Navigator.pop(context);
-      if (mounted) {
-        final message = e.toString().replaceFirst('Exception: ', '');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              message.isEmpty
-                  ? 'Failed to complete request. Please try again.'
-                  : message,
-            ),
-          ),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final stats = _controller.calculateStatistics(_requests);
-    final activeRequests = _requests.where((r) => !r.isCompleted).toList();
-    final completedRequests = _requests.where((r) => r.isCompleted).toList();
+    final urgentCount = stats['urgentCount'] ?? 0;
+
+    final activeRequests =
+        _requests.where((r) => !r.isCompleted).toList();
+
+    final completedRequests =
+        _requests.where((r) => r.isCompleted).toList();
+
+    final activeUnits = activeRequests.fold(
+      0,
+      (sum, r) => sum + r.units,
+    );
 
     return Scaffold(
       backgroundColor: AppTheme.offWhite,
@@ -246,15 +245,22 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
         title: 'Blood Bank',
         actions: [
           IconButton(
-            tooltip: 'Sync notifications',
-            icon: const Icon(
-              Icons.notifications_active_outlined,
-              color: AppTheme.deepRed,
-            ),
+            icon: const Icon(Icons.info_outline, color: AppTheme.deepRed),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => StatsScreen(stats: stats),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.notifications_active_outlined,
+                color: AppTheme.deepRed),
             onPressed: _syncNotificationToken,
           ),
           IconButton(
-            tooltip: 'Logout',
             icon: const Icon(Icons.logout, color: AppTheme.deepRed),
             onPressed: () => _handleLogout(context),
           ),
@@ -264,85 +270,56 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
         child: _isLoading && _requests.isEmpty
             ? const LoadingIndicator()
             : _error != null
-                ? ErrorBox(title: 'Error loading requests', message: _error!)
+                ? ErrorBox(title: 'Error', message: _error!)
                 : RefreshIndicator(
                     onRefresh: _loadRequests,
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppTheme.padding,
-                        14,
-                        AppTheme.padding,
-                        18,
-                      ),
+                      padding: const EdgeInsets.all(AppTheme.padding),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          /// HEADER (LTR)
-                          Directionality(
-                            textDirection: TextDirection.ltr,
-                            child: HeaderCard(
-                              title: widget.bloodBankName,
-                              subtitle: widget.location,
-                            ),
+                          /// HEADER
+                          HeaderCard(
+                            title: widget.bloodBankName,
+                            subtitle: widget.location,
+                            activeUnits: activeUnits,
+                            urgentRequests: urgentCount,
+                            activeRequests: activeRequests.length,
                           ),
 
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 24),
 
-                          /// STATS (LTR)
-                          Directionality(
-                            textDirection: TextDirection.ltr,
-                            child: _StatsGrid(
-                              totalUnits: stats['totalUnits']!,
-                              activeCount: stats['activeCount']!,
-                              urgentCount: stats['urgentCount']!,
-                              normalCount: stats['normalCount']!,
-                              totalAccepted: stats['totalAccepted']!,
-                              totalRejected: stats['totalRejected']!,
-                            ),
-                          ),
-
-                          const SizedBox(height: 20),
-
-                          /// SECTION HEADER (LTR)
-                          Directionality(
-                            textDirection: TextDirection.ltr,
-                            child: SectionHeader(
-                              title: 'Active Requests',
-                              subtitle: activeRequests.isEmpty
-                                  ? 'No active requests'
-                                  : 'Manage your blood current posts',
-                              rightWidget: ElevatedButton.icon(
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => NewRequestScreen(
-                                        bloodBankName: widget.bloodBankName,
-                                        initialHospitalLocation:
-                                            widget.location,
-                                      ),
+                          /// ACTIVE REQUESTS
+                          SectionHeader(
+                            title: 'Active Requests',
+                            subtitle: activeRequests.isEmpty
+                                ? 'No active requests'
+                                : 'Manage current posts',
+                            rightWidget: ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => NewRequestScreen(
+                                      bloodBankName: widget.bloodBankName,
+                                      initialHospitalLocation:
+                                          widget.location,
                                     ),
-                                  );
-                                },
-                                icon: const Icon(Icons.add, size: 18),
-                                label: const Text('New Request'),
-                                style: AppTheme.primaryButtonStyle(
-                                  borderRadius:
-                                      AppTheme.borderRadiusSmall,
-                                ),
-                              ),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.add),
+                              label: const Text('New'),
                             ),
                           ),
 
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 12),
 
-                          /// POSTS (UNCHANGED)
                           if (activeRequests.isEmpty)
                             const EmptyState(
                               icon: Icons.inbox_outlined,
                               title: 'No active requests',
-                              subtitle:
-                                  'Create a new request to reach donors quickly.',
+                              subtitle: 'Create one now.',
                             )
                           else
                             ListView.separated(
@@ -360,71 +337,40 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                                       _handleDeleteRequest(context, request),
                                   onMarkCompleted: () =>
                                       _handleCompleteRequest(context, request),
-                                  onTapAcceptances: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => RequestRespondersScreen(
-                                          requestId: request.id,
-                                          subtitle:
-                                              '${request.bloodType} · ${request.units} units · ${request.bloodBankName}',
-                                          initialTabIndex: 0,
-                                          accepted: request.acceptedDonors,
-                                          rejected: request.rejectedDonors,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  onTapRejections: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => RequestRespondersScreen(
-                                          requestId: request.id,
-                                          subtitle:
-                                              '${request.bloodType} · ${request.units} units · ${request.bloodBankName}',
-                                          initialTabIndex: 1,
-                                          accepted: request.acceptedDonors,
-                                          rejected: request.rejectedDonors,
-                                        ),
-                                      ),
-                                    );
-                                  },
                                   onViewDonors: () {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (_) => ContactsScreen(
-                                          requestId: request.id,
-                                        ),
+                                        builder: (_) =>
+                                            ContactsScreen(requestId: request.id),
                                       ),
                                     );
                                   },
                                 );
                               },
                             ),
-                          const SizedBox(height: 20),
-                          Directionality(
-                            textDirection: TextDirection.ltr,
-                            child: SectionHeader(
-                              title: 'Completed Requests',
-                              subtitle: completedRequests.isEmpty
-                                  ? 'No completed requests yet'
-                                  : 'These posts are closed for donors',
-                            ),
+
+                          const SizedBox(height: 24),
+
+                          /// COMPLETED
+                          SectionHeader(
+                            title: 'Completed Requests',
+                            subtitle: 'Closed posts',
                           ),
-                          const SizedBox(height: 10),
+
+                          const SizedBox(height: 12),
+
                           if (completedRequests.isEmpty)
                             const EmptyState(
                               icon: Icons.check_circle_outline,
                               title: 'No completed requests',
-                              subtitle:
-                                  'Completed posts will appear here after you mark them done.',
+                              subtitle: '',
                             )
                           else
                             ListView.separated(
                               shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
+                              physics:
+                                  const NeverScrollableScrollPhysics(),
                               itemCount: completedRequests.length,
                               separatorBuilder: (_, __) =>
                                   const SizedBox(height: 12),
@@ -434,46 +380,6 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                                   request: request,
                                   onDelete: () =>
                                       _handleDeleteRequest(context, request),
-                                  onTapAcceptances: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => RequestRespondersScreen(
-                                          requestId: request.id,
-                                          subtitle:
-                                              '${request.bloodType} · ${request.units} units · ${request.bloodBankName}',
-                                          initialTabIndex: 0,
-                                          accepted: request.acceptedDonors,
-                                          rejected: request.rejectedDonors,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  onTapRejections: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => RequestRespondersScreen(
-                                          requestId: request.id,
-                                          subtitle:
-                                              '${request.bloodType} · ${request.units} units · ${request.bloodBankName}',
-                                          initialTabIndex: 1,
-                                          accepted: request.acceptedDonors,
-                                          rejected: request.rejectedDonors,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  onViewDonors: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => ContactsScreen(
-                                          requestId: request.id,
-                                        ),
-                                      ),
-                                    );
-                                  },
                                 );
                               },
                             ),
@@ -482,82 +388,6 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                     ),
                   ),
       ),
-    );
-  }
-}
-
-/// ---------------- STATS GRID ----------------
-class _StatsGrid extends StatelessWidget {
-  const _StatsGrid({
-    required this.totalUnits,
-    required this.activeCount,
-    required this.urgentCount,
-    required this.normalCount,
-    required this.totalAccepted,
-    required this.totalRejected,
-  });
-
-  final int totalUnits;
-  final int activeCount;
-  final int urgentCount;
-  final int normalCount;
-  final int totalAccepted;
-  final int totalRejected;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cardWidth = (constraints.maxWidth - 12) / 2;
-        return Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            StatCard(
-              title: 'Total Units',
-              value: '$totalUnits',
-              icon: Icons.bloodtype,
-              tint: const Color(0xFF1565C0),
-              width: cardWidth,
-            ),
-            StatCard(
-              title: 'Active Requests',
-              value: '$activeCount',
-              icon: Icons.list_alt,
-              tint: AppTheme.deepRed,
-              width: cardWidth,
-            ),
-            StatCard(
-              title: 'Urgent',
-              value: '$urgentCount',
-              icon: Icons.warning_amber_rounded,
-              tint: const Color(0xFFF57C00),
-              width: cardWidth,
-            ),
-            StatCard(
-              title: 'Normal',
-              value: '$normalCount',
-              icon: Icons.check_circle,
-              tint: const Color(0xFF2E7D32),
-              width: cardWidth,
-            ),
-            StatCard(
-              title: 'Donor acceptances',
-              value: '$totalAccepted',
-              icon: Icons.thumb_up_alt_outlined,
-              tint: const Color(0xFF2E7D32),
-              width: cardWidth,
-            ),
-            StatCard(
-              title: 'Donor rejections',
-              value: '$totalRejected',
-              icon: Icons.thumb_down_alt_outlined,
-              tint: const Color(0xFFC62828),
-              width: cardWidth,
-            ),
-          ],
-        );
-      },
     );
   }
 }

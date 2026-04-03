@@ -2,15 +2,10 @@ import 'package:flutter/material.dart';
 import 'chat_screen.dart';
 import '../services/cloud_functions_service.dart';
 import '../theme/app_theme.dart';
+import '../controllers/chat_controller.dart';
 
-/// Screen that displays a list of available donors
-/// Used by blood banks to select a donor to chat with
-/// Can optionally filter by blood type
 class ContactsScreen extends StatefulWidget {
-  /// ID of the blood request (used when navigating to chat)
   final String requestId;
-
-  /// Optional: Filter donors by specific blood type
   final String? bloodType;
 
   const ContactsScreen({super.key, required this.requestId, this.bloodType});
@@ -21,21 +16,18 @@ class ContactsScreen extends StatefulWidget {
 
 class _ContactsScreenState extends State<ContactsScreen> {
   final _cloudFunctions = CloudFunctionsService();
+  final ChatController _chatController = ChatController();
 
-  // State
-  List<Map<String, dynamic>>? _donors; // List of donor data
-  bool _isLoading = true; // Show loading while fetching
-  String? _error; // Error message if loading fails
+  List<Map<String, dynamic>>? _donors;
+  bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    // Load donors list when screen opens
     _loadDonors();
   }
 
-  /// Fetches the list of available donors from Cloud Functions
-  /// Optionally filters by blood type if specified
   Future<void> _loadDonors() async {
     setState(() {
       _isLoading = true;
@@ -47,10 +39,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
         bloodType: widget.bloodType,
       );
 
+      final donorsList = result['donors'];
+
+      // 🔥 بس الناس اللي تواصلوا
+      final chatUserIds =
+          await _chatController.getChatParticipants(widget.requestId);
+
       if (mounted) {
         setState(() {
-          // Safely convert the donors list from the result
-          final donorsList = result['donors'];
           if (donorsList is List && donorsList.isNotEmpty) {
             _donors = donorsList
                 .map((item) {
@@ -62,11 +58,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     return <String, dynamic>{};
                   }
                 })
-                .where((map) => map.isNotEmpty && map['id'] != null)
+                .where((map) =>
+                    map.isNotEmpty &&
+                    map['id'] != null &&
+                    chatUserIds.contains(map['id'])) // 🔥 الفلترة
                 .toList();
           } else {
             _donors = [];
           }
+
           _isLoading = false;
         });
       }
@@ -84,12 +84,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
         title: const Text(
-          'Select Donor',
-          style: TextStyle(fontWeight: FontWeight.w800),
+          'People who contacted you',
+          style: TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
       body: _buildBody(),
@@ -102,92 +99,40 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
 
     if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 48),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Text(
-                'Error loading donors: $_error',
-                style: const TextStyle(color: Colors.red),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _loadDonors,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-              style: AppTheme.primaryButtonStyle(),
-            ),
-          ],
-        ),
-      );
+      return Center(child: Text(_error!));
     }
 
     if (_donors == null || _donors!.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.people_outline, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              widget.bloodType != null
-                  ? 'No donors found with blood type ${widget.bloodType}'
-                  : 'No donors found',
-              style: TextStyle(color: Colors.grey[600]),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
+      return const Center(child: Text('No contacts yet'));
     }
 
     return RefreshIndicator(
       onRefresh: _loadDonors,
-      child: ListView.separated(
+      child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _donors!.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final donor = _donors![index];
-          final donorId = donor['id'] as String? ?? '';
+          final donorId = donor['id'];
           final donorName =
-              donor['fullName'] as String? ??
-              donor['name'] as String? ??
-              'Donor';
+              donor['fullName'] ?? donor['name'] ?? 'Donor';
           final donorLocation =
-              donor['location'] as String? ?? 'Unknown location';
+              donor['location'] ?? 'Unknown location';
 
           return Container(
+            margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(14),
             decoration: AppTheme.cardDecoration(),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: AppTheme.deepRed.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Center(
-                    child: Text(
-                      donorName.isNotEmpty ? donorName[0].toUpperCase() : 'D',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                        color: AppTheme.deepRed,
-                      ),
-                    ),
-                  ),
+                CircleAvatar(
+                  backgroundColor: AppTheme.deepRed.withOpacity(0.1),
+                  child: Text(donorName[0].toUpperCase()),
                 ),
+
                 const SizedBox(width: 12),
+
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -195,11 +140,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       Text(
                         donorName,
                         style: const TextStyle(
-                          fontSize: 16,
                           fontWeight: FontWeight.w900,
+                          fontSize: 15,
                         ),
                       ),
                       const SizedBox(height: 6),
+
                       Row(
                         children: [
                           const Icon(
@@ -221,7 +167,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           ),
                         ],
                       ),
+
                       const SizedBox(height: 10),
+
                       Align(
                         alignment: Alignment.centerRight,
                         child: ElevatedButton.icon(
@@ -232,8 +180,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               MaterialPageRoute(
                                 builder: (_) => ChatScreen(
                                   requestId: widget.requestId,
-                                  initialMessage:
-                                      'Please $donorName donate and save a life ❤️',
+                                  initialMessage: '',
                                   recipientId: donorId,
                                 ),
                               ),
@@ -241,7 +188,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           },
                           icon: const Icon(Icons.chat_bubble_outline, size: 18),
                           label: const Text(
-                            'Messages',
+                            'Message',
                             style: TextStyle(fontWeight: FontWeight.w800),
                           ),
                         ),

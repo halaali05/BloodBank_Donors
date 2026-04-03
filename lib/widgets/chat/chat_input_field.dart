@@ -26,7 +26,7 @@ class ChatInputField extends StatelessWidget {
     required this.isSending,
     required this.onSend,
     this.sidePadding = 12.0,
-    this.borderRadius = 24.0,
+    this.borderRadius = 30.0, // خليتها أكبر شوي
     required this.bottomPadding,
   });
 
@@ -39,38 +39,51 @@ class ChatInputField extends StatelessWidget {
         sidePadding,
         sidePadding + bottomPadding,
       ),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: isSending ? null : onSend,
-            icon: isSending
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(borderRadius),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 10,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: TextField(
+          controller: controller,
+          enabled: !isSending,
+          textInputAction: TextInputAction.send,
+          onSubmitted: (_) => onSend(),
+          decoration: InputDecoration(
+            hintText: isSending ? 'Sending...' : 'Type a message...',
+            
+            suffixIcon: isSending
+                ? Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                   )
-                : const Icon(Icons.send),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              enabled: !isSending,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => onSend(),
-              decoration: InputDecoration(
-                hintText: isSending ? 'Sending...' : 'Type a message...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(borderRadius),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-              ),
+                : IconButton(
+                    icon: const Icon(Icons.send, color: Colors.red),
+                    onPressed: onSend,
+                  ),
+
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(borderRadius),
+              borderSide: BorderSide.none,
+            ),
+
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14, 
             ),
           ),
-        ],
+        ),
       ),
     );
   }

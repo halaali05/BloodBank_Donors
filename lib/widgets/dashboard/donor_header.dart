@@ -2,22 +2,21 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 
 /// Welcome header for donor dashboard
-/// Displays donor name, welcome message, and quick stats
+/// Displays donor name + active stats
 class DonorHeader extends StatelessWidget {
-  /// Name of the donor
   final String donorName;
 
-  /// Total number of available blood requests
-  final int totalRequests;
+  /// عدد الطلبات النشطة
+  final int activeRequests;
 
-  /// Number of urgent requests
-  final int urgentCount;
+  /// مجموع الوحدات المطلوبة (للـ active)
+  final int activeUnits;
 
   const DonorHeader({
     super.key,
     required this.donorName,
-    required this.totalRequests,
-    required this.urgentCount,
+    required this.activeRequests,
+    required this.activeUnits,
   });
 
   @override
@@ -36,6 +35,7 @@ class DonorHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
+          /// 🔴 Icon
           Container(
             width: 56,
             height: 56,
@@ -49,7 +49,10 @@ class DonorHeader extends StatelessWidget {
               size: 26,
             ),
           ),
+
           const SizedBox(width: 14),
+
+          /// 🧠 Text
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -66,20 +69,29 @@ class DonorHeader extends StatelessWidget {
                 const SizedBox(height: 4),
                 const Text(
                   'Thank you for being a blood donor 💉',
-                  style: TextStyle(fontSize: 13, color: Colors.black54),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.black54,
+                  ),
                 ),
               ],
             ),
           ),
+
           const SizedBox(width: 10),
+
+          /// 🟢 Pills
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _PillStat(label: 'Requests', value: '$totalRequests'),
+              _PillStat(
+                label: 'Active Requests',
+                value: '$activeRequests',
+              ),
               const SizedBox(height: 6),
               _PillStat(
-                label: 'Urgent',
-                value: '$urgentCount',
+                label: 'Active Units',
+                value: '$activeUnits',
                 highlight: true,
               ),
             ],
@@ -90,6 +102,7 @@ class DonorHeader extends StatelessWidget {
   }
 }
 
+/// 🔵 Single pill widget
 class _PillStat extends StatelessWidget {
   final String label;
   final String value;
@@ -128,8 +141,8 @@ class _PillStat extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 11,
-              color: fg.withOpacity(0.85),
               fontWeight: FontWeight.w700,
+              color: fg.withOpacity(0.85),
             ),
           ),
         ],

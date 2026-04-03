@@ -228,4 +228,49 @@ class ChatController {
     if (user == null) return false;
     return message['senderId'] == user.uid;
   }
+
+
+/// Gets users who interacted (sent messages) for a request
+Future<List<String>> getChatParticipants(String requestId) async {
+  final snapshot = await fetchMessages(requestId);
+
+  final messages = snapshot.messages;
+  final bloodBankId = snapshot.bloodBankId;
+
+  final userIds = <String>{};
+
+  for (var msg in messages) {
+    final sender = msg['senderId'];
+
+    if (sender != null && sender != bloodBankId) {
+      userIds.add(sender);
+    }
+  }
+
+  return userIds.toList();
 }
+
+Future<Map<String, int>> getUnreadCountPerUser(String requestId) async {
+  final snapshot = await fetchMessages(requestId);
+
+  final messages = snapshot.messages;
+  final bloodBankId = snapshot.bloodBankId;
+
+  final unreadCount = <String, int>{};
+
+  for (var msg in messages) {
+    final sender = msg['senderId'];
+    final receiver = msg['recipientId'];
+
+    //  رسائل جاية للبنك
+    if (receiver == bloodBankId && sender != null) {
+      unreadCount[sender] = (unreadCount[sender] ?? 0) + 1;
+    }
+  }
+
+  return unreadCount;
+}
+
+}
+
+

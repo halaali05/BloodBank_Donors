@@ -396,19 +396,24 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
   /// Builds header with donor name and statistics
   /// Uses Cloud Functions to get user profile data (polling every 30 seconds)
   Widget _buildHeader(User? user) {
-    // Calculate statistics from current requests
-    final stats = _controller.calculateStatistics(_requests);
+   
+  final activeRequests =
+      _requests.where((r) => !r.isCompleted).toList();
 
-    // Extract donor name from user profile data
-    final donorName = _controller.extractDonorName(
-      _userProfile,
-      user?.displayName,
-    );
+  final activeUnits = activeRequests.fold(
+    0,
+    (sum, r) => sum + r.units,
+  );
 
-    return DonorHeader(
-      donorName: donorName,
-      totalRequests: stats['totalCount']!,
-      urgentCount: stats['urgentCount']!,
-    );
-  }
+  final donorName = _controller.extractDonorName(
+    _userProfile,
+    user?.displayName,
+  );
+
+  return DonorHeader(
+    donorName: donorName, 
+    activeRequests: activeRequests.length,
+    activeUnits: activeUnits,
+  );
+}
 }
