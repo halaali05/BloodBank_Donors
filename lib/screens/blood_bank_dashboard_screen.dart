@@ -5,7 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'contacts_screen.dart';
 import 'new_request_screen.dart';
 import 'login_screen.dart';
-import 'request_responders_screen.dart';
+
 import 'stats_screen.dart';
 
 import '../models/blood_request_model.dart';
@@ -100,7 +100,9 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
   }
 
   Future<void> _handleDeleteRequest(
-      BuildContext context, BloodRequest request) async {
+    BuildContext context,
+    BloodRequest request,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -140,7 +142,9 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
   }
 
   Future<void> _handleCompleteRequest(
-      BuildContext context, BloodRequest request) async {
+    BuildContext context,
+    BloodRequest request,
+  ) async {
     if (request.isCompleted) return;
 
     final confirmed = await showDialog<bool>(
@@ -228,16 +232,11 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
     final stats = _controller.calculateStatistics(_requests);
     final urgentCount = stats['urgentCount'] ?? 0;
 
-    final activeRequests =
-        _requests.where((r) => !r.isCompleted).toList();
+    final activeRequests = _requests.where((r) => !r.isCompleted).toList();
 
-    final completedRequests =
-        _requests.where((r) => r.isCompleted).toList();
+    final completedRequests = _requests.where((r) => r.isCompleted).toList();
 
-    final activeUnits = activeRequests.fold(
-      0,
-      (sum, r) => sum + r.units,
-    );
+    final activeUnits = activeRequests.fold(0, (sum, r) => sum + r.units);
 
     return Scaffold(
       backgroundColor: AppTheme.offWhite,
@@ -249,15 +248,15 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => StatsScreen(stats: stats),
-                ),
+                MaterialPageRoute(builder: (_) => StatsScreen(stats: stats)),
               );
             },
           ),
           IconButton(
-            icon: const Icon(Icons.notifications_active_outlined,
-                color: AppTheme.deepRed),
+            icon: const Icon(
+              Icons.notifications_active_outlined,
+              color: AppTheme.deepRed,
+            ),
             onPressed: _syncNotificationToken,
           ),
           IconButton(
@@ -270,123 +269,120 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
         child: _isLoading && _requests.isEmpty
             ? const LoadingIndicator()
             : _error != null
-                ? ErrorBox(title: 'Error', message: _error!)
-                : RefreshIndicator(
-                    onRefresh: _loadRequests,
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(AppTheme.padding),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          /// HEADER
-                          HeaderCard(
-                            title: widget.bloodBankName,
-                            subtitle: widget.location,
-                            activeUnits: activeUnits,
-                            urgentRequests: urgentCount,
-                            activeRequests: activeRequests.length,
-                          ),
+            ? ErrorBox(title: 'Error', message: _error!)
+            : RefreshIndicator(
+                onRefresh: _loadRequests,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(AppTheme.padding),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      /// HEADER
+                      HeaderCard(
+                        title: widget.bloodBankName,
+                        subtitle: widget.location,
+                        activeUnits: activeUnits,
+                        urgentRequests: urgentCount,
+                        activeRequests: activeRequests.length,
+                      ),
 
-                          const SizedBox(height: 24),
+                      const SizedBox(height: 24),
 
-                          /// ACTIVE REQUESTS
-                          SectionHeader(
-                            title: 'Active Requests',
-                            subtitle: activeRequests.isEmpty
-                                ? 'No active requests'
-                                : 'Manage current posts',
-                            rightWidget: ElevatedButton.icon(
-                              onPressed: () {
+                      /// ACTIVE REQUESTS
+                      SectionHeader(
+                        title: 'Active Requests',
+                        subtitle: activeRequests.isEmpty
+                            ? 'No active requests'
+                            : 'Manage current posts',
+                        rightWidget: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => NewRequestScreen(
+                                  bloodBankName: widget.bloodBankName,
+                                  initialHospitalLocation: widget.location,
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.add),
+                          label: const Text('New'),
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      if (activeRequests.isEmpty)
+                        const EmptyState(
+                          icon: Icons.inbox_outlined,
+                          title: 'No active requests',
+                          subtitle: 'Create one now.',
+                        )
+                      else
+                        ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: activeRequests.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final request = activeRequests[index];
+                            return RequestCard(
+                              request: request,
+                              onDelete: () =>
+                                  _handleDeleteRequest(context, request),
+                              onMarkCompleted: () =>
+                                  _handleCompleteRequest(context, request),
+                              onViewDonors: () {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => NewRequestScreen(
-                                      bloodBankName: widget.bloodBankName,
-                                      initialHospitalLocation:
-                                          widget.location,
-                                    ),
+                                    builder: (_) =>
+                                        ContactsScreen(requestId: request.id),
                                   ),
                                 );
                               },
-                              icon: const Icon(Icons.add),
-                              label: const Text('New'),
-                            ),
-                          ),
+                            );
+                          },
+                        ),
 
-                          const SizedBox(height: 12),
+                      const SizedBox(height: 24),
 
-                          if (activeRequests.isEmpty)
-                            const EmptyState(
-                              icon: Icons.inbox_outlined,
-                              title: 'No active requests',
-                              subtitle: 'Create one now.',
-                            )
-                          else
-                            ListView.separated(
-                              shrinkWrap: true,
-                              physics:
-                                  const NeverScrollableScrollPhysics(),
-                              itemCount: activeRequests.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 12),
-                              itemBuilder: (context, index) {
-                                final request = activeRequests[index];
-                                return RequestCard(
-                                  request: request,
-                                  onDelete: () =>
-                                      _handleDeleteRequest(context, request),
-                                  onMarkCompleted: () =>
-                                      _handleCompleteRequest(context, request),
-                                  onViewDonors: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            ContactsScreen(requestId: request.id),
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
-                            ),
-
-                          const SizedBox(height: 24),
-
-                          /// COMPLETED
-                          SectionHeader(
-                            title: 'Completed Requests',
-                            subtitle: 'Closed posts',
-                          ),
-
-                          const SizedBox(height: 12),
-
-                          if (completedRequests.isEmpty)
-                            const EmptyState(
-                              icon: Icons.check_circle_outline,
-                              title: 'No completed requests',
-                              subtitle: '',
-                            )
-                          else
-                            ListView.separated(
-                              shrinkWrap: true,
-                              physics:
-                                  const NeverScrollableScrollPhysics(),
-                              itemCount: completedRequests.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 12),
-                              itemBuilder: (context, index) {
-                                final request = completedRequests[index];
-                                return RequestCard(
-                                  request: request,
-                                  onDelete: () =>
-                                      _handleDeleteRequest(context, request),
-                                );
-                              },
-                            ),
-                        ],
+                      /// COMPLETED
+                      SectionHeader(
+                        title: 'Completed Requests',
+                        subtitle: 'Closed posts',
                       ),
-                    ),
+
+                      const SizedBox(height: 12),
+
+                      if (completedRequests.isEmpty)
+                        const EmptyState(
+                          icon: Icons.check_circle_outline,
+                          title: 'No completed requests',
+                          subtitle: '',
+                        )
+                      else
+                        ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: completedRequests.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final request = completedRequests[index];
+                            return RequestCard(
+                              request: request,
+                              onDelete: () =>
+                                  _handleDeleteRequest(context, request),
+                            );
+                          },
+                        ),
+                    ],
                   ),
+                ),
+              ),
       ),
     );
   }

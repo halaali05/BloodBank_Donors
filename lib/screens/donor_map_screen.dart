@@ -54,6 +54,9 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
     super.dispose();
   }
 
+  // الـ cluster المفتوح حالياً (list من requests بنفس المكان)
+  List<BloodRequest>? _clusterRequests;
+
   List<BloodRequest> get _visibleRequests {
     final activeRequests = widget.requests
         .where((r) => !r.isCompleted)
@@ -74,6 +77,20 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
     final c = AppTheme.governorateCoordinates[r.hospitalLocation];
     if (c != null) return LatLng(c['lat']!, c['lng']!);
     return _jordanCenter;
+  }
+
+  // تجميع الـ requests اللي على نفس الإحداثيات
+  Map<String, List<BloodRequest>> _groupByLocation(
+    List<BloodRequest> requests,
+  ) {
+    final Map<String, List<BloodRequest>> groups = {};
+    for (final r in requests) {
+      final ll = _requestLatLng(r);
+      final key =
+          '${ll.latitude.toStringAsFixed(4)},${ll.longitude.toStringAsFixed(4)}';
+      groups.putIfAbsent(key, () => []).add(r);
+    }
+    return groups;
   }
 
   void _zoomIn() {
@@ -103,14 +120,17 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
                 setState(() => _currentZoom = z);
               }
             },
-            onTap: (_, __) => setState(() => _selectedRequest = null),
+            onTap: (_, __) => setState(() {
+              _selectedRequest = null;
+              _clusterRequests = null;
+            }),
           ),
           children: [
             TileLayer(
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.example.bloodbank_donors',
             ),
-            MarkerLayer(markers: visible.map((r) => _buildMarker(r)).toList()),
+            MarkerLayer(markers: _buildAllMarkers(visible)),
           ],
         ),
 
@@ -156,9 +176,30 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
             ),
           ),
 
+        if (_clusterRequests != null && _selectedRequest == null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _ClusterBottomSheet(
+              requests: _clusterRequests!,
+              respondingRequestId: widget.respondingRequestId,
+              onRespond: widget.onRespond,
+              onSelectRequest: (r) {
+                setState(() {
+                  _selectedRequest = r;
+                  _clusterRequests = null;
+                });
+              },
+              onClose: () => setState(() => _clusterRequests = null),
+            ),
+          ),
+
         Positioned(
           right: 12,
-          bottom: _selectedRequest == null ? 24 : 236,
+          bottom: (_selectedRequest != null || _clusterRequests != null)
+              ? 236
+              : 24,
           child: Column(
             children: [
               FloatingActionButton.small(
@@ -181,6 +222,38 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
         ),
       ],
     );
+  }
+
+  List<Marker> _buildAllMarkers(List<BloodRequest> requests) {
+    final groups = _groupByLocation(requests);
+    final List<Marker> markers = [];
+
+    for (final entry in groups.entries) {
+      final group = entry.value;
+      final center = _requestLatLng(group.first);
+
+      if (group.length == 1) {
+        markers.add(_buildMarker(group.first));
+      } else {
+        // cluster — دائرة فيها العدد، لما تضغط يطلع bottom sheet
+        final hasUrgent = group.any((r) => r.isUrgent);
+        markers.add(
+          Marker(
+            point: center,
+            width: 60,
+            height: 60,
+            child: GestureDetector(
+              onTap: () => setState(() {
+                _clusterRequests = group;
+                _selectedRequest = null;
+              }),
+              child: _ClusterPin(count: group.length, hasUrgent: hasUrgent),
+            ),
+          ),
+        );
+      }
+    }
+    return markers;
   }
 
   Marker _buildMarker(BloodRequest r) {
@@ -281,6 +354,71 @@ class _FilterBar extends StatelessWidget {
   }
 }
 
+// ── Cluster pin ────────────────────────────────────────────────────────────────
+
+class _ClusterPin extends StatelessWidget {
+  final int count;
+  final bool hasUrgent;
+
+  const _ClusterPin({required this.count, required this.hasUrgent});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = hasUrgent ? AppTheme.urgentRed : AppTheme.deepRed;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2.5),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.4),
+                blurRadius: 10,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // حلقة خارجية شفافة
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.4),
+                    width: 1.5,
+                  ),
+                ),
+              ),
+              Text(
+                '$count',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+        CustomPaint(
+          size: const Size(12, 9),
+          painter: _PinTailPainter(color: color),
+        ),
+      ],
+    );
+  }
+}
+
 // ── Blood pin ──────────────────────────────────────────────────────────────────
 
 class _BloodPin extends StatelessWidget {
@@ -347,6 +485,267 @@ class _PinTailPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_) => false;
+}
+
+// ── Cluster bottom sheet ───────────────────────────────────────────────────────
+
+class _ClusterBottomSheet extends StatelessWidget {
+  final List<BloodRequest> requests;
+  final String? respondingRequestId;
+  final Future<void> Function(BloodRequest, String) onRespond;
+  final ValueChanged<BloodRequest> onSelectRequest;
+  final VoidCallback onClose;
+
+  const _ClusterBottomSheet({
+    required this.requests,
+    required this.respondingRequestId,
+    required this.onRespond,
+    required this.onSelectRequest,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          const SizedBox(height: 8),
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.deepRed.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${requests.length} requests here',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.deepRed,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  color: Colors.black45,
+                  onPressed: onClose,
+                ),
+              ],
+            ),
+          ),
+          // List
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 320),
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+              itemCount: requests.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (_, i) {
+                final r = requests[i];
+                return _ClusterRequestCard(
+                  request: r,
+                  isResponding: respondingRequestId == r.id,
+                  onRespond: onRespond,
+                  onTap: () => onSelectRequest(r),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClusterRequestCard extends StatelessWidget {
+  final BloodRequest request;
+  final bool isResponding;
+  final Future<void> Function(BloodRequest, String) onRespond;
+  final VoidCallback onTap;
+
+  const _ClusterRequestCard({
+    required this.request,
+    required this.isResponding,
+    required this.onRespond,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasResponded = request.myResponse != null;
+    final accepted = request.myResponse == 'accepted';
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: request.isUrgent
+              ? AppTheme.urgentRed.withValues(alpha: 0.04)
+              : Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: request.isUrgent
+                ? AppTheme.urgentRed.withValues(alpha: 0.25)
+                : Colors.grey.shade200,
+          ),
+        ),
+        child: Row(
+          children: [
+            // Blood type badge
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: request.isUrgent
+                    ? AppTheme.urgentRed.withValues(alpha: 0.12)
+                    : const Color(0xFFFFEBEE),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(
+                child: Text(
+                  request.bloodType,
+                  style: TextStyle(
+                    color: request.isUrgent
+                        ? AppTheme.urgentRed
+                        : AppTheme.deepRed,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            // Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          request.bloodBankName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (request.isUrgent)
+                        Container(
+                          margin: const EdgeInsets.only(left: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.urgentRed,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Urgent',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${request.units} unit${request.units > 1 ? 's' : ''} · ${request.acceptedCount} accepted',
+                    style: const TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Action
+            if (hasResponded)
+              Icon(
+                accepted ? Icons.check_circle : Icons.cancel_outlined,
+                size: 20,
+                color: accepted ? Colors.green.shade600 : Colors.grey.shade400,
+              )
+            else
+              ElevatedButton(
+                onPressed: isResponding
+                    ? null
+                    : () => onRespond(request, 'accepted'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.deepRed,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: isResponding
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text(
+                        'Donate',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ── Bottom sheet ───────────────────────────────────────────────────────────────
