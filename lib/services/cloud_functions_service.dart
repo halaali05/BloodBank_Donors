@@ -251,10 +251,14 @@ class CloudFunctionsService {
   }) async {
     try {
       final callable = _functions.httpsCallable('updateRequestUnits');
+<<<<<<< HEAD
       final result = await callable.call({
         'requestId': requestId,
         'units': units,
       });
+=======
+      final result = await callable.call({'requestId': requestId, 'units': units});
+>>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {
       throw _handleFunctionsException(e);
@@ -591,6 +595,7 @@ class CloudFunctionsService {
 
     return Exception(userMessage);
   }
+<<<<<<< HEAD
 
   // ------------------ Donation History ------------------
   /// Fetches the authenticated donor's donation history (medical reports).
@@ -674,4 +679,6 @@ class CloudFunctionsService {
       throw _handleNetworkError(e);
     }
   }
+=======
+>>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
 }

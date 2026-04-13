@@ -5,7 +5,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'new_request_screen.dart';
 import 'login_screen.dart';
 import 'request_responders_screen.dart';
+<<<<<<< HEAD
 import 'donor_management_screen.dart';
+=======
+>>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
 
 import 'stats_screen.dart';
 
@@ -243,9 +246,15 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
       );
       if (context.mounted) Navigator.pop(context);
       if (!mounted) return;
+<<<<<<< HEAD
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Request units updated.')));
+=======
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Request units updated.')),
+      );
+>>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
       await _loadRequests();
     } catch (e) {
       if (context.mounted) Navigator.pop(context);
@@ -374,9 +383,21 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) =>
+<<<<<<< HEAD
                                         DonorManagementScreen(request: request),
                                   ),
                                 ).then((_) => _loadRequests());
+=======
+                                        RequestRespondersScreen(
+                                          requestId: request.id,
+                                          subtitle:
+                                              '${request.bloodType} • ${request.units} units',
+                                          accepted: request.acceptedDonors,
+                                          rejected: const [],
+                                        ),
+                                  ),
+                                );
+>>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
                               },
                             );
                           },

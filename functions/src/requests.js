@@ -32,7 +32,13 @@ async function deleteRequestCascade(requestRef, requestId) {
   let notificationsDeleted = 0;
 
   const trimmedRequestId = String(requestId ?? "").trim();
+<<<<<<< HEAD
   const responsesSnapshot = await requestRef.collection("donorResponses").get();
+=======
+  const responsesSnapshot = await requestRef
+    .collection("donorResponses")
+    .get();
+>>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
 
   const requestIdVariants = [trimmedRequestId];
   const asNumber = Number(trimmedRequestId);
@@ -56,6 +62,7 @@ async function deleteRequestCascade(requestRef, requestId) {
   const cgQueries = [];
   for (const idValue of requestIdVariants) {
     cgQueries.push(
+<<<<<<< HEAD
       db
         .collectionGroup("user_notifications")
         .where("requestId", "==", idValue),
@@ -68,6 +75,18 @@ async function deleteRequestCascade(requestRef, requestId) {
   }
 
   const cgSettled = await Promise.allSettled(cgQueries.map((q) => q.get()));
+=======
+      db.collectionGroup("user_notifications").where("requestId", "==", idValue),
+    );
+    cgQueries.push(
+      db.collectionGroup("user_notifications").where("requestID", "==", idValue),
+    );
+  }
+
+  const cgSettled = await Promise.allSettled(
+    cgQueries.map((q) => q.get()),
+  );
+>>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
   cgSettled.forEach((r, i) => {
     if (r.status === "fulfilled") {
       collectSnapshot(r.value);
@@ -410,10 +429,15 @@ exports.getRequests = onCall(async (request) => {
         return {
           id: doc.id,
           ...d,
+<<<<<<< HEAD
           acceptedCount:
             typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
           rejectedCount:
             typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
+=======
+          acceptedCount: typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
+          rejectedCount: typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
+>>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
           myResponse,
           createdAt:
             d.createdAt && typeof d.createdAt.toMillis === "function"
@@ -481,10 +505,15 @@ exports.getRequestsByBloodBankId = onCall(async (request) => {
         return {
           id: doc.id,
           ...d,
+<<<<<<< HEAD
           acceptedCount:
             typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
           rejectedCount:
             typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
+=======
+          acceptedCount: typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
+          rejectedCount: typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
+>>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
           acceptedDonors,
           rejectedDonors,
           createdAt:
@@ -514,9 +543,13 @@ exports.setDonorRequestResponse = onCall(async (request) => {
     const data = request.data || {};
     const requestId = nonEmptyString(data.requestId, "requestId");
     const responseRaw =
+<<<<<<< HEAD
       typeof data.response === "string"
         ? data.response.trim().toLowerCase()
         : "";
+=======
+      typeof data.response === "string" ? data.response.trim().toLowerCase() : "";
+>>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
     if (
       responseRaw !== "accepted" &&
       responseRaw !== "rejected" &&
@@ -555,7 +588,13 @@ exports.setDonorRequestResponse = onCall(async (request) => {
       }
 
       const respSnap = await t.get(responseRef);
+<<<<<<< HEAD
       const oldStatus = respSnap.exists ? (respSnap.data() || {}).status : null;
+=======
+      const oldStatus = respSnap.exists
+        ? (respSnap.data() || {}).status
+        : null;
+>>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
       if (oldStatus !== "accepted" && oldStatus !== "rejected") {
         // ignore unknown prior values
       }
@@ -565,10 +604,15 @@ exports.setDonorRequestResponse = onCall(async (request) => {
       }
 
       const rd = reqSnap.data() || {};
+<<<<<<< HEAD
       let accepted =
         typeof rd.acceptedCount === "number" ? rd.acceptedCount : 0;
       let rejected =
         typeof rd.rejectedCount === "number" ? rd.rejectedCount : 0;
+=======
+      let accepted = typeof rd.acceptedCount === "number" ? rd.acceptedCount : 0;
+      let rejected = typeof rd.rejectedCount === "number" ? rd.rejectedCount : 0;
+>>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
 
       if (oldStatus === "accepted") {
         accepted = Math.max(0, accepted - 1);
@@ -1043,9 +1087,15 @@ async function notifyDonorsForNewRequest(requestId, data) {
     } units (${bloodType})`;
 
     const androidNotification = {
+<<<<<<< HEAD
       channelId: isUrgent
         ? "emergency_request_channel_v4"
         : "normal_request_channel",
+=======
+      channelId: isUrgent ?
+        "emergency_request_channel_v4" :
+        "normal_request_channel",
+>>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
       icon: "ic_launcher",
       sound: isUrgent ? "emergency_request" : "normal_request",
       defaultSound: false,
