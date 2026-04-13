@@ -201,7 +201,6 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
 
   Future<void> _submitDonorResponse(BloodRequest request, String status) async {
     if (_respondingRequestId != null) return;
-    if (request.myResponse != null) return;
     if (request.isCompleted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -221,8 +220,8 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
         SnackBar(
           content: Text(
             status == 'accepted'
-                ? 'Marked as accepted. The blood bank can see this count.'
-                : 'Marked as declined.',
+                ? 'Marked as "I can donate". The blood bank can now see you.'
+                : 'Removed from "I can donate" list.',
           ),
         ),
       );
@@ -336,10 +335,10 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
                                 request: request,
                                 isSubmittingResponse:
                                     _respondingRequestId == request.id,
-                                onAccept: () =>
+                                onDonate: () =>
                                     _submitDonorResponse(request, 'accepted'),
-                                onReject: () =>
-                                    _submitDonorResponse(request, 'rejected'),
+                                onUndoDonate: () =>
+                                    _submitDonorResponse(request, 'none'),
                                 onMessage: () => _navigateToChat(request),
                               ),
                             ),

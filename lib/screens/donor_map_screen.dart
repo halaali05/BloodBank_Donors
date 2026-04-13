@@ -162,8 +162,8 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
             child: _RequestBottomSheet(
               request: _selectedRequest!,
               isResponding: widget.respondingRequestId == _selectedRequest!.id,
-              onAccept: () => widget.onRespond(_selectedRequest!, 'accepted'),
-              onReject: () => widget.onRespond(_selectedRequest!, 'rejected'),
+              onDonate: () => widget.onRespond(_selectedRequest!, 'accepted'),
+              onUndoDonate: () => widget.onRespond(_selectedRequest!, 'none'),
               onDetails: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
@@ -606,8 +606,7 @@ class _ClusterRequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasResponded = request.myResponse != null;
-    final accepted = request.myResponse == 'accepted';
+    final isDonating = request.myResponse == 'accepted';
 
     return GestureDetector(
       onTap: onTap,
@@ -692,7 +691,7 @@ class _ClusterRequestCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    '${request.units} unit${request.units > 1 ? 's' : ''} · ${request.acceptedCount} accepted',
+                    '${request.units} unit${request.units > 1 ? 's' : ''} · ${request.acceptedCount} can donate',
                     style: const TextStyle(fontSize: 12, color: Colors.black54),
                   ),
                 ],
@@ -700,47 +699,40 @@ class _ClusterRequestCard extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             // Action
-            if (hasResponded)
-              Icon(
-                accepted ? Icons.check_circle : Icons.cancel_outlined,
-                size: 20,
-                color: accepted ? Colors.green.shade600 : Colors.grey.shade400,
-              )
-            else
-              ElevatedButton(
-                onPressed: isResponding
-                    ? null
-                    : () => onRespond(request, 'accepted'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.deepRed,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+            ElevatedButton(
+              onPressed: isResponding
+                  ? null
+                  : () => onRespond(request, isDonating ? 'none' : 'accepted'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isDonating ? Colors.green.shade700 : AppTheme.deepRed,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
                 ),
-                child: isResponding
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text(
-                        'Donate',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
+              child: isResponding
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      isDonating ? 'Selected' : 'I can donate',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+            ),
           ],
         ),
       ),
@@ -753,24 +745,23 @@ class _ClusterRequestCard extends StatelessWidget {
 class _RequestBottomSheet extends StatelessWidget {
   final BloodRequest request;
   final bool isResponding;
-  final VoidCallback onAccept;
-  final VoidCallback onReject;
+  final VoidCallback onDonate;
+  final VoidCallback onUndoDonate;
   final VoidCallback onDetails;
   final VoidCallback onClose;
 
   const _RequestBottomSheet({
     required this.request,
     required this.isResponding,
-    required this.onAccept,
-    required this.onReject,
+    required this.onDonate,
+    required this.onUndoDonate,
     required this.onDetails,
     required this.onClose,
   });
 
   @override
   Widget build(BuildContext context) {
-    final hasResponded = request.myResponse != null;
-    final accepted = request.myResponse == 'accepted';
+    final isDonating = request.myResponse == 'accepted';
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
@@ -889,7 +880,7 @@ class _RequestBottomSheet extends StatelessWidget {
                       ),
                     _InfoChip(
                       icon: Icons.people_outline,
-                      label: '${request.acceptedCount} accepted',
+                      label: '${request.acceptedCount} can donate',
                       color: Colors.green.shade700,
                     ),
                   ],
@@ -907,84 +898,38 @@ class _RequestBottomSheet extends StatelessWidget {
 
                 const SizedBox(height: 14),
 
-                if (hasResponded)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      color: accepted
-                          ? Colors.green.shade50
-                          : Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          accepted ? Icons.check_circle : Icons.cancel_outlined,
-                          size: 16,
-                          color: accepted
-                              ? Colors.green.shade700
-                              : Colors.grey.shade600,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          accepted
-                              ? 'You accepted this request'
-                              : 'You declined this request',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: accepted
-                                ? Colors.green.shade700
-                                : Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: isResponding ? null : onReject,
-                          icon: const Icon(Icons.close, size: 16),
-                          label: const Text('Decline'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.black54,
-                            side: const BorderSide(color: Colors.black26),
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: isResponding
+                        ? null
+                        : (isDonating ? onUndoDonate : onDonate),
+                    icon: isResponding
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
                             ),
+                          )
+                        : Icon(
+                            isDonating
+                                ? Icons.check_circle_outline
+                                : Icons.favorite_outline,
+                            size: 16,
                           ),
-                        ),
+                    label: Text(
+                      isDonating ? 'Selected: I can donate' : 'I can donate',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    style: AppTheme.primaryButtonStyle().copyWith(
+                      backgroundColor: WidgetStateProperty.all(
+                        isDonating ? Colors.green.shade700 : AppTheme.deepRed,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton.icon(
-                          onPressed: isResponding ? null : onAccept,
-                          icon: isResponding
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.favorite_outline, size: 16),
-                          label: const Text(
-                            'I can donate',
-                            style: TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          style: AppTheme.primaryButtonStyle(),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
+                ),
 
                 const SizedBox(height: 8),
 

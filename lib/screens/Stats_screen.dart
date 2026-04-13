@@ -11,9 +11,7 @@ class StatsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.offWhite,
-      appBar: AppBar(
-        title: const Text("Statistics"),
-      ),
+      appBar: AppBar(title: const Text("Statistics")),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: _StatsGrid(
@@ -21,8 +19,6 @@ class StatsScreen extends StatelessWidget {
           activeCount: stats['activeCount'] ?? 0,
           urgentCount: stats['urgentCount'] ?? 0,
           normalCount: stats['normalCount'] ?? 0,
-          totalAccepted: stats['totalAccepted'] ?? 0,
-          totalRejected: stats['totalRejected'] ?? 0,
         ),
       ),
     );
@@ -36,16 +32,12 @@ class _StatsGrid extends StatelessWidget {
     required this.activeCount,
     required this.urgentCount,
     required this.normalCount,
-    required this.totalAccepted,
-    required this.totalRejected,
   });
 
   final int totalUnits;
   final int activeCount;
   final int urgentCount;
   final int normalCount;
-  final int totalAccepted;
-  final int totalRejected;
 
   @override
   Widget build(BuildContext context) {
@@ -82,20 +74,6 @@ class _StatsGrid extends StatelessWidget {
               value: '$normalCount',
               icon: Icons.check_circle,
               tint: const Color(0xFF2E7D32),
-              width: cardWidth,
-            ),
-            StatCard(
-              title: 'Donor acceptances',
-              value: '$totalAccepted',
-              icon: Icons.thumb_up_alt_outlined,
-              tint: const Color(0xFF2E7D32),
-              width: cardWidth,
-            ),
-            StatCard(
-              title: 'Donor rejections',
-              value: '$totalRejected',
-              icon: Icons.thumb_down_alt_outlined,
-              tint: const Color(0xFFC62828),
               width: cardWidth,
             ),
           ],

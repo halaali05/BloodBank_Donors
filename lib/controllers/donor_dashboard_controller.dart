@@ -90,7 +90,7 @@ class DonorDashboardController {
     required String response,
   }) async {
     final r = response.trim().toLowerCase();
-    if (r != 'accepted' && r != 'rejected') {
+    if (r != 'accepted' && r != 'rejected' && r != 'none') {
       throw Exception('Invalid response');
     }
     await _cloudFunctions.setDonorRequestResponse(

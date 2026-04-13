@@ -8,16 +8,16 @@ import '../common/urgent_badge.dart';
 class DonorRequestCard extends StatelessWidget {
   final BloodRequest request;
   final VoidCallback? onMessage;
-  final VoidCallback? onAccept;
-  final VoidCallback? onReject;
+  final VoidCallback? onDonate;
+  final VoidCallback? onUndoDonate;
   final bool isSubmittingResponse;
 
   const DonorRequestCard({
     super.key,
     required this.request,
     this.onMessage,
-    this.onAccept,
-    this.onReject,
+    this.onDonate,
+    this.onUndoDonate,
     this.isSubmittingResponse = false,
   });
 
@@ -28,7 +28,8 @@ class DonorRequestCard extends StatelessWidget {
     final cardBg = isUrgent ? AppTheme.urgentCardBg : Colors.white;
     final border = isUrgent ? const Color(0xFFFFCDD2) : const Color(0xFFE6EAF2);
     final my = request.myResponse;
-    final showResponseRow = onAccept != null && onReject != null;
+    final isDonating = my == 'accepted';
+    final showResponseRow = onDonate != null;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -157,89 +158,46 @@ class DonorRequestCard extends StatelessWidget {
                       ),
                     )
                   else
-                  if (my == null)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed:
-                                isSubmittingResponse ? null : onReject,
-                            icon: const Icon(Icons.close, size: 15),
-                            label: const Text(
-                              'Reject',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFFC62828),
-                              side: const BorderSide(
-                                color: Color(0xFFC62828),
-                                width: 1,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 6,
-                              ),
-                              minimumSize: const Size(0, 34),
-                              tapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                              visualDensity: VisualDensity.compact,
-                            ),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isDonating
+                              ? const Color.fromARGB(255, 13, 161, 18)
+                              : const Color(0xFF2E7D32),
+                          foregroundColor: Colors.white,
+                          elevation: isDonating ? 3 : 1,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 8,
+                          ),
+                          minimumSize: const Size(0, 36),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                          side: isDonating
+                              ? const BorderSide(
+                                  color: Color.fromARGB(255, 136, 255, 130),
+                                  width: 1.5,
+                                )
+                              : BorderSide.none,
+                        ),
+                        onPressed: isSubmittingResponse
+                            ? null
+                            : (isDonating ? onUndoDonate : onDonate),
+                        icon: Icon(
+                          isDonating
+                              ? Icons.check_circle_outline
+                              : Icons.favorite_outline,
+                          size: 16,
+                        ),
+                        label: Text(
+                          isDonating ? 'Selected: I can donate' : 'I can donate',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF2E7D32),
-                              foregroundColor: Colors.white,
-                              elevation: 1,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 6,
-                              ),
-                              minimumSize: const Size(0, 34),
-                              tapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                              visualDensity: VisualDensity.compact,
-                            ),
-                            onPressed:
-                                isSubmittingResponse ? null : onAccept,
-                            icon: const Icon(Icons.check, size: 15),
-                            label: const Text(
-                              'Accept',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  else
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _FinalChoicePill(
-                            icon: Icons.close,
-                            label: 'Reject',
-                            isChosen: my == 'rejected',
-                            isRejectStyle: true,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: _FinalChoicePill(
-                            icon: Icons.check,
-                            label: 'Accept',
-                            isChosen: my == 'accepted',
-                            isRejectStyle: false,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                 ],
                 if (isSubmittingResponse && showResponseRow)
@@ -287,88 +245,3 @@ class DonorRequestCard extends StatelessWidget {
 }
 
 /// Non-interactive pill matching compact Accept/Reject size; shows final choice.
-class _FinalChoicePill extends StatelessWidget {
-  const _FinalChoicePill({
-    required this.icon,
-    required this.label,
-    required this.isChosen,
-    required this.isRejectStyle,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool isChosen;
-  final bool isRejectStyle;
-
-  @override
-  Widget build(BuildContext context) {
-    if (isRejectStyle) {
-      final border = const Color(0xFFC62828);
-      final fg = isChosen ? border : border.withValues(alpha: 0.35);
-      final bg = isChosen ? const Color(0xFFFFEBEE) : Colors.grey.shade100;
-      return Material(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          height: 34,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: isChosen ? border : Colors.grey.shade400),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 15, color: fg),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: fg,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final green = isChosen ? const Color(0xFF1B5E20) : const Color(0xFF2E7D32);
-    final bg = isChosen ? green : Colors.grey.shade400;
-    final fg = Colors.white.withValues(alpha: isChosen ? 1 : 0.9);
-    return Material(
-      color: bg,
-      borderRadius: BorderRadius.circular(8),
-      elevation: isChosen ? 2 : 0,
-      child: SizedBox(
-        height: 34,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 15, color: fg),
-            const SizedBox(width: 4),
-            Flexible(
-              child: Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: fg,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

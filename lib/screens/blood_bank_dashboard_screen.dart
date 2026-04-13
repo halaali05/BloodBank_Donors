@@ -2,9 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-import 'contacts_screen.dart';
 import 'new_request_screen.dart';
 import 'login_screen.dart';
+import 'request_responders_screen.dart';
 
 import 'stats_screen.dart';
 
@@ -195,6 +195,67 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
     }
   }
 
+  Future<void> _handleEditUnits(
+    BuildContext context,
+    BloodRequest request,
+  ) async {
+    final controller = TextEditingController(text: request.units.toString());
+    final updatedUnits = await showDialog<int>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Edit units'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'Units'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final parsed = int.tryParse(controller.text.trim());
+              if (parsed == null || parsed < 1) return;
+              Navigator.pop(context, parsed);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (updatedUnits == null || updatedUnits == request.units) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      await _controller.updateRequestUnits(
+        requestId: request.id,
+        units: updatedUnits,
+      );
+      if (context.mounted) Navigator.pop(context);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Request units updated.')),
+      );
+      await _loadRequests();
+    } catch (e) {
+      if (context.mounted) Navigator.pop(context);
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message.isEmpty ? 'Failed.' : message)),
+      );
+    }
+  }
+
   Future<void> _handleLogout(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
     if (context.mounted) {
@@ -204,27 +265,6 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
         (_) => false,
       );
     }
-  }
-
-  Future<void> _syncNotificationToken() async {
-    bool ok = false;
-    String error = '';
-
-    try {
-      ok = await FCMService.instance.ensureTokenSynced();
-      error = FCMService.instance.getLastSyncError();
-    } catch (e) {
-      error = e.toString();
-    }
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok ? 'Synced successfully' : 'Failed: $error'),
-        backgroundColor: ok ? Colors.green : Colors.red,
-      ),
-    );
   }
 
   @override
@@ -251,13 +291,6 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                 MaterialPageRoute(builder: (_) => StatsScreen(stats: stats)),
               );
             },
-          ),
-          IconButton(
-            icon: const Icon(
-              Icons.notifications_active_outlined,
-              color: AppTheme.deepRed,
-            ),
-            onPressed: _syncNotificationToken,
           ),
           IconButton(
             icon: const Icon(Icons.logout, color: AppTheme.deepRed),
@@ -332,14 +365,21 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                               request: request,
                               onDelete: () =>
                                   _handleDeleteRequest(context, request),
+                              onEdit: () => _handleEditUnits(context, request),
                               onMarkCompleted: () =>
                                   _handleCompleteRequest(context, request),
-                              onViewDonors: () {
+                              onTapAcceptances: () {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) =>
-                                        ContactsScreen(requestId: request.id),
+                                        RequestRespondersScreen(
+                                          requestId: request.id,
+                                          subtitle:
+                                              '${request.bloodType} • ${request.units} units',
+                                          accepted: request.acceptedDonors,
+                                          rejected: const [],
+                                        ),
                                   ),
                                 );
                               },
@@ -376,6 +416,21 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                               request: request,
                               onDelete: () =>
                                   _handleDeleteRequest(context, request),
+                              onEdit: () => _handleEditUnits(context, request),
+                              onTapAcceptances: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => RequestRespondersScreen(
+                                      requestId: request.id,
+                                      subtitle:
+                                          '${request.bloodType} • ${request.units} units',
+                                      accepted: request.acceptedDonors,
+                                      rejected: const [],
+                                    ),
+                                  ),
+                                );
+                              },
                             );
                           },
                         ),

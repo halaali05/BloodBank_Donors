@@ -118,7 +118,7 @@ class BloodRequest {
   static String? _parseMyResponse(dynamic value) {
     if (value is! String) return null;
     final s = value.trim().toLowerCase();
-    if (s == 'accepted' || s == 'rejected') return s;
+    if (s == 'accepted') return s;
     return null;
   }
 

@@ -113,6 +113,15 @@ class NotificationsController {
     }
   }
 
+  /// Deletes old notifications and returns number of deleted items.
+  Future<int> deleteOldNotifications({int days = 30}) async {
+    try {
+      return await _notificationService.deleteOldNotifications(days: days);
+    } catch (e) {
+      throw Exception('Failed to delete old notifications: $e');
+    }
+  }
+
   // ------------------ Data Processing ------------------
   /// Filters notifications to get only unread ones
   ///

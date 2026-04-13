@@ -435,7 +435,7 @@ exports.getRequestsByBloodBankId = onCall(async (request) => {
 });
 
 /**
- * setDonorRequestResponse — donors accept or reject a blood request.
+ * setDonorRequestResponse — donors set or clear "I can donate".
  * Stores per-donor choice under requests/{id}/donorResponses/{uid}
  * and maintains acceptedCount / rejectedCount on the request document.
  */
@@ -446,13 +446,17 @@ exports.setDonorRequestResponse = onCall(async (request) => {
     const requestId = nonEmptyString(data.requestId, "requestId");
     const responseRaw =
       typeof data.response === "string" ? data.response.trim().toLowerCase() : "";
-    if (responseRaw !== "accepted" && responseRaw !== "rejected") {
+    if (
+      responseRaw !== "accepted" &&
+      responseRaw !== "rejected" &&
+      responseRaw !== "none"
+    ) {
       throw new HttpsError(
         "invalid-argument",
-        "response must be 'accepted' or 'rejected'",
+        "response must be 'accepted', 'rejected', or 'none'",
       );
     }
-    const newStatus = responseRaw;
+    const newStatus = responseRaw === "none" ? null : responseRaw;
 
     const userSnap = await db.collection("users").doc(uid).get();
     const userData = userSnap.exists ? userSnap.data() || {} : {};
@@ -503,7 +507,7 @@ exports.setDonorRequestResponse = onCall(async (request) => {
 
       if (newStatus === "accepted") {
         accepted += 1;
-      } else {
+      } else if (newStatus === "rejected") {
         rejected += 1;
       }
 
@@ -512,17 +516,21 @@ exports.setDonorRequestResponse = onCall(async (request) => {
         rejectedCount: rejected,
       });
 
-      t.set(
-        responseRef,
-        {
-          status: newStatus,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
+      if (newStatus == null) {
+        t.delete(responseRef);
+      } else {
+        t.set(
+          responseRef,
+          {
+            status: newStatus,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
     });
 
-    return { ok: true, status: newStatus };
+    return { ok: true, status: newStatus ?? "none" };
   } catch (err) {
     console.error("[setDonorRequestResponse] ERROR:", err);
     throw toHttpsError(err, "Failed to save response.");
@@ -574,6 +582,60 @@ exports.markRequestCompleted = onCall(async (request) => {
   } catch (err) {
     console.error("[markRequestCompleted] ERROR:", err);
     throw toHttpsError(err, "Failed to mark request as completed.");
+  }
+});
+
+/**
+ * updateRequestUnits - hospitals only, must own the request.
+ */
+exports.updateRequestUnits = onCall(async (request) => {
+  try {
+    const uid = requireAuth(request);
+    const data = request.data || {};
+    const requestId = nonEmptyString(data.requestId, "requestId");
+
+    const units =
+      typeof data.units === "number" ? data.units : parseInt(data.units, 10);
+    if (!Number.isInteger(units) || units < 1) {
+      throw new HttpsError(
+        "invalid-argument",
+        "units must be an integer greater than 0.",
+      );
+    }
+
+    const userSnap = await db.collection("users").doc(uid).get();
+    const userData = userSnap.exists ? userSnap.data() || {} : {};
+    if (!userSnap.exists || userData.role !== "hospital") {
+      throw new HttpsError(
+        "permission-denied",
+        "Only hospitals can update requests.",
+      );
+    }
+
+    const requestRef = db.collection("requests").doc(requestId);
+    await db.runTransaction(async (t) => {
+      const reqSnap = await t.get(requestRef);
+      if (!reqSnap.exists) {
+        throw new HttpsError("not-found", "Request not found.");
+      }
+      const rd = reqSnap.data() || {};
+      if (rd.bloodBankId !== uid) {
+        throw new HttpsError(
+          "permission-denied",
+          "You can only edit your own requests.",
+        );
+      }
+
+      t.update(requestRef, {
+        units,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    return { ok: true, units };
+  } catch (err) {
+    console.error("[updateRequestUnits] ERROR:", err);
+    throw toHttpsError(err, "Failed to update request units.");
   }
 });
 

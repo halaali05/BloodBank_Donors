@@ -8,7 +8,7 @@ import '../common/urgent_badge.dart';
 class RequestCard extends StatelessWidget {
   final BloodRequest request;
   final VoidCallback? onDelete;
-  final VoidCallback? onViewDonors;
+  final VoidCallback? onEdit;
   final VoidCallback? onTapAcceptances;
   final VoidCallback? onTapRejections;
   final VoidCallback? onMarkCompleted;
@@ -17,7 +17,7 @@ class RequestCard extends StatelessWidget {
     super.key,
     required this.request,
     this.onDelete,
-    this.onViewDonors,
+    this.onEdit,
     this.onTapAcceptances,
     this.onTapRejections,
     this.onMarkCompleted,
@@ -102,16 +102,26 @@ class RequestCard extends StatelessWidget {
       const UrgentBadge(),
       const SizedBox(width: 6),
     ],
+    if (onEdit != null)
+      IconButton(
+        tooltip: 'Edit units',
+        icon: const Icon(
+          Icons.edit_outlined,
+          color: AppTheme.deepRed,
+          size: 20,
+        ),
+        onPressed: onEdit,
+      ),
     if (canDelete && onDelete != null)
-  IconButton(
-    tooltip: 'Delete',
-    icon: const Icon(
-      Icons.delete_outline,
-      color: Colors.red,
-      size: 20,
-    ),
-    onPressed: onDelete,
-  ),
+      IconButton(
+        tooltip: 'Delete',
+        icon: const Icon(
+          Icons.delete_outline,
+          color: Colors.red,
+          size: 20,
+        ),
+        onPressed: onDelete,
+      ),
   ],
 ),
             const SizedBox(height: 8),
@@ -144,15 +154,6 @@ class RequestCard extends StatelessWidget {
             ],
             if (onTapAcceptances != null || onTapRejections != null) ...[
               const SizedBox(height: 10),
-              const Text(
-                'Donor responses',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.black54,
-                ),
-              ),
-              const SizedBox(height: 6),
               Wrap(
                 spacing: 16,
                 runSpacing: 8,
@@ -160,8 +161,8 @@ class RequestCard extends StatelessWidget {
                 children: [
                   if (onTapAcceptances != null)
                     _CountLink(
-                      icon: Icons.check_circle_outline,
-                      label: 'Acceptances',
+                      icon: Icons.volunteer_activism_outlined,
+                      label: 'I can donate',
                       count: request.acceptedCount,
                       color: Colors.green.shade800,
                       onTap: onTapAcceptances!,
@@ -176,49 +177,24 @@ class RequestCard extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(height: 2),
-              Text(
-                'Tap a count to see donor names and emails.',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.black.withOpacity(0.45),
-                ),
-              ),
             ],
-            if (onViewDonors != null) ...[
+            if (!isCompleted && onMarkCompleted != null) ...[
               const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  if (!isCompleted && onMarkCompleted != null)
-                    TextButton.icon(
-                      onPressed: onMarkCompleted,
-                      icon: const Icon(
-                        Icons.check_circle_outline,
-                        size: 16,
-                        color: Colors.green,
-                      ),
-                      label: const Text(
-                        'Complete',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.green,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
                   TextButton.icon(
-                    onPressed: onViewDonors,
+                    onPressed: onMarkCompleted,
                     icon: const Icon(
-                      Icons.people_outline,
+                      Icons.check_circle_outline,
                       size: 16,
-                      color: AppTheme.deepRed,
+                      color: Colors.green,
                     ),
                     label: const Text(
-                      'Donors',
+                      'Complete',
                       style: TextStyle(
                         fontSize: 12,
-                        color: AppTheme.deepRed,
+                        color: Colors.green,
                         fontWeight: FontWeight.w800,
                       ),
                     ),

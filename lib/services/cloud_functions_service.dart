@@ -244,6 +244,22 @@ class CloudFunctionsService {
     }
   }
 
+  /// Hospital updates units for a request they own.
+  Future<Map<String, dynamic>> updateRequestUnits({
+    required String requestId,
+    required int units,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('updateRequestUnits');
+      final result = await callable.call({'requestId': requestId, 'units': units});
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
+
   /// Hospital marks a request as completed.
   Future<Map<String, dynamic>> markRequestCompleted({
     required String requestId,
@@ -369,6 +385,16 @@ class CloudFunctionsService {
     try {
       final callable = _functions.httpsCallable('deleteNotification');
       final result = await callable.call({'notificationId': notificationId});
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteOldNotifications({int days = 30}) async {
+    try {
+      final callable = _functions.httpsCallable('deleteOldNotifications');
+      final result = await callable.call({'days': days});
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {
       throw _handleFunctionsException(e);

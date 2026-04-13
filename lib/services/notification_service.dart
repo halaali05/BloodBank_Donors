@@ -29,6 +29,15 @@ class NotificationService {
     await _cloudFunctions.deleteNotification(notificationId: notificationId);
   }
 
+  /// Deletes old notifications via Cloud Functions.
+  Future<int> deleteOldNotifications({int days = 30}) async {
+    final result = await _cloudFunctions.deleteOldNotifications(days: days);
+    final count = result['deletedCount'];
+    if (count is int) return count;
+    if (count is num) return count.toInt();
+    return 0;
+  }
+
   // Note: createNotification is now handled by Cloud Functions
   // when addRequest is called with isUrgent = true
 }

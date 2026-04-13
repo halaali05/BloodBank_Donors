@@ -79,6 +79,28 @@ class BloodBankDashboardController {
     }
   }
 
+  /// Updates units for a blood request using Cloud Functions.
+  Future<Map<String, dynamic>> updateRequestUnits({
+    required String requestId,
+    required int units,
+  }) async {
+    if (requestId.isEmpty) {
+      throw Exception('Request ID is required');
+    }
+    if (units < 1) {
+      throw Exception('Units must be at least 1');
+    }
+    try {
+      return await _cloudFunctions.updateRequestUnits(
+        requestId: requestId,
+        units: units,
+      );
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Failed to update request units: ${e.toString()}');
+    }
+  }
+
   // ------------------ Data Fetching ------------------
   /// Fetches all requests for the current blood bank via Cloud Functions
   ///

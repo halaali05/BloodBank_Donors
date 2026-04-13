@@ -112,6 +112,59 @@ exports.deleteNotification = onCall(async (request) => {
 });
 
 /**
+ * deleteOldNotifications - delete notifications older than [days] for the current user
+ */
+exports.deleteOldNotifications = onCall(async (request) => {
+  try {
+    const uid = requireAuth(request);
+    const data = request.data || {};
+    const daysRaw =
+      typeof data.days === "number" ? data.days : parseInt(data.days, 10);
+    const days = Number.isInteger(daysRaw) && daysRaw > 0 ? daysRaw : 30;
+
+    const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const cutoffTimestamp = admin.firestore.Timestamp.fromDate(cutoffDate);
+
+    const notificationsRef = db
+      .collection("notifications")
+      .doc(uid)
+      .collection("user_notifications");
+
+    const oldSnapshot = await notificationsRef
+      .where("createdAt", "<", cutoffTimestamp)
+      .get();
+
+    if (oldSnapshot.empty) {
+      return {
+        ok: true,
+        deletedCount: 0,
+        message: `No notifications older than ${days} day(s).`,
+      };
+    }
+
+    const batchSize = 500;
+    let deletedCount = 0;
+    for (let i = 0; i < oldSnapshot.docs.length; i += batchSize) {
+      const batch = db.batch();
+      oldSnapshot.docs.slice(i, i + batchSize).forEach((doc) => {
+        batch.delete(doc.ref);
+        deletedCount += 1;
+      });
+      await batch.commit();
+    }
+
+    return {
+      ok: true,
+      deletedCount,
+      message: `Deleted ${deletedCount} old notification(s).`,
+    };
+  } catch (err) {
+    console.error("[deleteOldNotifications] ERROR:", err);
+    throw toHttpsError(err, "Failed to delete old notifications.");
+  }
+});
+
+/**
  * getNotifications - Get all notifications for the authenticated user
  */
 exports.getNotifications = onCall(async (request) => {

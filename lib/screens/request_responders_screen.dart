@@ -3,7 +3,7 @@ import '../models/donor_response_entry.dart';
 import '../theme/app_theme.dart';
 import 'chat_screen.dart';
 
-/// Lists donors who accepted or rejected a request (blood bank).
+/// Lists donors who selected "I can donate" for a request (blood bank).
 /// Data is passed in from [BloodRequest] — no extra Cloud Function call.
 class RequestRespondersScreen extends StatefulWidget {
   final String requestId;
@@ -27,17 +27,6 @@ class RequestRespondersScreen extends StatefulWidget {
 }
 
 class _RequestRespondersScreenState extends State<RequestRespondersScreen> {
-  late int _segment;
-
-  @override
-  void initState() {
-    super.initState();
-    _segment = widget.initialTabIndex.clamp(0, 1);
-  }
-
-  List<DonorResponseEntry> get _visible =>
-      _segment == 0 ? widget.accepted : widget.rejected;
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -56,39 +45,20 @@ class _RequestRespondersScreenState extends State<RequestRespondersScreen> {
             ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _ResponseSegment(
-                    selected: _segment == 0,
-                    icon: Icons.check_circle_outline,
-                    label: 'Accepted',
-                    count: widget.accepted.length,
-                    color: const Color(0xFF2E7D32),
-                    onTap: () => setState(() => _segment = 0),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _ResponseSegment(
-                    selected: _segment == 1,
-                    icon: Icons.cancel_outlined,
-                    label: 'Rejected',
-                    count: widget.rejected.length,
-                    color: const Color(0xFFC62828),
-                    onTap: () => setState(() => _segment = 1),
-                  ),
-                ),
-              ],
+            child: _ResponseSegment(
+              selected: true,
+              icon: Icons.volunteer_activism_outlined,
+              label: 'I can donate',
+              count: widget.accepted.length,
+              color: const Color(0xFF2E7D32),
+              onTap: () {},
             ),
           ),
           const SizedBox(height: 8),
           Expanded(
             child: _DonorList(
-              entries: _visible,
-              emptyLabel: _segment == 0
-                  ? 'No acceptances yet'
-                  : 'No rejections yet',
+              entries: widget.accepted,
+              emptyLabel: 'No donors selected "I can donate" yet',
               requestId: widget.requestId,
             ),
           ),
