@@ -22,7 +22,7 @@ class LocalNotifService {
   static const String _normalChannelId = 'normal_request_channel';
   // Keep a versioned ID because Android channel vibration settings are immutable
   // once created on device. Bumping ID forces fresh channel creation.
-  static const String _emergencyChannelId = 'emergency_request_channel_v3';
+  static const String _emergencyChannelId = 'emergency_request_channel_v4';
   static final Int64List _emergencyVibrationPattern = Int64List.fromList([
     0,
     500,
@@ -82,7 +82,7 @@ class LocalNotifService {
       // Handle notification click - only set if we have navigator context
       // In background handler, this might be null, which is okay
       await _plugin.initialize(
-        initSettings,
+        settings: initSettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
           if (response.payload != null && response.payload!.isNotEmpty) {
             // Only handle click if app is running
@@ -143,16 +143,17 @@ class LocalNotifService {
         : const RawResourceAndroidNotificationSound('normal_request');
 
     await _plugin.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title,
-      body,
-      NotificationDetails(
+      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title: title,
+      body: body,
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           channelId,
           channelName,
           channelDescription: channelDescription,
-          importance: Importance.max,
-          priority: Priority.high,
+          // Urgent: max importance + vibration. Normal: unchanged (high, no vibration).
+          importance: isUrgent ? Importance.max : Importance.high,
+          priority: isUrgent ? Priority.max : Priority.high,
           icon: '@mipmap/ic_launcher',
           playSound: true,
           sound: sound,

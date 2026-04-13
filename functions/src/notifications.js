@@ -5,6 +5,15 @@ const { requireAuth, nonEmptyString, toHttpsError } = require("./utils");
 
 const db = admin.firestore();
 
+/** Request id on notification docs (camelCase or legacy PascalCase). */
+function notificationRequestId(data) {
+  const d = data || {};
+  const v = d.requestId != null ? d.requestId : d.requestID;
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s === "" ? null : s;
+}
+
 /**
  * markNotificationsAsRead - mark all unread notifications as read for a user
  */
@@ -178,17 +187,64 @@ exports.getNotifications = onCall(async (request) => {
       .orderBy("createdAt", "desc")
       .get();
 
-    const notifications = snapshot.docs.map((doc) => {
+    const rows = snapshot.docs.map((doc) => {
       const d = doc.data() || {};
       return {
-        id: doc.id,
-        ...d,
-        createdAt:
-          d.createdAt && typeof d.createdAt.toMillis === "function"
-            ? d.createdAt.toMillis()
-            : null,
+        ref: doc.ref,
+        payload: {
+          id: doc.id,
+          ...d,
+          createdAt:
+            d.createdAt && typeof d.createdAt.toMillis === "function"
+              ? d.createdAt.toMillis()
+              : null,
+        },
+        requestKey: notificationRequestId(d),
       };
     });
+
+    const uniqueRequestIds = [
+      ...new Set(rows.map((r) => r.requestKey).filter(Boolean)),
+    ];
+
+    const requestExists = new Map();
+    const GET_ALL_CHUNK = 10;
+    for (let i = 0; i < uniqueRequestIds.length; i += GET_ALL_CHUNK) {
+      const chunk = uniqueRequestIds.slice(i, i + GET_ALL_CHUNK);
+      const refs = chunk.map((id) => db.collection("requests").doc(id));
+      const snaps = await db.getAll(...refs);
+      snaps.forEach((snap, idx) => {
+        requestExists.set(chunk[idx], snap.exists);
+      });
+    }
+
+    const staleRefs = [];
+    const notifications = [];
+    for (const row of rows) {
+      if (row.requestKey == null) {
+        notifications.push(row.payload);
+        continue;
+      }
+      if (requestExists.get(row.requestKey) === true) {
+        notifications.push(row.payload);
+      } else {
+        staleRefs.push(row.ref);
+      }
+    }
+
+    if (staleRefs.length > 0) {
+      const batchSize = 500;
+      for (let i = 0; i < staleRefs.length; i += batchSize) {
+        const batch = db.batch();
+        staleRefs.slice(i, i + batchSize).forEach((ref) => {
+          batch.delete(ref);
+        });
+        await batch.commit();
+      }
+      console.log(
+        `[getNotifications] Removed ${staleRefs.length} stale notification(s) for uid=${uid}`,
+      );
+    }
 
     return { notifications, count: notifications.length };
   } catch (err) {

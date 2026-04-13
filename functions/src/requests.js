@@ -31,34 +31,99 @@ function isRequestExpired(createdAtValue) {
 async function deleteRequestCascade(requestRef, requestId) {
   let notificationsDeleted = 0;
 
-  try {
-    const notificationsQuery = db
-      .collectionGroup("user_notifications")
-      .where("requestId", "==", requestId);
-    const notificationsSnapshot = await notificationsQuery.get();
+  const trimmedRequestId = String(requestId ?? "").trim();
+  const responsesSnapshot = await requestRef
+    .collection("donorResponses")
+    .get();
 
-    if (!notificationsSnapshot.empty) {
-      const batchSize = 500;
-      const deletePromises = [];
-      for (let i = 0; i < notificationsSnapshot.docs.length; i += batchSize) {
-        const batch = db.batch();
-        notificationsSnapshot.docs.slice(i, i + batchSize).forEach((doc) => {
-          batch.delete(doc.ref);
-          notificationsDeleted++;
-        });
-        deletePromises.push(batch.commit());
-      }
-      if (deletePromises.length > 0) {
-        await Promise.all(deletePromises);
-      }
+  const requestIdVariants = [trimmedRequestId];
+  const asNumber = Number(trimmedRequestId);
+  if (
+    trimmedRequestId !== "" &&
+    !Number.isNaN(asNumber) &&
+    Number.isFinite(asNumber)
+  ) {
+    requestIdVariants.push(asNumber);
+  }
+
+  const uniqueNotificationRefs = new Map();
+  function collectSnapshot(snap) {
+    for (const doc of snap.docs) {
+      uniqueNotificationRefs.set(doc.ref.path, doc.ref);
     }
-  } catch (notifError) {
-    console.warn(
-      `[deleteRequestCascade] Collection group query failed: ${notifError.message}`,
+  }
+
+  // Collection-group queries: if ANY query fails (e.g. missing index on one
+  // field), Promise.all would skip ALL deletes. Use allSettled instead.
+  const cgQueries = [];
+  for (const idValue of requestIdVariants) {
+    cgQueries.push(
+      db.collectionGroup("user_notifications").where("requestId", "==", idValue),
+    );
+    cgQueries.push(
+      db.collectionGroup("user_notifications").where("requestID", "==", idValue),
     );
   }
 
-  const responsesSnapshot = await requestRef.collection("donorResponses").get();
+  const cgSettled = await Promise.allSettled(
+    cgQueries.map((q) => q.get()),
+  );
+  cgSettled.forEach((r, i) => {
+    if (r.status === "fulfilled") {
+      collectSnapshot(r.value);
+    } else {
+      console.warn(
+        `[deleteRequestCascade] collectionGroup query ${i} failed: ${
+          r.reason && r.reason.message ? r.reason.message : r.reason
+        }`,
+      );
+    }
+  });
+
+  // Also delete via each donor who responded — uses only single-field
+  // subcollection queries (reliable even when a collectionGroup index fails).
+  const perDonorGets = [];
+  for (const d of responsesSnapshot.docs) {
+    const coll = db
+      .collection("notifications")
+      .doc(d.id)
+      .collection("user_notifications");
+    for (const idValue of requestIdVariants) {
+      perDonorGets.push(coll.where("requestId", "==", idValue).get());
+      perDonorGets.push(coll.where("requestID", "==", idValue).get());
+    }
+  }
+
+  const CHUNK = 80;
+  for (let i = 0; i < perDonorGets.length; i += CHUNK) {
+    const slice = perDonorGets.slice(i, i + CHUNK);
+    const settled = await Promise.allSettled(slice);
+    settled.forEach((r, j) => {
+      if (r.status === "fulfilled") {
+        collectSnapshot(r.value);
+      } else {
+        console.warn(
+          `[deleteRequestCascade] per-donor notification query failed: ${
+            r.reason && r.reason.message ? r.reason.message : r.reason
+          } (chunk ${i}+${j})`,
+        );
+      }
+    });
+  }
+
+  const refsToDelete = [...uniqueNotificationRefs.values()];
+  if (refsToDelete.length > 0) {
+    const batchSize = 500;
+    for (let i = 0; i < refsToDelete.length; i += batchSize) {
+      const batch = db.batch();
+      refsToDelete.slice(i, i + batchSize).forEach((ref) => {
+        batch.delete(ref);
+        notificationsDeleted++;
+      });
+      await batch.commit();
+    }
+  }
+
   if (!responsesSnapshot.empty) {
     const batchSize = 500;
     const respDeletePromises = [];
@@ -973,7 +1038,7 @@ async function notifyDonorsForNewRequest(requestId, data) {
 
     const androidNotification = {
       channelId: isUrgent ?
-        "emergency_request_channel_v3" :
+        "emergency_request_channel_v4" :
         "normal_request_channel",
       icon: "ic_launcher",
       sound: isUrgent ? "emergency_request" : "normal_request",
