@@ -1,7 +1,4 @@
-<<<<<<< HEAD
 import '../models/donor_medical_report.dart';
-=======
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
 import '../services/cloud_functions_service.dart';
 
 /// Controller for donor profile business logic
@@ -57,7 +54,6 @@ class DonorProfileController {
       throw Exception('Failed to update profile: $e');
     }
   }
-<<<<<<< HEAD
 
   // ------------------ Donation History ------------------
   /// Fetches the donor's donation history (medical reports) via Cloud Functions
@@ -78,6 +74,4 @@ class DonorProfileController {
       return [];
     }
   }
-=======
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/donor_medical_report.dart';
 import '../models/blood_request_model.dart';
+import '../models/donor_response_entry.dart';
 import '../services/cloud_functions_service.dart';
 import '../theme/app_theme.dart';
 
@@ -27,23 +28,56 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _loadDonors();
+    _loadDonors(showSpinner: true);
   }
 
-  void _loadDonors() {
-    // Load accepted donors from the request object.
-    // Full process status comes from Cloud Functions in production.
-    setState(() {
-      _donors = widget.request.acceptedDonors
+  /// Loads donors with real `processStatus` / appointment from Cloud Functions.
+  /// Falls back to [widget.request.acceptedDonors] if the call fails.
+  Future<void> _loadDonors({bool showSpinner = true}) async {
+    if (showSpinner && mounted) setState(() => _isLoading = true);
+
+    List<_DonorCard> fromEntries(List<DonorResponseEntry> entries) {
+      return entries
           .map(
             (d) => _DonorCard(
               donorId: d.donorId,
               fullName: d.fullName,
               email: d.email,
-              status: DonorProcessStatus.accepted,
+              status: parseDonorProcessStatus(d.processStatus),
+              appointmentAt: d.appointmentAtMillis != null
+                  ? DateTime.fromMillisecondsSinceEpoch(
+                      d.appointmentAtMillis!,
+                    )
+                  : null,
             ),
           )
           .toList();
+    }
+
+    try {
+      final res = await _cloudFunctions.getRequestDonorResponses(
+        requestId: widget.request.id,
+      );
+      final raw = res['accepted'];
+      if (raw is List) {
+        final entries = raw.map((e) {
+          final m = Map<String, dynamic>.from(e as Map);
+          return DonorResponseEntry.fromMap(m);
+        }).toList();
+        if (!mounted) return;
+        setState(() {
+          _donors = fromEntries(entries);
+          _isLoading = false;
+        });
+        return;
+      }
+    } catch (_) {
+      // Use embedded list from dashboard when the callable fails or returns empty.
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _donors = fromEntries(widget.request.acceptedDonors);
       _isLoading = false;
     });
   }
@@ -365,12 +399,14 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
   // ─── Actions ────────────────────────────────────────────────
 
   void _onSchedule(_DonorCard donor) async {
-    final picked = await showDateTimePicker(context);
+    final picked = await pickAppointmentDateTime(context);
     if (picked == null) return;
+
+    final idx = _donors.indexWhere((d) => d.donorId == donor.donorId);
+    if (idx == -1) return;
 
     // Optimistic UI update
     setState(() {
-      final idx = _donors.indexOf(donor);
       _donors[idx] = donor.copyWith(
         status: DonorProcessStatus.scheduled,
         appointmentAt: picked,
@@ -381,10 +417,13 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
       await _cloudFunctions.scheduleDonorAppointment(
         requestId: widget.request.id,
         donorId: donor.donorId,
-        appointmentAt: picked.toIso8601String(),
+        appointmentAtMillis: picked.millisecondsSinceEpoch,
       );
+      if (!mounted) return;
+      await _loadDonors(showSpinner: false);
+      if (!mounted) return;
       _showSnack(
-        '📅 Appointment scheduled for ${donor.fullName}',
+        '📅 Appointment saved for ${donor.fullName}',
         Colors.blue[700]!,
       );
     } catch (e) {
@@ -461,23 +500,51 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
 }
 
 // ─────────────────────────────────────────────────────────────
-// Helper: Date+Time Picker
+// Helper: Date+Time Picker (not Flutter's Material.showDateTimePicker)
 // ─────────────────────────────────────────────────────────────
-Future<DateTime?> showDateTimePicker(BuildContext context) async {
+Future<DateTime?> pickAppointmentDateTime(BuildContext context) async {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
   final date = await showDatePicker(
     context: context,
-    initialDate: DateTime.now().add(const Duration(days: 1)),
-    firstDate: DateTime.now(),
-    lastDate: DateTime.now().add(const Duration(days: 30)),
+    initialDate: today.add(const Duration(days: 1)),
+    firstDate: today,
+    lastDate: now.add(const Duration(days: 30)),
   );
-  if (date == null) return null;
-  if (!context.mounted) return null;
+  if (date == null || !context.mounted) return null;
+
+  final isToday =
+      date.year == today.year &&
+      date.month == today.month &&
+      date.day == today.day;
+  // If scheduling today, default the time picker to shortly after now.
+  final initialTime = isToday
+      ? TimeOfDay.fromDateTime(now.add(const Duration(minutes: 15)))
+      : const TimeOfDay(hour: 9, minute: 0);
+
   final time = await showTimePicker(
     context: context,
-    initialTime: const TimeOfDay(hour: 9, minute: 0),
+    initialTime: initialTime,
   );
-  if (time == null) return null;
-  return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+  if (time == null || !context.mounted) return null;
+
+  final combined = DateTime(
+    date.year,
+    date.month,
+    date.day,
+    time.hour,
+    time.minute,
+  );
+  if (!combined.isAfter(now)) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Choose a date and time in the future.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    return null;
+  }
+  return combined;
 }
 
 // ─────────────────────────────────────────────────────────────

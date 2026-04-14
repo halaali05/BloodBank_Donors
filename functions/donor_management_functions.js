@@ -1,5 +1,6 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
+const { publicCallableOpts } = require("./callable_config");
 
 const db = admin.firestore();
 
@@ -19,7 +20,7 @@ async function requireRole(uid, expectedRole) {
   if (!userSnap.exists) {
     throw new HttpsError("not-found", "User not found");
   }
-  const userData = userSnap.data();
+  const userData = userSnap.data() || {};
   if (userData.role !== expectedRole) {
     throw new HttpsError(
       "permission-denied",
@@ -34,32 +35,56 @@ async function getRequest(requestId) {
   if (!reqSnap.exists) {
     throw new HttpsError("not-found", "Request not found");
   }
-  return { id: reqSnap.id, ...reqSnap.data() };
+  const raw = reqSnap.data();
+  const d = raw && typeof raw === "object" ? raw : {};
+  return { id: reqSnap.id, ...d };
+}
+
+/** Parse appointment instant from callable payload (int, stringified int, or ISO string). */
+function parseAppointmentInstant(appointmentAt) {
+  if (appointmentAt == null) return null;
+  if (typeof appointmentAt === "number" && Number.isFinite(appointmentAt)) {
+    const d = new Date(appointmentAt);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof appointmentAt === "string") {
+    const s = appointmentAt.trim();
+    if (!s) return null;
+    if (/^\d+$/.test(s)) {
+      const n = Number(s);
+      if (!Number.isFinite(n)) return null;
+      const d = new Date(n);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
 // 1. scheduleDonorAppointment
 // ---------------------------------------------------------------------------
-exports.scheduleDonorAppointment = onCall(async (request) => {
+exports.scheduleDonorAppointment = onCall(publicCallableOpts, async (request) => {
+  try {
   const callerUid = requireAuth(request);
   await requireRole(callerUid, "hospital");
 
-  const { requestId, donorId, appointmentAt } = request.data;
+  const data = request.data || {};
+  const { requestId, donorId, appointmentAt } = data;
 
   if (!requestId || typeof requestId !== "string")
     throw new HttpsError("invalid-argument", "requestId is required");
   if (!donorId || typeof donorId !== "string")
     throw new HttpsError("invalid-argument", "donorId is required");
-  if (!appointmentAt || typeof appointmentAt !== "string")
-    throw new HttpsError("invalid-argument", "appointmentAt is required");
 
-  const appointmentDate = new Date(appointmentAt);
-  if (isNaN(appointmentDate.getTime()))
+  const appointmentDate = parseAppointmentInstant(appointmentAt);
+  if (!appointmentDate)
     throw new HttpsError(
       "invalid-argument",
-      "appointmentAt must be a valid ISO date string",
+      "appointmentAt must be epoch milliseconds (number) or a valid ISO date string",
     );
-  if (appointmentDate < new Date())
+  if (appointmentDate.getTime() < Date.now() - 30_000)
     throw new HttpsError(
       "invalid-argument",
       "Appointment date must be in the future",
@@ -84,15 +109,26 @@ exports.scheduleDonorAppointment = onCall(async (request) => {
   if (!donorResponseSnap.exists)
     throw new HttpsError("not-found", "Donor has not accepted this request");
 
-  const currentStatus =
-    donorResponseSnap.data().processStatus ||
-    donorResponseSnap.data().status ||
-    "accepted";
-  if (currentStatus !== "accepted")
+  const d = donorResponseSnap.data() || {};
+  // `status` = donor tap (accepted/rejected). `processStatus` = hospital pipeline.
+  const inviteStatus = String(d.status || "").toLowerCase();
+  if (inviteStatus !== "accepted") {
     throw new HttpsError(
       "failed-precondition",
-      `Donor is already in status: ${currentStatus}`,
+      "Donor has not accepted this request",
     );
+  }
+
+  const pipeline = String(d.processStatus || "").toLowerCase();
+  const terminal = new Set(["tested", "donated", "restricted"]);
+  if (terminal.has(pipeline)) {
+    throw new HttpsError(
+      "failed-precondition",
+      `Donor is already in status: ${pipeline}`,
+    );
+  }
+
+  const isReschedule = pipeline === "scheduled";
 
   await donorResponseRef.update({
     processStatus: "scheduled",
@@ -101,12 +137,13 @@ exports.scheduleDonorAppointment = onCall(async (request) => {
     scheduledBy: callerUid,
   });
 
-  // FCM — non-critical
+  // FCM — non-critical (FCM data map values must be strings)
   try {
     const donorSnap = await db.collection("users").doc(donorId).get();
     if (donorSnap.exists) {
-      const fcmToken = donorSnap.data().fcmToken;
-      if (fcmToken) {
+      const du = donorSnap.data() || {};
+      const fcmToken = du.fcmToken;
+      if (typeof fcmToken === "string" && fcmToken.trim()) {
         const dateStr = appointmentDate.toLocaleDateString("en-US", {
           weekday: "short",
           month: "short",
@@ -115,12 +152,18 @@ exports.scheduleDonorAppointment = onCall(async (request) => {
           minute: "2-digit",
         });
         await admin.messaging().send({
-          token: fcmToken,
+          token: fcmToken.trim(),
           notification: {
-            title: "📅 Appointment Scheduled",
+            title: isReschedule
+              ? "📅 Appointment updated"
+              : "📅 Appointment scheduled",
             body: `${req.bloodBankName || "The blood bank"} scheduled your ${req.bloodType || ""} donation for ${dateStr}`,
           },
-          data: { type: "appointment_scheduled", requestId, appointmentAt },
+          data: {
+            type: "appointment_scheduled",
+            requestId: String(requestId),
+            appointmentAt: appointmentDate.toISOString(),
+          },
         });
       }
     }
@@ -128,13 +171,24 @@ exports.scheduleDonorAppointment = onCall(async (request) => {
     console.warn("FCM failed (scheduleDonorAppointment):", e.message);
   }
 
-  return { success: true, message: "Appointment scheduled" };
+  return {
+    success: true,
+    message: isReschedule ? "Appointment updated" : "Appointment scheduled",
+  };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error("[scheduleDonorAppointment] unhandled:", e);
+    throw new HttpsError(
+      "internal",
+      "Schedule failed. Please try again or contact support.",
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------
 // 2. saveMedicalReport
 // ---------------------------------------------------------------------------
-exports.saveMedicalReport = onCall(async (request) => {
+exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
   const callerUid = requireAuth(request);
   await requireRole(callerUid, "hospital");
 
@@ -244,8 +298,9 @@ exports.saveMedicalReport = onCall(async (request) => {
   try {
     const donorSnap = await db.collection("users").doc(donorId).get();
     if (donorSnap.exists) {
-      const fcmToken = donorSnap.data().fcmToken;
-      if (fcmToken) {
+      const du = donorSnap.data() || {};
+      const fcmToken = du.fcmToken;
+      if (typeof fcmToken === "string" && fcmToken.trim()) {
         const title =
           status === "donated"
             ? "🩸 Donation Confirmed!"
@@ -255,13 +310,13 @@ exports.saveMedicalReport = onCall(async (request) => {
             ? `${req.bloodBankName || "The blood bank"} confirmed your ${req.bloodType || ""} donation. Thank you!`
             : `${req.bloodBankName || "The blood bank"} has a note regarding your ${req.bloodType || ""} donation. Check your profile.`;
         await admin.messaging().send({
-          token: fcmToken,
+          token: fcmToken.trim(),
           notification: { title, body },
           data: {
             type: "medical_report_saved",
-            requestId,
-            reportId: reportRef.id,
-            status,
+            requestId: String(requestId),
+            reportId: String(reportRef.id),
+            status: String(status),
           },
         });
       }
@@ -276,7 +331,7 @@ exports.saveMedicalReport = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 // 3. getDonationHistory
 // ---------------------------------------------------------------------------
-exports.getDonationHistory = onCall(async (request) => {
+exports.getDonationHistory = onCall(publicCallableOpts, async (request) => {
   const callerUid = requireAuth(request);
   await requireRole(callerUid, "donor");
 

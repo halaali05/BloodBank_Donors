@@ -251,14 +251,10 @@ class CloudFunctionsService {
   }) async {
     try {
       final callable = _functions.httpsCallable('updateRequestUnits');
-<<<<<<< HEAD
       final result = await callable.call({
         'requestId': requestId,
         'units': units,
       });
-=======
-      final result = await callable.call({'requestId': requestId, 'units': units});
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {
       throw _handleFunctionsException(e);
@@ -595,7 +591,6 @@ class CloudFunctionsService {
 
     return Exception(userMessage);
   }
-<<<<<<< HEAD
 
   // ------------------ Donation History ------------------
   /// Fetches the authenticated donor's donation history (medical reports).
@@ -659,18 +654,19 @@ class CloudFunctionsService {
   /// Parameters:
   /// - [requestId]: The blood request ID
   /// - [donorId]: The donor's UID
-  /// - [appointmentAt]: ISO date string of the appointment
+  /// - [appointmentAtMillis]: [DateTime.millisecondsSinceEpoch] for the chosen
+  ///   local date/time (same absolute instant everywhere; avoids ISO parsing ambiguity).
   Future<Map<String, dynamic>> scheduleDonorAppointment({
     required String requestId,
     required String donorId,
-    required String appointmentAt,
+    required int appointmentAtMillis,
   }) async {
     try {
       final callable = _functions.httpsCallable('scheduleDonorAppointment');
       final result = await callable.call({
         'requestId': requestId,
         'donorId': donorId,
-        'appointmentAt': appointmentAt,
+        'appointmentAt': appointmentAtMillis,
       });
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {
@@ -679,6 +675,4 @@ class CloudFunctionsService {
       throw _handleNetworkError(e);
     }
   }
-=======
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
 }

@@ -2,6 +2,7 @@ const admin = require("firebase-admin");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { requireAuth, nonEmptyString, toHttpsError } = require("./utils");
+const { publicCallableOpts } = require("../callable_config");
 
 const db = admin.firestore();
 
@@ -17,7 +18,7 @@ function notificationRequestId(data) {
 /**
  * markNotificationsAsRead - mark all unread notifications as read for a user
  */
-exports.markNotificationsAsRead = onCall(async (request) => {
+exports.markNotificationsAsRead = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
 
@@ -53,7 +54,7 @@ exports.markNotificationsAsRead = onCall(async (request) => {
 /**
  * markNotificationAsRead - mark a single notification as read for a user
  */
-exports.markNotificationAsRead = onCall(async (request) => {
+exports.markNotificationAsRead = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -90,7 +91,7 @@ exports.markNotificationAsRead = onCall(async (request) => {
 /**
  * deleteNotification - delete a specific notification
  */
-exports.deleteNotification = onCall(async (request) => {
+exports.deleteNotification = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -123,7 +124,7 @@ exports.deleteNotification = onCall(async (request) => {
 /**
  * deleteOldNotifications - delete notifications older than [days] for the current user
  */
-exports.deleteOldNotifications = onCall(async (request) => {
+exports.deleteOldNotifications = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -176,7 +177,7 @@ exports.deleteOldNotifications = onCall(async (request) => {
 /**
  * getNotifications - Get all notifications for the authenticated user
  */
-exports.getNotifications = onCall(async (request) => {
+exports.getNotifications = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
 
@@ -256,7 +257,7 @@ exports.getNotifications = onCall(async (request) => {
 /**
  * getMessages - Get all messages for a specific request
  */
-exports.getMessages = onCall(async (request) => {
+exports.getMessages = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -403,7 +404,7 @@ exports.getMessages = onCall(async (request) => {
 /**
  * sendMessage - send a message in a request chat
  */
-exports.sendMessage = onCall(async (request) => {
+exports.sendMessage = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -651,7 +652,7 @@ exports.sendMessage = onCall(async (request) => {
  * for the request yet, create the same line as sendRequestMessageToDonors (idempotent).
  * Lets Messages from the donor dashboard match notification/chat content.
  */
-exports.ensureDonorWelcomeMessage = onCall(async (request) => {
+exports.ensureDonorWelcomeMessage = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};

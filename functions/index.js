@@ -1,37 +1,24 @@
 const admin = require("firebase-admin");
-<<<<<<< HEAD
 const { setGlobalOptions } = require("firebase-functions/v2");
-=======
-const {setGlobalOptions} = require("firebase-functions/v2");
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
 
 // Initialize Firebase Admin
 admin.initializeApp();
 
 // Set global options for all functions
-<<<<<<< HEAD
-setGlobalOptions({ region: "us-central1" });
-=======
-setGlobalOptions({region: "us-central1"});
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
+// invoker: "public" — required for Gen2 callables from Flutter Web / browsers (OPTIONS
+// preflight hits Cloud Run without end-user IAM). Handlers still enforce Firebase Auth.
+setGlobalOptions({ region: "us-central1", invoker: "public" });
 
 // Import and export all functions from separate modules
 const authFunctions = require("./src/auth");
 const requestFunctions = require("./src/requests");
 const notificationFunctions = require("./src/notifications");
-<<<<<<< HEAD
 const donorMgmt = require("./donor_management_functions");
 
 // Export all authentication and user profile functions
 exports.createPendingProfile = authFunctions.createPendingProfile;
 exports.completeProfileAfterVerification =
   authFunctions.completeProfileAfterVerification;
-=======
-
-// Export all authentication and user profile functions
-exports.createPendingProfile = authFunctions.createPendingProfile;
-exports.completeProfileAfterVerification = authFunctions.completeProfileAfterVerification;
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
 exports.getUserData = authFunctions.getUserData;
 exports.getUserRole = authFunctions.getUserRole;
 exports.updateLastLoginAt = authFunctions.updateLastLoginAt;
@@ -54,18 +41,13 @@ exports.cleanupExpiredRequests = requestFunctions.cleanupExpiredRequests;
 // Export all notification and messaging functions
 exports.getNotifications = notificationFunctions.getNotifications;
 exports.getMessages = notificationFunctions.getMessages;
-<<<<<<< HEAD
 exports.ensureDonorWelcomeMessage =
   notificationFunctions.ensureDonorWelcomeMessage;
-=======
-exports.ensureDonorWelcomeMessage = notificationFunctions.ensureDonorWelcomeMessage;
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
 exports.markNotificationsAsRead = notificationFunctions.markNotificationsAsRead;
 exports.markNotificationAsRead = notificationFunctions.markNotificationAsRead;
 exports.deleteNotification = notificationFunctions.deleteNotification;
 exports.deleteOldNotifications = notificationFunctions.deleteOldNotifications;
 exports.sendMessage = notificationFunctions.sendMessage;
-<<<<<<< HEAD
 exports.cleanupOrphanNotifications =
   notificationFunctions.cleanupOrphanNotifications;
 exports.cleanupOrphanMessages = notificationFunctions.cleanupOrphanMessages;
@@ -74,7 +56,3 @@ exports.cleanupOrphanMessages = notificationFunctions.cleanupOrphanMessages;
 exports.scheduleDonorAppointment = donorMgmt.scheduleDonorAppointment;
 exports.saveMedicalReport = donorMgmt.saveMedicalReport;
 exports.getDonationHistory = donorMgmt.getDonationHistory;
-=======
-exports.cleanupOrphanNotifications = notificationFunctions.cleanupOrphanNotifications;
-exports.cleanupOrphanMessages = notificationFunctions.cleanupOrphanMessages;
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5

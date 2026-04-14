@@ -2,6 +2,7 @@ const admin = require("firebase-admin");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { requireAuth, nonEmptyString, toHttpsError } = require("./utils");
+const { publicCallableOpts } = require("../callable_config");
 
 const db = admin.firestore();
 
@@ -32,13 +33,7 @@ async function deleteRequestCascade(requestRef, requestId) {
   let notificationsDeleted = 0;
 
   const trimmedRequestId = String(requestId ?? "").trim();
-<<<<<<< HEAD
   const responsesSnapshot = await requestRef.collection("donorResponses").get();
-=======
-  const responsesSnapshot = await requestRef
-    .collection("donorResponses")
-    .get();
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
 
   const requestIdVariants = [trimmedRequestId];
   const asNumber = Number(trimmedRequestId);
@@ -62,7 +57,6 @@ async function deleteRequestCascade(requestRef, requestId) {
   const cgQueries = [];
   for (const idValue of requestIdVariants) {
     cgQueries.push(
-<<<<<<< HEAD
       db
         .collectionGroup("user_notifications")
         .where("requestId", "==", idValue),
@@ -75,18 +69,6 @@ async function deleteRequestCascade(requestRef, requestId) {
   }
 
   const cgSettled = await Promise.allSettled(cgQueries.map((q) => q.get()));
-=======
-      db.collectionGroup("user_notifications").where("requestId", "==", idValue),
-    );
-    cgQueries.push(
-      db.collectionGroup("user_notifications").where("requestID", "==", idValue),
-    );
-  }
-
-  const cgSettled = await Promise.allSettled(
-    cgQueries.map((q) => q.get()),
-  );
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
   cgSettled.forEach((r, i) => {
     if (r.status === "fulfilled") {
       collectSnapshot(r.value);
@@ -212,6 +194,24 @@ async function buildDonorResponseEntry(donorId) {
 }
 
 /**
+ * Same as buildDonorResponseEntry plus pipeline fields for blood-bank donor management UI.
+ */
+async function buildDonorManagementEntry(donorId, responseRow) {
+  const base = await buildDonorResponseEntry(donorId);
+  const row = responseRow || {};
+  let appointmentAtMillis = null;
+  const apt = row.appointmentAt;
+  if (apt && typeof apt.toMillis === "function") {
+    appointmentAtMillis = apt.toMillis();
+  }
+  return {
+    ...base,
+    processStatus: row.processStatus ?? null,
+    appointmentAtMillis,
+  };
+}
+
+/**
  * Haversine formula — calculates distance in km between two GPS coordinates.
  * (kept for reference but no longer used for filtering)
  */
@@ -231,7 +231,7 @@ function haversineDistanceKm(lat1, lon1, lat2, lon2) {
 /**
  * addRequest - hospitals only.
  */
-exports.addRequest = onCall(async (request) => {
+exports.addRequest = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -331,7 +331,7 @@ exports.addRequest = onCall(async (request) => {
 /**
  * getDonors - Get list of all donors (hospitals only).
  */
-exports.getDonors = onCall(async (request) => {
+exports.getDonors = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -382,7 +382,7 @@ exports.getDonors = onCall(async (request) => {
 /**
  * getRequests - pagination (all requests for donors).
  */
-exports.getRequests = onCall(async (request) => {
+exports.getRequests = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -429,15 +429,10 @@ exports.getRequests = onCall(async (request) => {
         return {
           id: doc.id,
           ...d,
-<<<<<<< HEAD
           acceptedCount:
             typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
           rejectedCount:
             typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
-=======
-          acceptedCount: typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
-          rejectedCount: typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
           myResponse,
           createdAt:
             d.createdAt && typeof d.createdAt.toMillis === "function"
@@ -460,7 +455,7 @@ exports.getRequests = onCall(async (request) => {
 /**
  * getRequestsByBloodBankId - Get all requests for a specific blood bank.
  */
-exports.getRequestsByBloodBankId = onCall(async (request) => {
+exports.getRequestsByBloodBankId = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
 
@@ -495,7 +490,7 @@ exports.getRequestsByBloodBankId = onCall(async (request) => {
         for (const rdoc of responsesSnap.docs) {
           const donorId = rdoc.id;
           const st = (rdoc.data() || {}).status;
-          const entry = await buildDonorResponseEntry(donorId);
+          const entry = await buildDonorManagementEntry(donorId, rdoc.data());
           if (st === "accepted") {
             acceptedDonors.push(entry);
           } else if (st === "rejected") {
@@ -505,15 +500,10 @@ exports.getRequestsByBloodBankId = onCall(async (request) => {
         return {
           id: doc.id,
           ...d,
-<<<<<<< HEAD
           acceptedCount:
             typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
           rejectedCount:
             typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
-=======
-          acceptedCount: typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
-          rejectedCount: typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
           acceptedDonors,
           rejectedDonors,
           createdAt:
@@ -537,19 +527,15 @@ exports.getRequestsByBloodBankId = onCall(async (request) => {
  * Stores per-donor choice under requests/{id}/donorResponses/{uid}
  * and maintains acceptedCount / rejectedCount on the request document.
  */
-exports.setDonorRequestResponse = onCall(async (request) => {
+exports.setDonorRequestResponse = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
     const requestId = nonEmptyString(data.requestId, "requestId");
     const responseRaw =
-<<<<<<< HEAD
       typeof data.response === "string"
         ? data.response.trim().toLowerCase()
         : "";
-=======
-      typeof data.response === "string" ? data.response.trim().toLowerCase() : "";
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
     if (
       responseRaw !== "accepted" &&
       responseRaw !== "rejected" &&
@@ -588,13 +574,7 @@ exports.setDonorRequestResponse = onCall(async (request) => {
       }
 
       const respSnap = await t.get(responseRef);
-<<<<<<< HEAD
       const oldStatus = respSnap.exists ? (respSnap.data() || {}).status : null;
-=======
-      const oldStatus = respSnap.exists
-        ? (respSnap.data() || {}).status
-        : null;
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
       if (oldStatus !== "accepted" && oldStatus !== "rejected") {
         // ignore unknown prior values
       }
@@ -604,15 +584,10 @@ exports.setDonorRequestResponse = onCall(async (request) => {
       }
 
       const rd = reqSnap.data() || {};
-<<<<<<< HEAD
       let accepted =
         typeof rd.acceptedCount === "number" ? rd.acceptedCount : 0;
       let rejected =
         typeof rd.rejectedCount === "number" ? rd.rejectedCount : 0;
-=======
-      let accepted = typeof rd.acceptedCount === "number" ? rd.acceptedCount : 0;
-      let rejected = typeof rd.rejectedCount === "number" ? rd.rejectedCount : 0;
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
 
       if (oldStatus === "accepted") {
         accepted = Math.max(0, accepted - 1);
@@ -656,7 +631,7 @@ exports.setDonorRequestResponse = onCall(async (request) => {
  * markRequestCompleted - hospitals only, must own the request.
  * Marks request as completed so it is no longer actionable for donors.
  */
-exports.markRequestCompleted = onCall(async (request) => {
+exports.markRequestCompleted = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -703,7 +678,7 @@ exports.markRequestCompleted = onCall(async (request) => {
 /**
  * updateRequestUnits - hospitals only, must own the request.
  */
-exports.updateRequestUnits = onCall(async (request) => {
+exports.updateRequestUnits = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -757,7 +732,7 @@ exports.updateRequestUnits = onCall(async (request) => {
 /**
  * getRequestDonorResponses — hospital only; donors who accepted / rejected (name + email).
  */
-exports.getRequestDonorResponses = onCall(async (request) => {
+exports.getRequestDonorResponses = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -790,7 +765,7 @@ exports.getRequestDonorResponses = onCall(async (request) => {
     for (const doc of responsesSnap.docs) {
       const donorId = doc.id;
       const st = (doc.data() || {}).status;
-      const entry = await buildDonorResponseEntry(donorId);
+      const entry = await buildDonorManagementEntry(donorId, doc.data());
       if (st === "accepted") {
         accepted.push(entry);
       } else if (st === "rejected") {
@@ -808,7 +783,7 @@ exports.getRequestDonorResponses = onCall(async (request) => {
 /**
  * deleteRequest - delete a blood request (hospitals only, must own the request).
  */
-exports.deleteRequest = onCall(async (request) => {
+exports.deleteRequest = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -1087,15 +1062,9 @@ async function notifyDonorsForNewRequest(requestId, data) {
     } units (${bloodType})`;
 
     const androidNotification = {
-<<<<<<< HEAD
       channelId: isUrgent
         ? "emergency_request_channel_v4"
         : "normal_request_channel",
-=======
-      channelId: isUrgent ?
-        "emergency_request_channel_v4" :
-        "normal_request_channel",
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
       icon: "ic_launcher",
       sound: isUrgent ? "emergency_request" : "normal_request",
       defaultSound: false,

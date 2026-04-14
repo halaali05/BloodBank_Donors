@@ -2,13 +2,9 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../controllers/donor_profile_controller.dart';
-<<<<<<< HEAD
 import '../models/donor_medical_report.dart';
 import '../theme/app_theme.dart';
 import '../widgets/donation_history_section.dart';
-=======
-import '../theme/app_theme.dart';
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
 
 /// Screen where donors can view and edit their profile information
 ///
@@ -44,13 +40,10 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
   bool _isLoading = true;
   String? _error;
 
-<<<<<<< HEAD
   // Donation history
   List<DonorMedicalReport> _donationHistory = [];
   bool _historyLoading = true;
 
-=======
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
   /// Get current user's UID
   String get uid => FirebaseAuth.instance.currentUser!.uid;
 
@@ -58,20 +51,14 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
   void initState() {
     super.initState();
     _loadUserProfile();
-<<<<<<< HEAD
     _loadDonationHistory();
-=======
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
 
     // Set up periodic refresh (every 30 seconds) for real-time updates
     // Increased interval to improve performance
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) {
         _loadUserProfile();
-<<<<<<< HEAD
         _loadDonationHistory();
-=======
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
       }
     });
   }
@@ -111,7 +98,6 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
     }
   }
 
-<<<<<<< HEAD
   /// Loads donation history (medical reports) for this donor
   Future<void> _loadDonationHistory() async {
     if (!mounted) return;
@@ -129,8 +115,6 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
     }
   }
 
-=======
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
   /// Initializes form fields once with data from Cloud Functions
   /// Prevents overwriting user input if data updates
   void _initOnce(Map<String, dynamic> data) {
@@ -332,7 +316,6 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                                   : const Text('Save changes'),
                             ),
                           ),
-<<<<<<< HEAD
 
                         // ── Donation History ──────────────────────
                         const SizedBox(height: 20),
@@ -340,8 +323,6 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                           reports: _donationHistory,
                           isLoading: _historyLoading,
                         ),
-=======
->>>>>>> edb3988334af2d07ad7bcd43ac3f82483e300cd5
                       ],
                     ),
                   ),

@@ -2,6 +2,7 @@ const admin = require("firebase-admin");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { requireAuth, nonEmptyString, toHttpsError } = require("./utils");
+const { publicCallableOpts } = require("../callable_config");
 
 const db = admin.firestore();
 
@@ -10,7 +11,7 @@ const db = admin.firestore();
  * Writes ONLY to pending_profiles/{uid}.
  * Now also saves latitude/longitude from the governorate coordinates.
  */
-exports.createPendingProfile = onCall(async (request) => {
+exports.createPendingProfile = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -68,7 +69,7 @@ exports.createPendingProfile = onCall(async (request) => {
  * completeProfileAfterVerification
  * Moves pending_profiles/{uid} -> users/{uid} only if email verified.
  */
-exports.completeProfileAfterVerification = onCall(async (request) => {
+exports.completeProfileAfterVerification = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
 
@@ -117,7 +118,7 @@ exports.completeProfileAfterVerification = onCall(async (request) => {
   }
 });
 
-exports.getUserData = onCall(async (request) => {
+exports.getUserData = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -149,7 +150,7 @@ exports.getUserData = onCall(async (request) => {
   }
 });
 
-exports.getUserRole = onCall(async (request) => {
+exports.getUserRole = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const snap = await db.collection("users").doc(uid).get();
@@ -164,7 +165,7 @@ exports.getUserRole = onCall(async (request) => {
   }
 });
 
-exports.updateLastLoginAt = onCall(async (request) => {
+exports.updateLastLoginAt = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const userRef = db.collection("users").doc(uid);
@@ -194,7 +195,7 @@ async function deletePendingUser(uid) {
   await admin.auth().deleteUser(uid);
 }
 
-exports.updateFcmToken = onCall(async (request) => {
+exports.updateFcmToken = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
@@ -255,7 +256,7 @@ exports.updateFcmToken = onCall(async (request) => {
   }
 });
 
-exports.updateUserProfile = onCall(async (request) => {
+exports.updateUserProfile = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
