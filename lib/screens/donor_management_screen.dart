@@ -4,7 +4,6 @@ import '../models/blood_request_model.dart';
 import '../models/donor_response_entry.dart';
 import '../services/cloud_functions_service.dart';
 import '../theme/app_theme.dart';
-import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
@@ -900,65 +899,114 @@ class _ReportUploadSheetState extends State<_ReportUploadSheet> {
 
   // Picks a PDF or image file and uploads it to Firebase Storage
   Future<void> _pickAndUploadFile() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
-      withData: false, // stream from disk, not memory
-    );
-
-    if (result == null || result.files.isEmpty) return;
-    final picked = result.files.first;
-    if (picked.path == null) return;
-
-    setState(() {
-      _pickedFileName = picked.name;
-      _isUploading = true;
-      _uploadProgress = 0;
-      _uploadedFileUrl = null;
-    });
-
     try {
-      final file = File(picked.path!);
-      final ext = picked.extension ?? 'pdf';
-      final storagePath =
-          'medical_reports/${widget.donor.donorId}/${DateTime.now().millisecondsSinceEpoch}.$ext';
-
-      final ref = FirebaseStorage.instance.ref(storagePath);
-      final uploadTask = ref.putFile(
-        file,
-        SettableMetadata(
-          contentType: ext == 'pdf' ? 'application/pdf' : 'image/$ext',
-        ),
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+        withData: true,
       );
 
-      // Track upload progress
-      uploadTask.snapshotEvents.listen((snap) {
-        if (!mounted) return;
-        final progress =
-            snap.bytesTransferred /
-            (snap.totalBytes == 0 ? 1 : snap.totalBytes);
-        setState(() => _uploadProgress = progress);
+      if (result == null || result.files.isEmpty) return;
+
+      final picked = result.files.first;
+      final bytes = picked.bytes;
+
+      if (bytes == null || bytes.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not read file data'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        _pickedFileName = picked.name;
+        _isUploading = true;
+        _uploadProgress = 0;
+        _uploadedFileUrl = null;
       });
 
-      await uploadTask;
-      final downloadUrl = await ref.getDownloadURL();
+      final ext = (picked.extension ?? '').toLowerCase();
+
+      String contentType = 'application/octet-stream';
+      if (ext == 'pdf') {
+        contentType = 'application/pdf';
+      } else if (ext == 'jpg' || ext == 'jpeg') {
+        contentType = 'image/jpeg';
+      } else if (ext == 'png') {
+        contentType = 'image/png';
+      }
+
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
+
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('medical_reports')
+          .child(widget.donor.donorId)
+          .child(fileName);
+
+      final storagePath = 'medical_reports/${widget.donor.donorId}/$fileName';
+
+      debugPrint('Picked file name: ${picked.name}');
+      debugPrint('Picked file bytes: ${bytes.length}');
+      debugPrint('Storage path: $storagePath');
+      debugPrint('Content type: $contentType');
+
+      final uploadTask = ref.putData(
+        bytes,
+        SettableMetadata(contentType: contentType),
+      );
+
+      uploadTask.snapshotEvents.listen((snapshot) {
+        if (!mounted) return;
+
+        final total = snapshot.totalBytes;
+        final transferred = snapshot.bytesTransferred;
+
+        if (total > 0) {
+          setState(() {
+            _uploadProgress = transferred / total;
+          });
+        }
+
+        debugPrint('UPLOAD STATE: ${snapshot.state} | $transferred / $total');
+      });
+
+      final snap = await uploadTask;
+      final downloadUrl = await snap.ref.getDownloadURL();
 
       if (!mounted) return;
+
       setState(() {
         _uploadedFileUrl = downloadUrl;
         _isUploading = false;
+        _uploadProgress = 1.0;
       });
-    } catch (e) {
+
+      debugPrint('UPLOAD SUCCESS URL: $downloadUrl');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('File uploaded successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e, st) {
+      debugPrint('UPLOAD ERROR: $e');
+      debugPrint('$st');
+
       if (!mounted) return;
       setState(() {
         _isUploading = false;
         _pickedFileName = null;
       });
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Upload failed: ${e.toString().replaceFirst('Exception: ', '')}',
-          ),
+          content: Text('Upload failed: $e'),
           backgroundColor: Colors.red,
         ),
       );

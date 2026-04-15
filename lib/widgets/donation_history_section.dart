@@ -848,7 +848,7 @@ class _PdfReportButtonState extends State<_PdfReportButton> {
               ),
             const SizedBox(width: 8),
             Text(
-              _loading ? 'Opening...' : 'View Medical Report (PDF)',
+              _loading ? 'Opening...' : 'Open Medical Attachment',
               style: const TextStyle(
                 color: AppTheme.deepRed,
                 fontWeight: FontWeight.w700,

@@ -42,22 +42,27 @@ async function getRequest(requestId) {
 
 function parseAppointmentInstant(appointmentAt) {
   if (appointmentAt == null) return null;
+
   if (typeof appointmentAt === "number" && Number.isFinite(appointmentAt)) {
     const d = new Date(appointmentAt);
     return isNaN(d.getTime()) ? null : d;
   }
+
   if (typeof appointmentAt === "string") {
     const s = appointmentAt.trim();
     if (!s) return null;
+
     if (/^\d+$/.test(s)) {
       const n = Number(s);
       if (!Number.isFinite(n)) return null;
       const d = new Date(n);
       return isNaN(d.getTime()) ? null : d;
     }
+
     const d = new Date(s);
     return isNaN(d.getTime()) ? null : d;
   }
+
   return null;
 }
 
@@ -74,30 +79,37 @@ exports.scheduleDonorAppointment = onCall(
       const data = request.data || {};
       const { requestId, donorId, appointmentAt } = data;
 
-      if (!requestId || typeof requestId !== "string")
+      if (!requestId || typeof requestId !== "string") {
         throw new HttpsError("invalid-argument", "requestId is required");
-      if (!donorId || typeof donorId !== "string")
+      }
+
+      if (!donorId || typeof donorId !== "string") {
         throw new HttpsError("invalid-argument", "donorId is required");
+      }
 
       const appointmentDate = parseAppointmentInstant(appointmentAt);
-      if (!appointmentDate)
+      if (!appointmentDate) {
         throw new HttpsError(
           "invalid-argument",
           "appointmentAt must be epoch milliseconds (number) or a valid ISO date string",
         );
-      if (appointmentDate.getTime() < Date.now() - 30_000)
+      }
+
+      if (appointmentDate.getTime() < Date.now() - 30000) {
         throw new HttpsError(
           "invalid-argument",
           "Appointment date must be in the future",
         );
+      }
 
       const req = await getRequest(requestId);
 
-      if (req.bloodBankId !== callerUid)
+      if (req.bloodBankId !== callerUid) {
         throw new HttpsError(
           "permission-denied",
           "You can only manage donors for your own requests",
         );
+      }
 
       const donorResponseRef = db
         .collection("requests")
@@ -106,14 +118,16 @@ exports.scheduleDonorAppointment = onCall(
         .doc(donorId);
 
       const donorResponseSnap = await donorResponseRef.get();
-      if (!donorResponseSnap.exists)
+      if (!donorResponseSnap.exists) {
         throw new HttpsError(
           "not-found",
           "Donor has not accepted this request",
         );
+      }
 
       const d = donorResponseSnap.data() || {};
       const inviteStatus = String(d.status || "").toLowerCase();
+
       if (inviteStatus !== "accepted") {
         throw new HttpsError(
           "failed-precondition",
@@ -123,6 +137,7 @@ exports.scheduleDonorAppointment = onCall(
 
       const pipeline = String(d.processStatus || "").toLowerCase();
       const terminal = new Set(["tested", "donated", "restricted"]);
+
       if (terminal.has(pipeline)) {
         throw new HttpsError(
           "failed-precondition",
@@ -137,30 +152,50 @@ exports.scheduleDonorAppointment = onCall(
         appointmentAt: admin.firestore.Timestamp.fromDate(appointmentDate),
         scheduledAt: admin.firestore.FieldValue.serverTimestamp(),
         scheduledBy: callerUid,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      // FCM notification to donor
       try {
         const donorSnap = await db.collection("users").doc(donorId).get();
         if (donorSnap.exists) {
           const du = donorSnap.data() || {};
           const fcmToken = du.fcmToken;
+          const dateStr = appointmentDate.toLocaleDateString("en-US", {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+
+          const notifTitle = isReschedule
+            ? "📅 Appointment updated"
+            : "📅 Appointment scheduled";
+
+          const notifBody = `${
+            req.bloodBankName || "The blood bank"
+          } scheduled your ${req.bloodType || ""} donation for ${dateStr}`;
+
+          const notifRef = db
+            .collection("notifications")
+            .doc(donorId)
+            .collection("user_notifications")
+            .doc();
+
+          await notifRef.set({
+            title: notifTitle,
+            body: notifBody,
+            type: "appointment_scheduled",
+            requestId: String(requestId),
+            appointmentAt: appointmentDate.toISOString(),
+            isRead: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
           if (typeof fcmToken === "string" && fcmToken.trim()) {
-            const dateStr = appointmentDate.toLocaleDateString("en-US", {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            });
             await admin.messaging().send({
               token: fcmToken.trim(),
-              notification: {
-                title: isReschedule
-                  ? "📅 Appointment updated"
-                  : "📅 Appointment scheduled",
-                body: `${req.bloodBankName || "The blood bank"} scheduled your ${req.bloodType || ""} donation for ${dateStr}`,
-              },
+              notification: { title: notifTitle, body: notifBody },
               data: {
                 type: "appointment_scheduled",
                 requestId: String(requestId),
@@ -204,43 +239,52 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       notes,
       reportFileUrl,
       canDonateAgainAt,
-    } = request.data;
+    } = request.data || {};
 
-    if (!requestId || typeof requestId !== "string")
+    if (!requestId || typeof requestId !== "string") {
       throw new HttpsError("invalid-argument", "requestId is required");
-    if (!donorId || typeof donorId !== "string")
+    }
+
+    if (!donorId || typeof donorId !== "string") {
       throw new HttpsError("invalid-argument", "donorId is required");
-    if (status !== "donated" && status !== "restricted")
+    }
+
+    if (status !== "donated" && status !== "restricted") {
       throw new HttpsError(
         "invalid-argument",
         'status must be "donated" or "restricted"',
       );
+    }
+
     if (
       status === "restricted" &&
       (!restrictionReason || restrictionReason.trim() === "")
-    )
+    ) {
       throw new HttpsError(
         "invalid-argument",
         "restrictionReason is required when status is restricted",
       );
+    }
 
     let canDonateAgainDate = null;
     if (canDonateAgainAt) {
       canDonateAgainDate = new Date(canDonateAgainAt);
-      if (isNaN(canDonateAgainDate.getTime()))
+      if (isNaN(canDonateAgainDate.getTime())) {
         throw new HttpsError(
           "invalid-argument",
           "canDonateAgainAt must be a valid ISO date string",
         );
+      }
     }
 
     const req = await getRequest(requestId);
 
-    if (req.bloodBankId !== callerUid)
+    if (req.bloodBankId !== callerUid) {
       throw new HttpsError(
         "permission-denied",
         "You can only manage donors for your own requests",
       );
+    }
 
     const donorResponseRef = db
       .collection("requests")
@@ -249,8 +293,11 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       .doc(donorId);
 
     const donorResponseSnap = await donorResponseRef.get();
-    if (!donorResponseSnap.exists)
+    if (!donorResponseSnap.exists) {
       throw new HttpsError("not-found", "Donor has not accepted this request");
+    }
+
+    const donorResponseData = donorResponseSnap.data() || {};
 
     const reportData = {
       requestId,
@@ -260,16 +307,16 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       bloodType: req.bloodType || "",
       isUrgent: req.isUrgent || false,
       status,
+      restrictionReason:
+        status === "restricted" ? restrictionReason.trim() : null,
+      notes: notes?.trim() || null,
+      reportFileUrl: reportFileUrl || null,
+      canDonateAgainAt: canDonateAgainDate
+        ? admin.firestore.Timestamp.fromDate(canDonateAgainDate)
+        : null,
+      appointmentAt: donorResponseData.appointmentAt || null,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
-
-    if (restrictionReason)
-      reportData.restrictionReason = restrictionReason.trim();
-    if (notes && notes.trim()) reportData.notes = notes.trim();
-    if (reportFileUrl) reportData.reportFileUrl = reportFileUrl;
-    if (canDonateAgainDate)
-      reportData.canDonateAgainAt =
-        admin.firestore.Timestamp.fromDate(canDonateAgainDate);
 
     const reportRef = db.collection("medicalReports").doc();
     const batch = db.batch();
@@ -280,9 +327,11 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       processStatus: status,
       reportId: reportRef.id,
       completedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
     const donorRef = db.collection("users").doc(donorId);
+
     if (status === "restricted" && canDonateAgainDate) {
       batch.update(donorRef, {
         restrictedUntil: admin.firestore.Timestamp.fromDate(canDonateAgainDate),
@@ -298,21 +347,27 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
 
     await batch.commit();
 
-    // FCM notification to donor
     try {
       const donorSnap = await db.collection("users").doc(donorId).get();
       if (donorSnap.exists) {
         const du = donorSnap.data() || {};
         const fcmToken = du.fcmToken;
+
         if (typeof fcmToken === "string" && fcmToken.trim()) {
           const title =
             status === "donated"
               ? "🩸 Donation Confirmed!"
               : "⚠️ Donation Result";
+
           const body =
             status === "donated"
-              ? `${req.bloodBankName || "The blood bank"} confirmed your ${req.bloodType || ""} donation. Thank you!`
-              : `${req.bloodBankName || "The blood bank"} has a note regarding your ${req.bloodType || ""} donation. Check your profile.`;
+              ? `${req.bloodBankName || "The blood bank"} confirmed your ${
+                  req.bloodType || ""
+                } donation. Thank you!`
+              : `${req.bloodBankName || "The blood bank"} has a note regarding your ${
+                  req.bloodType || ""
+                } donation. Check your profile.`;
+
           await admin.messaging().send({
             token: fcmToken.trim(),
             notification: { title, body },
@@ -348,7 +403,7 @@ exports.getDonationHistory = onCall(publicCallableOpts, async (request) => {
     const callerUid = requireAuth(request);
     await requireRole(callerUid, "donor");
 
-    const snapshot = await db
+    const reportsSnapshot = await db
       .collection("medicalReports")
       .where("donorId", "==", callerUid)
       .orderBy("createdAt", "desc")
@@ -362,8 +417,8 @@ exports.getDonationHistory = onCall(publicCallableOpts, async (request) => {
       return null;
     };
 
-    const reports = snapshot.docs.map((doc) => {
-      const d = doc.data();
+    const reports = reportsSnapshot.docs.map((doc) => {
+      const d = doc.data() || {};
       return {
         id: doc.id,
         requestId: d.requestId || "",
@@ -376,8 +431,62 @@ exports.getDonationHistory = onCall(publicCallableOpts, async (request) => {
         notes: d.notes || null,
         reportFileUrl: d.reportFileUrl || null,
         canDonateAgainAt: toISO(d.canDonateAgainAt),
+        appointmentAt: toISO(d.appointmentAt),
         createdAt: toISO(d.createdAt),
       };
+    });
+
+    const reportRequestIds = new Set(
+      reports.map((r) => r.requestId).filter((v) => typeof v === "string" && v),
+    );
+
+    const donorResponseSnapshot = await db
+      .collectionGroup("donorResponses")
+      .where(admin.firestore.FieldPath.documentId(), "==", callerUid)
+      .where("status", "==", "accepted")
+      .get();
+
+    for (const doc of donorResponseSnapshot.docs) {
+      const d = doc.data() || {};
+      const requestRef = doc.ref.parent.parent;
+      if (!requestRef) continue;
+
+      const requestId = requestRef.id;
+      if (reportRequestIds.has(requestId)) continue;
+
+      const processStatus = String(d.processStatus || "accepted").toLowerCase();
+      if (!["accepted", "scheduled", "tested"].includes(processStatus)) {
+        continue;
+      }
+
+      const reqSnap = await requestRef.get();
+      if (!reqSnap.exists) continue;
+      const req = reqSnap.data() || {};
+
+      reports.push({
+        id: `active_${requestId}_${callerUid}`,
+        requestId,
+        bloodBankId: req.bloodBankId || "",
+        bloodBankName: req.bloodBankName || "",
+        bloodType: req.bloodType || "",
+        isUrgent: req.isUrgent || false,
+        status: processStatus,
+        restrictionReason: null,
+        notes: null,
+        reportFileUrl: null,
+        canDonateAgainAt: null,
+        appointmentAt: toISO(d.appointmentAt),
+        createdAt:
+          toISO(d.updatedAt) ||
+          toISO(req.createdAt) ||
+          new Date().toISOString(),
+      });
+    }
+
+    reports.sort((a, b) => {
+      const at = Date.parse(a.createdAt || 0);
+      const bt = Date.parse(b.createdAt || 0);
+      return bt - at;
     });
 
     return { reports };
@@ -399,15 +508,19 @@ exports.getRequestDonorResponses = onCall(
       await requireRole(callerUid, "hospital");
 
       const { requestId } = request.data || {};
-      if (!requestId || typeof requestId !== "string")
+
+      if (!requestId || typeof requestId !== "string") {
         throw new HttpsError("invalid-argument", "requestId is required");
+      }
 
       const req = await getRequest(requestId);
-      if (req.bloodBankId !== callerUid)
+
+      if (req.bloodBankId !== callerUid) {
         throw new HttpsError(
           "permission-denied",
           "You can only view donors for your own requests",
         );
+      }
 
       const snapshot = await db
         .collection("requests")
@@ -429,9 +542,9 @@ exports.getRequestDonorResponses = onCall(
         const d = doc.data() || {};
         const status = String(d.status || "").toLowerCase();
 
-        // Fetch donor name/email from users collection
         let fullName = d.fullName || "";
         let email = d.email || "";
+
         if (!fullName || !email) {
           try {
             const donorSnap = await db.collection("users").doc(doc.id).get();
@@ -440,9 +553,10 @@ exports.getRequestDonorResponses = onCall(
               fullName = fullName || du.fullName || du.name || "Donor";
               email = email || du.email || "";
             }
-          } catch (_) {}
+          } catch (e) {
+            console.warn("Failed to load donor user data:", e.message);
+          }
         }
-
         const entry = {
           donorId: doc.id,
           fullName: fullName || "Donor",
@@ -452,8 +566,11 @@ exports.getRequestDonorResponses = onCall(
           reportId: d.reportId || null,
         };
 
-        if (status === "accepted") accepted.push(entry);
-        else if (status === "rejected") rejected.push(entry);
+        if (status === "accepted") {
+          accepted.push(entry);
+        } else if (status === "rejected") {
+          rejected.push(entry);
+        }
       }
 
       return { accepted, rejected };
