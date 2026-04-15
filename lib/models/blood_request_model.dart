@@ -22,16 +22,19 @@ class BloodRequest {
   /// Donors who tapped Reject (maintained server-side).
   final int rejectedCount;
 
-  /// Current donor's response for this request: `accepted`, `rejected`, or null (from getRequests only).
+  /// Current donor's response for this request
   final String? myResponse;
 
   /// Whether this request has been marked completed by the blood bank.
   final bool isCompleted;
 
-  /// Donors who accepted (name + email) — from getRequestsByBloodBankId for hospitals.
+  /// Appointment time for this donor (if scheduled)
+  final DateTime? appointmentAt;
+
+  /// Donors who accepted — for hospitals
   final List<DonorResponseEntry> acceptedDonors;
 
-  /// Donors who rejected (name + email) — from getRequestsByBloodBankId for hospitals.
+  /// Donors who rejected — for hospitals
   final List<DonorResponseEntry> rejectedDonors;
 
   const BloodRequest({
@@ -49,12 +52,14 @@ class BloodRequest {
     this.rejectedCount = 0,
     this.myResponse,
     this.isCompleted = false,
+    this.appointmentAt, 
     this.acceptedDonors = const [],
     this.rejectedDonors = const [],
   });
 
   factory BloodRequest.fromMap(Map<String, dynamic> data, String id) {
     final units = _coerceInt(data['units'], 1);
+
     return BloodRequest(
       id: id,
       bloodBankId: data['bloodBankId']?.toString() ?? '',
@@ -70,6 +75,10 @@ class BloodRequest {
       rejectedCount: _coerceInt(data['rejectedCount'], 0),
       myResponse: _parseMyResponse(data['myResponse']),
       isCompleted: _coerceBool(data['isCompleted']),
+
+      /// ✅ أهم سطر (حل المشكلة)
+      appointmentAt: _parseDate(data['appointmentAt']),
+
       acceptedDonors: _parseDonorEntries(data['acceptedDonors']),
       rejectedDonors: _parseDonorEntries(data['rejectedDonors']),
     );
@@ -78,15 +87,18 @@ class BloodRequest {
   static List<DonorResponseEntry> _parseDonorEntries(dynamic v) {
     if (v is! List) return const [];
     final out = <DonorResponseEntry>[];
+
     for (final e in v) {
-      if (e == null) continue;
-      if (e is! Map) continue;
+      if (e == null || e is! Map) continue;
+
       final m = <String, dynamic>{};
       e.forEach((key, value) {
         m[key.toString()] = value;
       });
+
       out.add(DonorResponseEntry.fromMap(m));
     }
+
     return out;
   }
 
@@ -101,10 +113,12 @@ class BloodRequest {
   static bool _coerceBool(dynamic v) {
     if (v == null) return false;
     if (v is bool) return v;
+
     if (v is String) {
       final s = v.toLowerCase();
       return s == 'true' || s == '1';
     }
+
     return false;
   }
 
@@ -118,7 +132,25 @@ class BloodRequest {
   static String? _parseMyResponse(dynamic value) {
     if (value is! String) return null;
     final s = value.trim().toLowerCase();
+
     if (s == 'accepted') return s;
+    if (s == 'rejected') return s;
+
+    return null;
+  }
+
+  /// ✅ NEW: parse appointment date safely
+  static DateTime? _parseDate(dynamic v) {
+    if (v == null) return null;
+    if (v is DateTime) return v;
+    if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
+    if (v is String) return DateTime.tryParse(v);
+
+    try {
+      final dt = v.toDate(); // Firestore timestamp
+      if (dt is DateTime) return dt;
+    } catch (_) {}
+
     return null;
   }
 
@@ -132,8 +164,13 @@ class BloodRequest {
       'details': details,
       'hospitalLocation': hospitalLocation,
       'isCompleted': isCompleted,
+
       if (hospitalLatitude != null) 'hospitalLatitude': hospitalLatitude,
       if (hospitalLongitude != null) 'hospitalLongitude': hospitalLongitude,
+
+      /// Optional: send appointment back if needed
+      if (appointmentAt != null)
+        'appointmentAt': appointmentAt!.toIso8601String(),
     };
   }
 }

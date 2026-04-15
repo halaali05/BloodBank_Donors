@@ -202,7 +202,7 @@ class DonorProcessEntry {
       report = DonorMedicalReport.fromMap(rm, rm['id']?.toString() ?? '');
     }
 
-    DateTime? _parseDate(dynamic v) {
+    DateTime? parseDate(dynamic v) {
       if (v == null) return null;
       if (v is DateTime) return v;
       if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
@@ -220,7 +220,7 @@ class DonorProcessEntry {
       email: pick(['email']),
       bloodType: pick(['bloodType']),
       status: parseDonorProcessStatus(m['processStatus']?.toString()),
-      appointmentAt: _parseDate(m['appointmentAt']),
+      appointmentAt: parseDate(m['appointmentAt']),
       medicalReport: report,
     );
   }
@@ -229,3 +229,4 @@ class DonorProcessEntry {
 extension _Let<T> on T {
   R let<R>(R Function(T) block) => block(this);
 }
+

@@ -389,6 +389,7 @@ exports.getRequests = onCall(publicCallableOpts, async (request) => {
 
     const limit =
       typeof data.limit === "number" ? Math.min(data.limit, 100) : 50;
+
     const lastRequestId =
       typeof data.lastRequestId === "string" ? data.lastRequestId : null;
 
@@ -405,41 +406,78 @@ exports.getRequests = onCall(publicCallableOpts, async (request) => {
     }
 
     const snapshot = await query.get();
+
     const requests = await Promise.all(
       snapshot.docs.map(async (doc) => {
         const d = doc.data() || {};
+
         if (isRequestExpired(d.createdAt)) {
           return null;
         }
+
         let myResponse = null;
+        let appointmentAt = null;
+
         try {
           const respSnap = await doc.ref
             .collection("donorResponses")
             .doc(uid)
             .get();
+
           if (respSnap.exists) {
-            const st = (respSnap.data() || {}).status;
+            const respData = respSnap.data() || {};
+            const st = respData.status;
+
+            
             if (st === "accepted" || st === "rejected") {
               myResponse = st;
+            }
+
+            
+            const appt = respData.appointmentAt;
+
+            if (appt) {
+              if (typeof appt.toMillis === "function") {
+                // Firestore Timestamp
+                appointmentAt = appt.toMillis();
+              } else if (appt._seconds) {
+                // plain object
+                appointmentAt = appt._seconds * 1000;
+              } else if (typeof appt === "number") {
+                // already millis
+                appointmentAt = appt;
+              } else if (typeof appt === "string") {
+                // ISO string
+                const parsed = Date.parse(appt);
+                if (!isNaN(parsed)) {
+                  appointmentAt = parsed;
+                }
+              }
             }
           }
         } catch (e) {
           console.warn("[getRequests] donorResponse read:", e.message);
         }
+
         return {
           id: doc.id,
           ...d,
+
           acceptedCount:
             typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
+
           rejectedCount:
             typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
+
           myResponse,
+          appointmentAt, 
+
           createdAt:
             d.createdAt && typeof d.createdAt.toMillis === "function"
               ? d.createdAt.toMillis()
               : null,
         };
-      }),
+      })
     );
 
     return {

@@ -23,6 +23,11 @@ class DonorRequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+
+
+  print("STATUS: ${request.myResponse}");
+  print("APPOINTMENT: ${request.appointmentAt}");
+
     final isUrgent = request.isUrgent == true;
     final isCompleted = request.isCompleted;
     final cardBg = isUrgent ? AppTheme.urgentCardBg : Colors.white;
@@ -105,6 +110,12 @@ class DonorRequestCard extends StatelessWidget {
                   style: const TextStyle(fontSize: 13, color: Colors.black54),
                 ),
                 const SizedBox(height: 6),
+               if (request.myResponse != null) ...[
+                 ResponseStatusPill(
+                  status: request.myResponse ?? 'pending',
+                  appointmentAt: request.appointmentAt,
+                   ),
+                ],
                 if (request.hospitalLocation.trim().isNotEmpty)
                   Row(
                     children: [
@@ -245,3 +256,93 @@ class DonorRequestCard extends StatelessWidget {
 }
 
 /// Non-interactive pill matching compact Accept/Reject size; shows final choice.
+
+
+
+// show appointment time if donor has accepted and appointment is scheduled, otherwise show "Accepted" or "Rejected" status based on myResponse field in BloodRequest.
+class ResponseStatusPill extends StatelessWidget {
+  final String status; // 'accepted', 'rejected', or 'pending'
+  final DateTime? appointmentAt; // optional appointment time to show when accepted
+
+  const ResponseStatusPill({
+    super.key,
+    required this.status,
+    this.appointmentAt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Color bgColor;
+    Color textColor;
+    String displayText;
+
+    switch (status) {
+      case 'accepted':
+        bgColor = const Color(0xFFE8F5E9);
+        textColor = const Color(0xFF388E3C);
+        if (appointmentAt != null) {
+          displayText =
+              'Accepted - Appointment: ${_formatDate(appointmentAt!)}';
+        } else {
+          displayText = 'Accepted';
+        }
+        break;
+      case 'rejected':
+        bgColor = const Color(0xFFFFEBEE);
+        textColor = const Color(0xFFD32F2F);
+        displayText = 'Rejected';
+        break;
+      default:
+        bgColor = Colors.grey.shade200;
+        textColor = Colors.grey.shade600;
+        displayText = 'Pending';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        displayText,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: textColor,
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    // Format as "MMM d, h:mm a" e.g. "Sep 8, 3:30 PM"
+    return '${_monthAbbreviation(date.month)} ${date.day}, ${_formatTime(date)}';
+  }
+
+  String _monthAbbreviation(int month) {
+    const months = [
+      '', // placeholder for 1-based month index
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    return months[month];
+  }
+
+  String _formatTime(DateTime date) {
+    final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+    final minute = date.minute.toString().padLeft(2, '0');
+    final ampm = date.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $ampm';
+  } }
+  
