@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'new_request_screen.dart';
 import 'login_screen.dart';
-import 'request_responders_screen.dart';
 import 'donor_management_screen.dart';
 
 import 'stats_screen.dart';
@@ -243,9 +242,9 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
       );
       if (context.mounted) Navigator.pop(context);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Request units updated.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Request units updated.')));
       await _loadRequests();
     } catch (e) {
       if (context.mounted) Navigator.pop(context);
@@ -416,15 +415,10 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => RequestRespondersScreen(
-                                      requestId: request.id,
-                                      subtitle:
-                                          '${request.bloodType} • ${request.units} units',
-                                      accepted: request.acceptedDonors,
-                                      rejected: const [],
-                                    ),
+                                    builder: (_) =>
+                                        DonorManagementScreen(request: request),
                                   ),
-                                );
+                                ).then((_) => _loadRequests());
                               },
                             );
                           },

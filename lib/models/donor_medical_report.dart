@@ -85,6 +85,10 @@ class DonorMedicalReport {
   /// When the donor can donate again (only when status == restricted)
   final DateTime? canDonateAgainAt;
 
+  /// Scheduled appointment time — shown on donor's journey tracker
+  // NEW FIELD: needed to display the appointment step in the journey timeline
+  final DateTime? appointmentAt;
+
   const DonorMedicalReport({
     required this.id,
     required this.requestId,
@@ -98,6 +102,7 @@ class DonorMedicalReport {
     this.notes,
     this.reportFileUrl,
     this.canDonateAgainAt,
+    this.appointmentAt, // NEW
   });
 
   factory DonorMedicalReport.fromMap(Map<String, dynamic> data, String id) {
@@ -114,6 +119,7 @@ class DonorMedicalReport {
       reportFileUrl: data['reportFileUrl']?.toString(),
       createdAt: _parseDate(data['createdAt']) ?? DateTime.now(),
       canDonateAgainAt: _parseDate(data['canDonateAgainAt']),
+      appointmentAt: _parseDate(data['appointmentAt']), // NEW
     );
   }
 
@@ -131,6 +137,8 @@ class DonorMedicalReport {
       'createdAt': createdAt.toIso8601String(),
       if (canDonateAgainAt != null)
         'canDonateAgainAt': canDonateAgainAt!.toIso8601String(),
+      if (appointmentAt != null) // NEW
+        'appointmentAt': appointmentAt!.toIso8601String(),
     };
   }
 

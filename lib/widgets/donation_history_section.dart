@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/donor_medical_report.dart';
 import '../theme/app_theme.dart';
 
 /// Displays the donor's full donation history on their profile.
-/// Each card shows the request details, outcome, and links to the medical report.
+/// Each card shows a step-by-step journey timeline + PDF report link.
 class DonationHistorySection extends StatelessWidget {
   final List<DonorMedicalReport> reports;
   final bool isLoading;
@@ -94,9 +95,9 @@ class DonationHistorySection extends StatelessWidget {
         // ── Empty State ────────────────────────────────────────
         else if (reports.isEmpty)
           _EmptyHistoryCard()
-        // ── Report Cards ───────────────────────────────────────
+        // ── Journey Cards ──────────────────────────────────────
         else
-          ...reports.map((r) => _ReportCard(report: r)),
+          ...reports.map((r) => _JourneyCard(report: r)),
       ],
     );
   }
@@ -233,292 +234,355 @@ class _EmptyHistoryCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Individual Report Card
+// Journey Card — replaces the old _ReportCard
+// Shows a step-by-step timeline for each donation request
 // ─────────────────────────────────────────────────────────────
-class _ReportCard extends StatelessWidget {
+class _JourneyCard extends StatefulWidget {
   final DonorMedicalReport report;
-  const _ReportCard({required this.report});
+  const _JourneyCard({required this.report});
+
+  @override
+  State<_JourneyCard> createState() => _JourneyCardState();
+}
+
+class _JourneyCardState extends State<_JourneyCard> {
+  bool _expanded = true;
+
+  // Map each status to its index in the journey
+  static const _statusOrder = {
+    DonorProcessStatus.accepted: 0,
+    DonorProcessStatus.scheduled: 1,
+    DonorProcessStatus.tested: 2,
+    DonorProcessStatus.donated: 3,
+    DonorProcessStatus.restricted: 3, // same level as donated (final step)
+  };
+
+  // Journey step definitions
+  List<_JourneyStep> get _steps {
+    final s = widget.report.status;
+    final currentIdx = _statusOrder[s] ?? 0;
+    final isRestricted = s == DonorProcessStatus.restricted;
+
+    return [
+      _JourneyStep(
+        index: 0,
+        icon: Icons.check_circle_outline_rounded,
+        activeIcon: Icons.check_circle_rounded,
+        title: 'Request Accepted',
+        subtitle: _formatDate(widget.report.createdAt),
+        currentIdx: currentIdx,
+      ),
+      _JourneyStep(
+        index: 1,
+        icon: Icons.calendar_today_outlined,
+        activeIcon: Icons.calendar_today_rounded,
+        title: 'Appointment Scheduled',
+        subtitle: widget.report.appointmentAt != null
+            ? '${_formatDate(widget.report.appointmentAt!)} — ${_formatTime(widget.report.appointmentAt!)}'
+            : currentIdx >= 1
+            ? 'Appointment confirmed'
+            : 'Waiting for hospital',
+        currentIdx: currentIdx,
+      ),
+      _JourneyStep(
+        index: 2,
+        icon: Icons.science_outlined,
+        activeIcon: Icons.science_rounded,
+        title: 'Sample in Lab',
+        subtitle: currentIdx >= 2
+            ? 'Sample received — being processed'
+            : 'Pending blood draw',
+        currentIdx: currentIdx,
+      ),
+      _JourneyStep(
+        index: 3,
+        icon: isRestricted
+            ? Icons.block_outlined
+            : Icons.favorite_outline_rounded,
+        activeIcon: isRestricted ? Icons.block_rounded : Icons.favorite_rounded,
+        title: isRestricted ? 'Not Eligible' : 'Donation Complete',
+        subtitle: isRestricted
+            ? (widget.report.restrictionReason ?? 'See notes below')
+            : currentIdx >= 3
+            ? 'Thank you for saving lives! 🩸'
+            : 'Awaiting results',
+        currentIdx: currentIdx,
+        isFinal: true,
+        isRestricted: isRestricted,
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
-    final isDonated = report.status == DonorProcessStatus.donated;
-    final isRestricted = report.status == DonorProcessStatus.restricted;
+    final s = widget.report.status;
+    final isDone = s == DonorProcessStatus.donated;
+    final isRestricted = s == DonorProcessStatus.restricted;
+    final isActive = !isDone && !isRestricted;
 
-    final statusColor = isDonated
+    final headerColor = isDone
         ? Colors.green
         : isRestricted
         ? Colors.orange
-        : Colors.blue;
+        : AppTheme.deepRed;
 
-    final statusLabel = isDonated
-        ? 'Donated'
+    final statusLabel = isDone
+        ? 'Donated ✓'
         : isRestricted
-        ? 'Restricted'
-        : 'Pending';
+        ? 'Not Eligible'
+        : 'In Progress';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: AppTheme.cardShadow,
-        border: Border.all(color: statusColor.withOpacity(0.2)),
+        border: Border.all(color: headerColor.withOpacity(0.18)),
       ),
       child: Column(
         children: [
-          // ── Top bar ───────────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.06),
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(16),
-              ),
-            ),
-            child: Row(
-              children: [
-                // Blood type pill
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppTheme.deepRed,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    report.bloodType,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                    ),
-                  ),
+          // ── Header ────────────────────────────────────────────
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: headerColor.withOpacity(0.06),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(18),
                 ),
-                const SizedBox(width: 8),
-                if (report.isUrgent)
+              ),
+              child: Row(
+                children: [
+                  // Blood type pill
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 3,
+                      horizontal: 10,
+                      vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: AppTheme.urgentBg,
-                      borderRadius: BorderRadius.circular(6),
+                      color: AppTheme.deepRed,
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Text(
-                      'URGENT',
-                      style: TextStyle(
-                        color: AppTheme.urgentRed,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ),
-                const Spacer(),
-                // Status badge
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isDonated
-                            ? Icons.favorite_rounded
-                            : isRestricted
-                            ? Icons.block_rounded
-                            : Icons.hourglass_top_rounded,
-                        size: 12,
-                        color: statusColor,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        statusLabel,
-                        style: TextStyle(
-                          color: statusColor,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // ── Body ──────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Hospital name
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.local_hospital_rounded,
-                      size: 14,
-                      color: Colors.black38,
-                    ),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        report.bloodBankName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                // Date
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.calendar_today_rounded,
-                      size: 13,
-                      color: Colors.black38,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      _formatDate(report.createdAt),
+                    child: Text(
+                      widget.report.bloodType,
                       style: const TextStyle(
-                        color: Colors.black45,
-                        fontSize: 12,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
                       ),
                     ),
-                  ],
-                ),
-
-                // Restriction reason
-                if (isRestricted && report.restrictionReason != null) ...[
-                  const SizedBox(height: 10),
+                  ),
+                  const SizedBox(width: 8),
+                  if (widget.report.isUrgent)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.urgentBg,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        'URGENT',
+                        style: TextStyle(
+                          color: AppTheme.urgentRed,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ),
+                  const Spacer(),
+                  // Status badge
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.07),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.orange.withOpacity(0.2)),
+                      color: headerColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(
-                          Icons.info_outline,
-                          color: Colors.orange,
-                          size: 15,
+                        Icon(
+                          isDone
+                              ? Icons.favorite_rounded
+                              : isRestricted
+                              ? Icons.block_rounded
+                              : Icons.timelapse_rounded,
+                          size: 12,
+                          color: headerColor,
                         ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            report.restrictionReason!,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.black54,
-                            ),
+                        const SizedBox(width: 4),
+                        Text(
+                          statusLabel,
+                          style: TextStyle(
+                            color: headerColor,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 11,
                           ),
                         ),
                       ],
                     ),
                   ),
-                ],
-
-                // Can donate again
-                if (isRestricted && report.canDonateAgainAt != null) ...[
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.event_available,
-                        size: 13,
-                        color: Colors.black38,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        'Can donate again: ${_formatDate(report.canDonateAgainAt!)}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.black45,
-                        ),
-                      ),
-                    ],
+                  const SizedBox(width: 8),
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: Colors.black38,
+                    size: 20,
                   ),
                 ],
+              ),
+            ),
+          ),
 
-                // Notes
-                if (report.notes != null && report.notes!.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    report.notes!,
+          // ── Hospital + Date row ────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.local_hospital_rounded,
+                  size: 14,
+                  color: Colors.black38,
+                ),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    widget.report.bloodBankName,
                     style: const TextStyle(
-                      color: Colors.black38,
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
                     ),
                   ),
-                ],
+                ),
+                const Icon(
+                  Icons.calendar_today_rounded,
+                  size: 13,
+                  color: Colors.black38,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  _formatDate(widget.report.createdAt),
+                  style: const TextStyle(color: Colors.black45, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
 
-                // View report button
-                if (report.reportFileUrl != null) ...[
-                  const SizedBox(height: 12),
-                  GestureDetector(
-                    onTap: () {
-                      // TODO: open report URL
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
+          // ── Animated Journey Timeline ──────────────────────────
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 250),
+            crossFadeState: _expanded
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            firstChild: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+              child: Column(
+                children: [
+                  // Timeline steps
+                  ..._steps.map((step) => _TimelineStepRow(step: step)),
+
+                  // ── Notes ──────────────────────────────────────
+                  if (widget.report.notes != null &&
+                      widget.report.notes!.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: AppTheme.deepRed.withOpacity(0.06),
+                        color: Colors.grey.withOpacity(0.06),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: AppTheme.deepRed.withOpacity(0.2),
+                          color: Colors.black.withOpacity(0.07),
                         ),
                       ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            Icons.picture_as_pdf_rounded,
-                            color: AppTheme.deepRed,
-                            size: 16,
+                          const Icon(
+                            Icons.notes_rounded,
+                            size: 14,
+                            color: Colors.black38,
                           ),
-                          SizedBox(width: 6),
-                          Text(
-                            'View Medical Report',
-                            style: TextStyle(
-                              color: AppTheme.deepRed,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
+                          const SizedBox(width: 7),
+                          Expanded(
+                            child: Text(
+                              widget.report.notes!,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black54,
+                                fontStyle: FontStyle.italic,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
+                  ],
+
+                  // ── Can donate again ───────────────────────────
+                  if (isRestricted &&
+                      widget.report.canDonateAgainAt != null) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.07),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: Colors.orange.withOpacity(0.2),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.event_available,
+                            size: 15,
+                            color: Colors.orange,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Can donate again: ${_formatDate(widget.report.canDonateAgainAt!)}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black54,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  // ── PDF Report Button ──────────────────────────
+                  if (widget.report.reportFileUrl != null) ...[
+                    const SizedBox(height: 12),
+                    _PdfReportButton(url: widget.report.reportFileUrl!),
+                  ],
+
+                  const SizedBox(height: 14),
                 ],
-              ],
+              ),
             ),
+            secondChild: const SizedBox(height: 12),
           ),
         ],
       ),
     );
   }
 
-  String _formatDate(DateTime dt) {
+  static String _formatDate(DateTime dt) {
     const months = [
       'Jan',
       'Feb',
@@ -534,5 +598,266 @@ class _ReportCard extends StatelessWidget {
       'Dec',
     ];
     return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
+  }
+
+  static String _formatTime(DateTime dt) {
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Data class for one journey step
+// ─────────────────────────────────────────────────────────────
+class _JourneyStep {
+  final int index;
+  final IconData icon;
+  final IconData activeIcon;
+  final String title;
+  final String subtitle;
+  final int currentIdx;
+  final bool isFinal;
+  final bool isRestricted;
+
+  const _JourneyStep({
+    required this.index,
+    required this.icon,
+    required this.activeIcon,
+    required this.title,
+    required this.subtitle,
+    required this.currentIdx,
+    this.isFinal = false,
+    this.isRestricted = false,
+  });
+
+  bool get isDone => currentIdx > index || (currentIdx == index && isFinal);
+  bool get isActive => currentIdx == index && !isFinal;
+  bool get isPending => currentIdx < index;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Single row in the timeline stepper
+// ─────────────────────────────────────────────────────────────
+class _TimelineStepRow extends StatelessWidget {
+  final _JourneyStep step;
+  const _TimelineStepRow({required this.step});
+
+  @override
+  Widget build(BuildContext context) {
+    final isLast = step.isFinal;
+    final isDone = step.isDone;
+    final isActive = step.isActive;
+    final isPending = step.isPending;
+
+    final Color dotColor;
+    final Color lineColor;
+
+    if (step.isRestricted && isDone) {
+      dotColor = Colors.orange;
+      lineColor = Colors.orange.withOpacity(0.25);
+    } else if (isDone) {
+      dotColor = Colors.green;
+      lineColor = Colors.green.withOpacity(0.25);
+    } else if (isActive) {
+      dotColor = AppTheme.deepRed;
+      lineColor = AppTheme.deepRed.withOpacity(0.15);
+    } else {
+      dotColor = Colors.black12;
+      lineColor = Colors.black.withOpacity(0.06);
+    }
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Left column: dot + vertical line ──────────────────
+          SizedBox(
+            width: 32,
+            child: Column(
+              children: [
+                // Dot
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: dotColor.withOpacity(isPending ? 0.08 : 0.15),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: dotColor.withOpacity(isPending ? 0.2 : 0.6),
+                      width: isActive ? 2 : 1.5,
+                    ),
+                  ),
+                  child: Icon(
+                    isDone || isActive ? step.activeIcon : step.icon,
+                    size: 14,
+                    color: dotColor.withOpacity(isPending ? 0.3 : 1.0),
+                  ),
+                ),
+                // Vertical connector line (hidden for last step)
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 3),
+                      decoration: BoxDecoration(
+                        color: lineColor,
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // ── Right column: title + subtitle ────────────────────
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 16, top: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          step.title,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: isPending ? Colors.black26 : Colors.black87,
+                          ),
+                        ),
+                      ),
+                      if (isActive)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.deepRed.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'NOW',
+                            style: TextStyle(
+                              color: AppTheme.deepRed,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    step.subtitle,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isPending ? Colors.black26 : Colors.black45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// PDF Report Button — opens the URL in browser/PDF viewer
+// ─────────────────────────────────────────────────────────────
+class _PdfReportButton extends StatefulWidget {
+  final String url;
+  const _PdfReportButton({required this.url});
+
+  @override
+  State<_PdfReportButton> createState() => _PdfReportButtonState();
+}
+
+class _PdfReportButtonState extends State<_PdfReportButton> {
+  bool _loading = false;
+
+  Future<void> _open() async {
+    setState(() => _loading = true);
+    try {
+      final uri = Uri.parse(widget.url);
+      final canOpen = await canLaunchUrl(uri);
+      if (canOpen) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not open report. Try again later.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to open report.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _loading ? null : _open,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: AppTheme.deepRed.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.deepRed.withOpacity(0.25)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (_loading)
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppTheme.deepRed,
+                ),
+              )
+            else
+              const Icon(
+                Icons.picture_as_pdf_rounded,
+                color: AppTheme.deepRed,
+                size: 18,
+              ),
+            const SizedBox(width: 8),
+            Text(
+              _loading ? 'Opening...' : 'View Medical Report (PDF)',
+              style: const TextStyle(
+                color: AppTheme.deepRed,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

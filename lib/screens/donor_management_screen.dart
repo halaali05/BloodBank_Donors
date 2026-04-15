@@ -4,6 +4,9 @@ import '../models/blood_request_model.dart';
 import '../models/donor_response_entry.dart';
 import '../services/cloud_functions_service.dart';
 import '../theme/app_theme.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 /// Blood bank screen to manage accepted donors through the full process:
 /// accepted → scheduled → tested → donated / restricted
@@ -45,9 +48,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
               email: d.email,
               status: parseDonorProcessStatus(d.processStatus),
               appointmentAt: d.appointmentAtMillis != null
-                  ? DateTime.fromMillisecondsSinceEpoch(
-                      d.appointmentAtMillis!,
-                    )
+                  ? DateTime.fromMillisecondsSinceEpoch(d.appointmentAtMillis!)
                   : null,
             ),
           )
@@ -443,7 +444,8 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
       backgroundColor: Colors.transparent,
       builder: (_) => _ReportUploadSheet(
         donor: donor,
-        onSubmit: (status, reason, notes, canDonateAt) async {
+        onSubmit: (status, reason, notes, canDonateAt, reportFileUrl) async {
+          // ← added reportFileUrl param
           Navigator.pop(context);
 
           // Optimistic UI update
@@ -459,6 +461,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
               status: donorProcessStatusToString(status),
               restrictionReason: reason,
               notes: notes,
+              reportFileUrl: reportFileUrl, // ← now passed
               canDonateAgainAt: canDonateAt?.toIso8601String(),
             );
             final msg = status == DonorProcessStatus.donated
@@ -522,10 +525,7 @@ Future<DateTime?> pickAppointmentDateTime(BuildContext context) async {
       ? TimeOfDay.fromDateTime(now.add(const Duration(minutes: 15)))
       : const TimeOfDay(hour: 9, minute: 0);
 
-  final time = await showTimePicker(
-    context: context,
-    initialTime: initialTime,
-  );
+  final time = await showTimePicker(context: context, initialTime: initialTime);
   if (time == null || !context.mounted) return null;
 
   final combined = DateTime(
@@ -869,6 +869,7 @@ class _ReportUploadSheet extends StatefulWidget {
     String? reason,
     String? notes,
     DateTime? canDonateAt,
+    String? reportFileUrl, // ← NEW
   )
   onSubmit;
 
@@ -884,11 +885,84 @@ class _ReportUploadSheetState extends State<_ReportUploadSheet> {
   final _notesCtrl = TextEditingController();
   DateTime? _canDonateAt;
 
+  // ── PDF upload state ──────────────────────────────────────
+  String? _pickedFileName;
+  String? _uploadedFileUrl;
+  bool _isUploading = false;
+  double _uploadProgress = 0;
+
   @override
   void dispose() {
     _reasonCtrl.dispose();
     _notesCtrl.dispose();
     super.dispose();
+  }
+
+  // Picks a PDF or image file and uploads it to Firebase Storage
+  Future<void> _pickAndUploadFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+      withData: false, // stream from disk, not memory
+    );
+
+    if (result == null || result.files.isEmpty) return;
+    final picked = result.files.first;
+    if (picked.path == null) return;
+
+    setState(() {
+      _pickedFileName = picked.name;
+      _isUploading = true;
+      _uploadProgress = 0;
+      _uploadedFileUrl = null;
+    });
+
+    try {
+      final file = File(picked.path!);
+      final ext = picked.extension ?? 'pdf';
+      final storagePath =
+          'medical_reports/${widget.donor.donorId}/${DateTime.now().millisecondsSinceEpoch}.$ext';
+
+      final ref = FirebaseStorage.instance.ref(storagePath);
+      final uploadTask = ref.putFile(
+        file,
+        SettableMetadata(
+          contentType: ext == 'pdf' ? 'application/pdf' : 'image/$ext',
+        ),
+      );
+
+      // Track upload progress
+      uploadTask.snapshotEvents.listen((snap) {
+        if (!mounted) return;
+        final progress =
+            snap.bytesTransferred /
+            (snap.totalBytes == 0 ? 1 : snap.totalBytes);
+        setState(() => _uploadProgress = progress);
+      });
+
+      await uploadTask;
+      final downloadUrl = await ref.getDownloadURL();
+
+      if (!mounted) return;
+      setState(() {
+        _uploadedFileUrl = downloadUrl;
+        _isUploading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isUploading = false;
+        _pickedFileName = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Upload failed: ${e.toString().replaceFirst('Exception: ', '')}',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -960,33 +1034,118 @@ class _ReportUploadSheetState extends State<_ReportUploadSheet> {
             ),
             const SizedBox(height: 16),
 
-            // Upload button (placeholder)
+            // ── PDF / Image Upload ──────────────────────────────
+            const Text(
+              'Medical Report File',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+
             GestureDetector(
-              onTap: () {
-                // TODO: implement file picker
-              },
+              onTap: _isUploading ? null : _pickAndUploadFile,
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: AppTheme.softBg,
+                  color: _uploadedFileUrl != null
+                      ? Colors.green.withOpacity(0.06)
+                      : AppTheme.softBg,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Colors.black12,
-                    style: BorderStyle.solid,
+                    color: _uploadedFileUrl != null
+                        ? Colors.green.withOpacity(0.4)
+                        : Colors.black12,
                   ),
                 ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.upload_file_rounded, color: AppTheme.deepRed),
-                    SizedBox(width: 10),
-                    Text(
-                      'Attach Medical Report (PDF / Image)',
-                      style: TextStyle(color: Colors.black54, fontSize: 13),
-                    ),
-                  ],
-                ),
+                child: _isUploading
+                    ? Column(
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.cloud_upload_rounded,
+                                color: AppTheme.deepRed,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Uploading ${_pickedFileName ?? 'file'}...',
+                                  style: const TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '${(_uploadProgress * 100).toInt()}%',
+                                style: const TextStyle(
+                                  color: AppTheme.deepRed,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: _uploadProgress,
+                              minHeight: 4,
+                              backgroundColor: Colors.black12,
+                              color: AppTheme.deepRed,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          Icon(
+                            _uploadedFileUrl != null
+                                ? Icons.check_circle_rounded
+                                : Icons.upload_file_rounded,
+                            color: _uploadedFileUrl != null
+                                ? Colors.green
+                                : AppTheme.deepRed,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _uploadedFileUrl != null
+                                  ? _pickedFileName ?? 'File uploaded ✓'
+                                  : 'Attach Medical Report (PDF / Image)',
+                              style: TextStyle(
+                                color: _uploadedFileUrl != null
+                                    ? Colors.green[700]
+                                    : Colors.black54,
+                                fontSize: 13,
+                                fontWeight: _uploadedFileUrl != null
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                          if (_uploadedFileUrl != null)
+                            GestureDetector(
+                              onTap: () => setState(() {
+                                _uploadedFileUrl = null;
+                                _pickedFileName = null;
+                              }),
+                              child: const Icon(
+                                Icons.close_rounded,
+                                size: 18,
+                                color: Colors.black38,
+                              ),
+                            ),
+                        ],
+                      ),
               ),
             ),
+            const SizedBox(height: 4),
+            const Text(
+              'Optional — PDF, JPG, or PNG',
+              style: TextStyle(color: Colors.black38, fontSize: 11),
+            ),
+
             const SizedBox(height: 14),
 
             if (isRestricted) ...[
@@ -1079,14 +1238,17 @@ class _ReportUploadSheetState extends State<_ReportUploadSheet> {
                   isRestricted ? 'Submit & Restrict Donor' : 'Confirm Donation',
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
-                onPressed: () => widget.onSubmit(
-                  _outcome,
-                  isRestricted ? _reasonCtrl.text.trim() : null,
-                  _notesCtrl.text.trim().isEmpty
-                      ? null
-                      : _notesCtrl.text.trim(),
-                  isRestricted ? _canDonateAt : null,
-                ),
+                onPressed: _isUploading
+                    ? null // disable while uploading
+                    : () => widget.onSubmit(
+                        _outcome,
+                        isRestricted ? _reasonCtrl.text.trim() : null,
+                        _notesCtrl.text.trim().isEmpty
+                            ? null
+                            : _notesCtrl.text.trim(),
+                        isRestricted ? _canDonateAt : null,
+                        _uploadedFileUrl, // ← pass URL
+                      ),
               ),
             ),
           ],
@@ -1110,27 +1272,28 @@ class _OutcomeChip extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: selected ? color.withOpacity(0.12) : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: selected ? color : Colors.black12,
-          width: selected ? 1.5 : 1,
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? color.withOpacity(0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? color : Colors.black26,
+            width: 1.2,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? color : Colors.black54,
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+          ),
         ),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: selected ? color : Colors.black45,
-          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-          fontSize: 13,
-        ),
-      ),
-    ),
-  );
+    );
+  }
 }
