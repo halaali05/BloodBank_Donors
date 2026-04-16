@@ -417,6 +417,7 @@ exports.getRequests = onCall(publicCallableOpts, async (request) => {
 
         let myResponse = null;
         let appointmentAt = null;
+        let processStatus = null;
 
         try {
           const respSnap = await doc.ref
@@ -433,7 +434,10 @@ exports.getRequests = onCall(publicCallableOpts, async (request) => {
               myResponse = st;
             }
 
-            
+            if (typeof respData.processStatus === "string") {
+              processStatus = respData.processStatus;
+            }
+
             const appt = respData.appointmentAt;
 
             if (appt) {
@@ -470,7 +474,8 @@ exports.getRequests = onCall(publicCallableOpts, async (request) => {
             typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
 
           myResponse,
-          appointmentAt, 
+          appointmentAt,
+          processStatus,
 
           createdAt:
             d.createdAt && typeof d.createdAt.toMillis === "function"
@@ -597,6 +602,7 @@ exports.setDonorRequestResponse = onCall(publicCallableOpts, async (request) => 
 
     const requestRef = db.collection("requests").doc(requestId);
     const responseRef = requestRef.collection("donorResponses").doc(uid);
+    const userRef = db.collection("users").doc(uid);
 
     await db.runTransaction(async (t) => {
       const reqSnap = await t.get(requestRef);
@@ -652,6 +658,28 @@ exports.setDonorRequestResponse = onCall(publicCallableOpts, async (request) => 
           {
             status: newStatus,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+
+      // Keep request IDs on the donor profile so getDonationHistory can load
+      // donorResponses without collection-group queries (avoids index / empty history).
+      if (oldStatus === "accepted" && newStatus !== "accepted") {
+        t.set(
+          userRef,
+          {
+            donorAcceptedRequestIds:
+              admin.firestore.FieldValue.arrayRemove(requestId),
+          },
+          { merge: true },
+        );
+      } else if (newStatus === "accepted" && oldStatus !== "accepted") {
+        t.set(
+          userRef,
+          {
+            donorAcceptedRequestIds:
+              admin.firestore.FieldValue.arrayUnion(requestId),
           },
           { merge: true },
         );

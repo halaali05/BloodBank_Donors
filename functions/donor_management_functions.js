@@ -155,6 +155,19 @@ exports.scheduleDonorAppointment = onCall(
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
+      // Ensures donation history can load this request without collection-group queries
+      // (covers donors who accepted before donorAcceptedRequestIds existed).
+      await db
+        .collection("users")
+        .doc(donorId)
+        .set(
+          {
+            donorAcceptedRequestIds:
+              admin.firestore.FieldValue.arrayUnion(requestId),
+          },
+          { merge: true },
+        );
+
       try {
         const donorSnap = await db.collection("users").doc(donorId).get();
         if (donorSnap.exists) {
@@ -189,6 +202,7 @@ exports.scheduleDonorAppointment = onCall(
             requestId: String(requestId),
             appointmentAt: appointmentDate.toISOString(),
             isRead: false,
+            read: false,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
           });
 
@@ -205,7 +219,10 @@ exports.scheduleDonorAppointment = onCall(
           }
         }
       } catch (e) {
-        console.warn("FCM failed (scheduleDonorAppointment):", e.message);
+        console.warn(
+          "Notification or FCM failed (scheduleDonorAppointment):",
+          e.message || e,
+        );
       }
 
       return {
@@ -249,7 +266,8 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       throw new HttpsError("invalid-argument", "donorId is required");
     }
 
-    if (status !== "donated" && status !== "restricted") {
+    const normalizedStatus = String(status || "").trim().toLowerCase();
+    if (normalizedStatus !== "donated" && normalizedStatus !== "restricted") {
       throw new HttpsError(
         "invalid-argument",
         'status must be "donated" or "restricted"',
@@ -257,7 +275,7 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
     }
 
     if (
-      status === "restricted" &&
+      normalizedStatus === "restricted" &&
       (!restrictionReason || restrictionReason.trim() === "")
     ) {
       throw new HttpsError(
@@ -298,6 +316,11 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
     }
 
     const donorResponseData = donorResponseSnap.data() || {};
+    const donorUserSnap = await db.collection("users").doc(donorId).get();
+
+    const apt = donorResponseData.appointmentAt;
+    const appointmentAtForReport =
+      apt && typeof apt.toMillis === "function" ? apt : null;
 
     const reportData = {
       requestId,
@@ -305,16 +328,19 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       bloodBankId: callerUid,
       bloodBankName: req.bloodBankName || "",
       bloodType: req.bloodType || "",
-      isUrgent: req.isUrgent || false,
-      status,
+      isUrgent: !!req.isUrgent,
+      status: normalizedStatus,
       restrictionReason:
-        status === "restricted" ? restrictionReason.trim() : null,
-      notes: notes?.trim() || null,
-      reportFileUrl: reportFileUrl || null,
+        normalizedStatus === "restricted" ? restrictionReason.trim() : null,
+      notes: notes && String(notes).trim() ? String(notes).trim() : null,
+      reportFileUrl:
+        typeof reportFileUrl === "string" && reportFileUrl.trim()
+          ? reportFileUrl.trim()
+          : null,
       canDonateAgainAt: canDonateAgainDate
         ? admin.firestore.Timestamp.fromDate(canDonateAgainDate)
         : null,
-      appointmentAt: donorResponseData.appointmentAt || null,
+      appointmentAt: appointmentAtForReport,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
@@ -324,7 +350,7 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
     batch.set(reportRef, reportData);
 
     batch.update(donorResponseRef, {
-      processStatus: status,
+      processStatus: normalizedStatus,
       reportId: reportRef.id,
       completedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -332,17 +358,32 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
 
     const donorRef = db.collection("users").doc(donorId);
 
-    if (status === "restricted" && canDonateAgainDate) {
-      batch.update(donorRef, {
-        restrictedUntil: admin.firestore.Timestamp.fromDate(canDonateAgainDate),
-        restrictionReason: restrictionReason ? restrictionReason.trim() : "",
-      });
-    } else if (status === "donated") {
-      batch.update(donorRef, {
-        restrictedUntil: admin.firestore.FieldValue.delete(),
-        restrictionReason: admin.firestore.FieldValue.delete(),
-        lastDonatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+    if (normalizedStatus === "restricted" && canDonateAgainDate) {
+      batch.set(
+        donorRef,
+        {
+          restrictedUntil: admin.firestore.Timestamp.fromDate(canDonateAgainDate),
+          restrictionReason: restrictionReason ? restrictionReason.trim() : "",
+        },
+        { merge: true },
+      );
+    } else if (normalizedStatus === "donated") {
+      // FieldValue.delete() inside set(merge) on a NEW user doc fails the whole batch.
+      if (donorUserSnap.exists) {
+        batch.update(donorRef, {
+          restrictedUntil: admin.firestore.FieldValue.delete(),
+          restrictionReason: admin.firestore.FieldValue.delete(),
+          lastDonatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      } else {
+        batch.set(
+          donorRef,
+          {
+            lastDonatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
     }
 
     await batch.commit();
@@ -355,12 +396,12 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
 
         if (typeof fcmToken === "string" && fcmToken.trim()) {
           const title =
-            status === "donated"
+            normalizedStatus === "donated"
               ? "🩸 Donation Confirmed!"
               : "⚠️ Donation Result";
 
           const body =
-            status === "donated"
+            normalizedStatus === "donated"
               ? `${req.bloodBankName || "The blood bank"} confirmed your ${
                   req.bloodType || ""
                 } donation. Thank you!`
@@ -375,7 +416,7 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
               type: "medical_report_saved",
               requestId: String(requestId),
               reportId: String(reportRef.id),
-              status: String(status),
+              status: String(normalizedStatus),
             },
           });
         }
@@ -440,14 +481,50 @@ exports.getDonationHistory = onCall(publicCallableOpts, async (request) => {
       reports.map((r) => r.requestId).filter((v) => typeof v === "string" && v),
     );
 
-    const donorResponseSnapshot = await db
-      .collectionGroup("donorResponses")
-      .where(admin.firestore.FieldPath.documentId(), "==", callerUid)
-      .where("status", "==", "accepted")
-      .get();
+    const userSnap = await db.collection("users").doc(callerUid).get();
+    const uData = userSnap.exists ? userSnap.data() || {} : {};
+    const trackedRaw = uData.donorAcceptedRequestIds;
+    const trackedIds = Array.isArray(trackedRaw)
+      ? [...new Set(trackedRaw.map(String).filter(Boolean))].slice(0, 300)
+      : [];
 
-    for (const doc of donorResponseSnapshot.docs) {
+    let donorResponseDocs = [];
+
+    if (trackedIds.length > 0) {
+      for (let i = 0; i < trackedIds.length; i += 10) {
+        const chunk = trackedIds.slice(i, i + 10);
+        const refs = chunk.map((rid) =>
+          db
+            .collection("requests")
+            .doc(rid)
+            .collection("donorResponses")
+            .doc(callerUid),
+        );
+        const snaps = await db.getAll(...refs);
+        for (const s of snaps) {
+          if (s.exists) donorResponseDocs.push(s);
+        }
+      }
+    } else {
+      try {
+        const donorResponseSnapshot = await db
+          .collectionGroup("donorResponses")
+          .where(admin.firestore.FieldPath.documentId(), "==", callerUid)
+          .get();
+        donorResponseDocs = donorResponseSnapshot.docs;
+      } catch (cgErr) {
+        console.warn(
+          "[getDonationHistory] collectionGroup donorResponses failed:",
+          cgErr.message || cgErr,
+        );
+      }
+    }
+
+    for (const doc of donorResponseDocs) {
       const d = doc.data() || {};
+      const inviteStatus = String(d.status || "").toLowerCase();
+      if (inviteStatus !== "accepted") continue;
+
       const requestRef = doc.ref.parent.parent;
       if (!requestRef) continue;
 
