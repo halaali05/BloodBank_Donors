@@ -1,7 +1,13 @@
 const admin = require("firebase-admin");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { requireAuth, nonEmptyString, toHttpsError } = require("./utils");
+const {
+  requireAuth,
+  nonEmptyString,
+  toHttpsError,
+  normalizeJordanMobile,
+  parseDonorGender,
+} = require("./utils");
 const { publicCallableOpts } = require("../callable_config");
 
 const db = admin.firestore();
@@ -39,6 +45,24 @@ exports.createPendingProfile = onCall(publicCallableOpts, async (request) => {
     if (role === "donor") {
       payload.fullName = nonEmptyString(data.fullName, "fullName");
       payload.location = nonEmptyString(data.location, "location");
+      const gender = parseDonorGender(data.gender);
+      if (!gender) {
+        throw new HttpsError(
+          "invalid-argument",
+          "gender must be male or female.",
+        );
+      }
+      payload.gender = gender;
+      const phoneNorm = normalizeJordanMobile(
+        typeof data.phoneNumber === "string" ? data.phoneNumber : "",
+      );
+      if (!phoneNorm) {
+        throw new HttpsError(
+          "invalid-argument",
+          "phoneNumber must be a valid Jordan mobile (e.g. 0791234567 or +962791234567).",
+        );
+      }
+      payload.phoneNumber = phoneNorm;
     } else {
       payload.bloodBankName = nonEmptyString(
         data.bloodBankName,

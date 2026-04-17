@@ -12,6 +12,8 @@ class CloudFunctionsService {
     String? fullName,
     String? location,
     String? bloodBankName,
+    String? gender,
+    String? phoneNumber,
     double? latitude,
     double? longitude,
   }) async {
@@ -32,6 +34,14 @@ class CloudFunctionsService {
         }
         callData['fullName'] = fullName.trim();
         callData['location'] = location.trim();
+        if (gender == null || gender.trim().isEmpty) {
+          throw Exception('Gender is required for donor registration');
+        }
+        if (phoneNumber == null || phoneNumber.trim().isEmpty) {
+          throw Exception('Phone number is required for donor registration');
+        }
+        callData['gender'] = gender.trim().toLowerCase();
+        callData['phoneNumber'] = phoneNumber.trim();
         if (latitude != null) callData['latitude'] = latitude;
         if (longitude != null) callData['longitude'] = longitude;
       }
@@ -425,8 +435,9 @@ class CloudFunctionsService {
     }
   }
 
-  /// Get list of all donors (hospitals only)
-  /// Optional: filter by bloodType if provided
+  /// Get list of all donors (hospitals only).
+  /// Each item includes `id`, `fullName`, `location`, `bloodType`, `email`, `phoneNumber`.
+  /// Optional: filter by [bloodType] if provided.
   Future<Map<String, dynamic>> getDonors({String? bloodType}) async {
     try {
       final callable = _functions.httpsCallable('getDonors');

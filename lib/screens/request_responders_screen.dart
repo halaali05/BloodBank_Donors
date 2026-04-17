@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/donor_response_entry.dart';
 import '../theme/app_theme.dart';
 import 'chat_screen.dart';
@@ -198,6 +199,48 @@ class _DonorList extends StatelessWidget {
                           ),
                           maxLines: 4,
                         ),
+                        if (e.phoneNumber.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.phone_android_outlined,
+                                size: 16,
+                                color: Color(0xFF616161),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: SelectableText(
+                                  e.phoneNumber,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF424242),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                iconSize: 18,
+                                tooltip: 'Copy number',
+                                onPressed: () async {
+                                  await Clipboard.setData(
+                                    ClipboardData(text: e.phoneNumber),
+                                  );
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Number copied'),
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.copy_rounded),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),

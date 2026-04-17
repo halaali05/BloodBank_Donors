@@ -1,0 +1,36 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function hospitalUserDoc() {
+      return /databases/(default)/documents/users/$(request.auth.uid);
+    }
+
+    function isHospital() {
+      return request.auth != null &&
+        firestore.exists(hospitalUserDoc()) &&
+        firestore.get(hospitalUserDoc()).data.role == 'hospital';
+    }
+
+    // Blood banks upload medical reports; donors can read their own files.
+    match /medical_reports/{donorId}/{fileName} {
+      allow read: if request.auth != null &&
+        (request.auth.uid == donorId || isHospital());
+      allow write: if isHospital()
+        && request.resource.size < 20 * 1024 * 1024;
+    }
+
+    // Donors can upload and manage their own profile avatar image.
+    match /profile_images/{userId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

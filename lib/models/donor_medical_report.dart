@@ -1,3 +1,5 @@
+import 'blood_request_model.dart';
+
 /// Represents the status of a donor in relation to a specific blood request
 enum DonorProcessStatus {
   /// Donor accepted the request, waiting to be scheduled
@@ -104,6 +106,28 @@ class DonorMedicalReport {
     this.canDonateAgainAt,
     this.appointmentAt, // NEW
   });
+
+  /// Builds a journey row from dashboard request data (same source as "posts").
+  factory DonorMedicalReport.fromActiveBloodRequest(
+    BloodRequest req,
+    String donorUid,
+  ) {
+    var status = parseDonorProcessStatus(req.donorProcessStatus);
+    if (req.appointmentAt != null && status == DonorProcessStatus.accepted) {
+      status = DonorProcessStatus.scheduled;
+    }
+    return DonorMedicalReport(
+      id: 'active_${req.id}_$donorUid',
+      requestId: req.id,
+      bloodBankId: req.bloodBankId,
+      bloodBankName: req.bloodBankName,
+      bloodType: req.bloodType,
+      isUrgent: req.isUrgent,
+      status: status,
+      createdAt: req.createdAt ?? DateTime.now(),
+      appointmentAt: req.appointmentAt,
+    );
+  }
 
   factory DonorMedicalReport.fromMap(Map<String, dynamic> data, String id) {
     return DonorMedicalReport(

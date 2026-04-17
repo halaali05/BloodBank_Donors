@@ -41,7 +41,12 @@ void main() {
         'units': 1,
         'isUrgent': false,
         'acceptedDonors': [
-          {'donorId': 'd1', 'fullName': 'Ali', 'email': 'a@x.com'},
+          {
+            'donorId': 'd1',
+            'fullName': 'Ali',
+            'email': 'a@x.com',
+            'phoneNumber': '+962791234567',
+          },
         ],
         'rejectedDonors': [
           {'donorId': 'd2', 'fullName': 'Sara', 'email': 's@x.com'},
@@ -50,8 +55,10 @@ void main() {
 
       expect(request.acceptedDonors.length, 1);
       expect(request.acceptedDonors.first.fullName, 'Ali');
+      expect(request.acceptedDonors.first.phoneNumber, '+962791234567');
       expect(request.rejectedDonors.length, 1);
       expect(request.rejectedDonors.first.email, 's@x.com');
+      expect(request.rejectedDonors.first.phoneNumber, isEmpty);
     });
 
     test('fromMap parses donor entries using displayName and dynamic-key maps', () {

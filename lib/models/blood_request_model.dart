@@ -31,6 +31,12 @@ class BloodRequest {
   /// Appointment time for this donor (if scheduled)
   final DateTime? appointmentAt;
 
+  /// Donor pipeline on this request: accepted, scheduled, tested, donated, restricted (from donorResponses).
+  final String? donorProcessStatus;
+
+  /// When the blood request was created (ms from server).
+  final DateTime? createdAt;
+
   /// Donors who accepted — for hospitals
   final List<DonorResponseEntry> acceptedDonors;
 
@@ -52,7 +58,9 @@ class BloodRequest {
     this.rejectedCount = 0,
     this.myResponse,
     this.isCompleted = false,
-    this.appointmentAt, 
+    this.appointmentAt,
+    this.donorProcessStatus,
+    this.createdAt,
     this.acceptedDonors = const [],
     this.rejectedDonors = const [],
   });
@@ -78,6 +86,8 @@ class BloodRequest {
 
       /// ✅ أهم سطر (حل المشكلة)
       appointmentAt: _parseDate(data['appointmentAt']),
+      donorProcessStatus: _parseOptionalString(data['processStatus']),
+      createdAt: _parseDate(data['createdAt']),
 
       acceptedDonors: _parseDonorEntries(data['acceptedDonors']),
       rejectedDonors: _parseDonorEntries(data['rejectedDonors']),
@@ -127,6 +137,12 @@ class BloodRequest {
     if (v is num) return v.toDouble();
     if (v is String) return double.tryParse(v.trim());
     return null;
+  }
+
+  static String? _parseOptionalString(dynamic value) {
+    if (value == null) return null;
+    final s = value.toString().trim();
+    return s.isEmpty ? null : s;
   }
 
   static String? _parseMyResponse(dynamic value) {

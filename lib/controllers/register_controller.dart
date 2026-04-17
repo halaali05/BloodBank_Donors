@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import '../models/register_models.dart';
 import '../theme/app_theme.dart';
+import '../utils/jordan_phone.dart';
 
 /// Controller for handling registration business logic
 /// Separates business logic from UI for better maintainability
@@ -22,6 +23,8 @@ class RegisterController {
   ///
   /// Parameters:
   /// - [name]: Required for donor registration (full name)
+  /// - [donorGender]: Required for donors: `male` or `female`
+  /// - [donorPhoneRaw]: Required for donors; Jordan mobile (e.g. 0791234567)
   /// - [bloodBankName]: Required for blood bank registration (blood bank name)
   /// - [location]: Required for both user types
   ///
@@ -32,6 +35,8 @@ class RegisterController {
     required String password,
     required String confirmPassword,
     String? name, // Donor's full name
+    String? donorGender, // 'male' | 'female'
+    String? donorPhoneRaw,
     String? bloodBankName, // Blood bank's name
     String? location,
     bool bloodBankHasMapPin = false,
@@ -56,6 +61,12 @@ class RegisterController {
       if (name == null || name.trim().isEmpty) {
         return 'Please enter your full name.';
       }
+      if (donorGender == null ||
+          (donorGender != 'male' && donorGender != 'female')) {
+        return 'Please select your gender (male or female).';
+      }
+      final phoneMsg = JordanPhone.validationMessage(donorPhoneRaw ?? '');
+      if (phoneMsg != null) return phoneMsg;
       if (location == null || location.isEmpty) {
         return 'Please select your location.';
       }
@@ -85,6 +96,8 @@ class RegisterController {
     required String email,
     required String password,
     String? name,
+    String? donorGender,
+    String? donorPhoneRaw,
     String? bloodBankName,
     required String location,
     double? exactLatitude,
@@ -105,12 +118,31 @@ class RegisterController {
             errorMessage: 'Please enter your full name.',
           );
         }
+        if (donorGender == null ||
+            (donorGender != 'male' && donorGender != 'female')) {
+          return RegisterResult(
+            success: false,
+            errorTitle: 'Missing gender',
+            errorMessage: 'Please select your gender (male or female).',
+          );
+        }
+        final phoneNorm = JordanPhone.normalize(donorPhoneRaw?.trim() ?? '');
+        if (phoneNorm == null) {
+          return RegisterResult(
+            success: false,
+            errorTitle: 'Invalid phone number',
+            errorMessage:
+                'Enter a valid Jordan mobile number (e.g. 0791234567 or +962791234567).',
+          );
+        }
 
         result = await _authService.signUpDonor(
           fullName: name.trim(),
           email: email.trim(),
           password: password,
           location: location,
+          gender: donorGender,
+          phoneNumber: phoneNorm,
           latitude: lat,
           longitude: lng,
         );
@@ -163,6 +195,11 @@ class RegisterController {
         errorTitle = 'Missing information';
         errorMessage =
             'Please fill in all required fields (name and location).';
+      } else if (errorStr.contains('gender must be') ||
+          errorStr.contains('phoneNumber must be')) {
+        errorTitle = 'Invalid information';
+        errorMessage =
+            'Please check gender and Jordan mobile number format, then try again.';
       } else if (errorStr.contains('bloodType is required') ||
           errorStr.contains('blood type')) {
         errorTitle = 'Registration error';

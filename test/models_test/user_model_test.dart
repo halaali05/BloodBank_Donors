@@ -10,13 +10,14 @@ class _FakeTimestamp {
 
 void main() {
   group('User Model Tests', () {
-
     /// creates DONOR user correctly
     test('fromMap creates DONOR user correctly', () {
       final data = {
         'email': 'donor@test.com',
         'role': 'donor',
         'fullName': 'Test Donor',
+        'gender': 'female',
+        'phoneNumber': '+962781234567',
       };
 
       final user = User.fromMap(data, '123');
@@ -25,6 +26,8 @@ void main() {
       expect(user.email, 'donor@test.com');
       expect(user.role, UserRole.donor);
       expect(user.fullName, 'Test Donor');
+      expect(user.gender, 'female');
+      expect(user.phoneNumber, '+962781234567');
     });
 
     /// returns correct donor map
@@ -34,6 +37,8 @@ void main() {
         email: 'donor@test.com',
         role: UserRole.donor,
         fullName: 'Donor Name',
+        gender: 'male',
+        phoneNumber: '+962791234567',
       );
 
       final map = user.toMap();
@@ -41,6 +46,8 @@ void main() {
       expect(map['email'], 'donor@test.com');
       expect(map['role'], 'donor');
       expect(map['fullName'], 'Donor Name');
+      expect(map['gender'], 'male');
+      expect(map['phoneNumber'], '+962791234567');
       expect(map.containsKey('bloodBankName'), false);
     });
 
@@ -141,23 +148,23 @@ void main() {
       expect(map['location'], 'Irbid');
       expect(map.containsKey('fullName'), false);
     });
+
     /// parses createdAt from object that has toDate() returning DateTime
-test('createdAt is parsed from object with toDate()', () {
-  final now = DateTime.now();
+    test('createdAt is parsed from object with toDate()', () {
+      final now = DateTime.now();
 
-  // Fake object that mimics Firestore Timestamp behavior
-  final fakeTimestamp = _FakeTimestamp(now);
+      // Fake object that mimics Firestore Timestamp behavior
+      final fakeTimestamp = _FakeTimestamp(now);
 
-  final data = {
-    'email': 'test@test.com',
-    'role': 'donor',
-    'createdAt': fakeTimestamp,
-  };
+      final data = {
+        'email': 'test@test.com',
+        'role': 'donor',
+        'createdAt': fakeTimestamp,
+      };
 
-  final user = User.fromMap(data, '004');
+      final user = User.fromMap(data, '004');
 
-  expect(user.createdAt, now);
-});
-
+      expect(user.createdAt, now);
+    });
   });
 }

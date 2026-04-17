@@ -1,3 +1,6 @@
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../models/blood_request_model.dart';
 import '../models/donor_medical_report.dart';
 import '../services/cloud_functions_service.dart';
 
@@ -59,19 +62,51 @@ class DonorProfileController {
   /// Fetches the donor's donation history (medical reports) via Cloud Functions
   ///
   /// Returns a list of [DonorMedicalReport] sorted by date descending.
-  /// Returns empty list if fetch fails (non-critical feature).
+  /// Merges **active** acceptances from [getRequests] (same data as dashboard posts)
+  /// so scheduled appointments and in-progress steps appear here, not only on the feed.
   Future<List<DonorMedicalReport>> fetchDonationHistory() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+    List<DonorMedicalReport> fromApi = [];
     try {
       final result = await _cloudFunctions.getDonationHistory();
       final raw = result['reports'] as List<dynamic>? ?? [];
-      return raw.map((item) {
+      fromApi = raw.map((item) {
         final map = Map<String, dynamic>.from(item as Map);
         final id = map['id']?.toString() ?? '';
         return DonorMedicalReport.fromMap(map, id);
-      }).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    } catch (e) {
-      // Non-critical — return empty list instead of crashing
-      return [];
+      }).toList();
+    } catch (_) {
+      fromApi = [];
     }
+
+    final seenRequestIds = <String>{
+      for (final r in fromApi)
+        if (r.requestId.isNotEmpty) r.requestId,
+    };
+
+    List<BloodRequest> feed = [];
+    try {
+      final feedResult = await _cloudFunctions.getRequests(limit: 100);
+      final list = feedResult['requests'] as List<dynamic>? ?? [];
+      feed = list.map((data) {
+        final map = Map<String, dynamic>.from(data as Map);
+        final id = map['id'] as String? ?? '';
+        return BloodRequest.fromMap(map, id);
+      }).toList();
+    } catch (_) {
+      feed = [];
+    }
+
+    final merged = List<DonorMedicalReport>.from(fromApi);
+    for (final req in feed) {
+      if (req.myResponse != 'accepted') continue;
+      if (req.isCompleted) continue;
+      if (seenRequestIds.contains(req.id)) continue;
+      merged.add(DonorMedicalReport.fromActiveBloodRequest(req, uid));
+    }
+
+    merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return merged;
   }
 }

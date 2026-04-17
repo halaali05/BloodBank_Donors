@@ -25,35 +25,42 @@ class DonationHistorySection extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(0, 8, 0, 14),
           child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: AppTheme.deepRed.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(
-                      Icons.bloodtype_rounded,
-                      color: AppTheme.deepRed,
-                      size: 18,
-                    ),
-                    SizedBox(width: 6),
-                    Text(
-                      'Donation History',
-                      style: TextStyle(
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.deepRed.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.bloodtype_rounded,
                         color: AppTheme.deepRed,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 14,
+                        size: 18,
                       ),
-                    ),
-                  ],
+                      SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          'Donation History',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: AppTheme.deepRed,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               if (reports.isNotEmpty)
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -67,6 +74,8 @@ class DonationHistorySection extends StatelessWidget {
                   ),
                   child: Text(
                     '${reports.where((r) => r.status == DonorProcessStatus.donated).length} donations',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 12,
@@ -120,7 +129,9 @@ class _StatsRow extends StatelessWidget {
         .length;
     final urgent = reports.where((r) => r.isUrgent).length;
 
-    return Row(
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
       children: [
         _StatCard(
           icon: Icons.favorite_rounded,
@@ -128,14 +139,12 @@ class _StatsRow extends StatelessWidget {
           value: '$donated',
           color: Colors.green,
         ),
-        const SizedBox(width: 8),
         _StatCard(
           icon: Icons.emergency_rounded,
           label: 'Urgent',
           value: '$urgent',
           color: AppTheme.urgentRed,
         ),
-        const SizedBox(width: 8),
         _StatCard(
           icon: Icons.block_rounded,
           label: 'Restricted',
@@ -160,7 +169,8 @@ class _StatCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Expanded(
+  Widget build(BuildContext context) => SizedBox(
+    width: 104,
     child: Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
@@ -252,9 +262,9 @@ class _JourneyCardState extends State<_JourneyCard> {
   static const _statusOrder = {
     DonorProcessStatus.accepted: 0,
     DonorProcessStatus.scheduled: 1,
-    DonorProcessStatus.tested: 2,
-    DonorProcessStatus.donated: 3,
-    DonorProcessStatus.restricted: 3, // same level as donated (final step)
+    DonorProcessStatus.tested: 1,
+    DonorProcessStatus.donated: 2,
+    DonorProcessStatus.restricted: 2, // same level as donated (final step)
   };
 
   // Journey step definitions
@@ -286,25 +296,15 @@ class _JourneyCardState extends State<_JourneyCard> {
       ),
       _JourneyStep(
         index: 2,
-        icon: Icons.science_outlined,
-        activeIcon: Icons.science_rounded,
-        title: 'Sample in Lab',
-        subtitle: currentIdx >= 2
-            ? 'Sample received — being processed'
-            : 'Pending blood draw',
-        currentIdx: currentIdx,
-      ),
-      _JourneyStep(
-        index: 3,
         icon: isRestricted
             ? Icons.block_outlined
             : Icons.favorite_outline_rounded,
         activeIcon: isRestricted ? Icons.block_rounded : Icons.favorite_rounded,
-        title: isRestricted ? 'Not Eligible' : 'Donation Complete',
+        title: isRestricted ? 'Not Eligible' : 'Donation Completed',
         subtitle: isRestricted
             ? (widget.report.restrictionReason ?? 'See notes below')
-            : currentIdx >= 3
-            ? 'Thank you for saving lives! 🩸'
+            : currentIdx >= 2
+            ? 'Report uploaded ... Thank you for saving lives! '
             : 'Awaiting results',
         currentIdx: currentIdx,
         isFinal: true,
@@ -318,7 +318,6 @@ class _JourneyCardState extends State<_JourneyCard> {
     final s = widget.report.status;
     final isDone = s == DonorProcessStatus.donated;
     final isRestricted = s == DonorProcessStatus.restricted;
-    final isActive = !isDone && !isRestricted;
 
     final headerColor = isDone
         ? Colors.green
@@ -396,38 +395,47 @@ class _JourneyCardState extends State<_JourneyCard> {
                         ),
                       ),
                     ),
-                  const Spacer(),
-                  // Status badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: headerColor.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          isDone
-                              ? Icons.favorite_rounded
-                              : isRestricted
-                              ? Icons.block_rounded
-                              : Icons.timelapse_rounded,
-                          size: 12,
-                          color: headerColor,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 4,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          statusLabel,
-                          style: TextStyle(
-                            color: headerColor,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 11,
-                          ),
+                        decoration: BoxDecoration(
+                          color: headerColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                      ],
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isDone
+                                  ? Icons.favorite_rounded
+                                  : isRestricted
+                                  ? Icons.block_rounded
+                                  : Icons.timelapse_rounded,
+                              size: 12,
+                              color: headerColor,
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                statusLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: headerColor,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -469,9 +477,14 @@ class _JourneyCardState extends State<_JourneyCard> {
                   color: Colors.black38,
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  _formatDate(widget.report.createdAt),
-                  style: const TextStyle(color: Colors.black45, fontSize: 12),
+                Flexible(
+                  child: Text(
+                    _formatDate(widget.report.createdAt),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(color: Colors.black45, fontSize: 12),
+                  ),
                 ),
               ],
             ),
@@ -552,12 +565,16 @@ class _JourneyCardState extends State<_JourneyCard> {
                             color: Colors.orange,
                           ),
                           const SizedBox(width: 8),
-                          Text(
-                            'Can donate again: ${_formatDate(widget.report.canDonateAgainAt!)}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.black54,
-                              fontWeight: FontWeight.w600,
+                          Expanded(
+                            child: Text(
+                              'Can donate again: ${_formatDate(widget.report.canDonateAgainAt!)}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black54,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ],

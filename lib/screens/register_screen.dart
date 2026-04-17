@@ -9,6 +9,8 @@ import '../widgets/auth/register_widgets.dart';
 import '../services/auth_service.dart';
 import 'map_location_picker_screen.dart';
 
+enum DonorGenderSelection { male, female }
+
 /// Registration screen where new users create accounts
 /// Supports both donor and blood bank registration
 class RegisterScreen extends StatefulWidget {
@@ -31,6 +33,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+
+  DonorGenderSelection? _donorGender;
+  String? get _genderForApi {
+    if (_donorGender == DonorGenderSelection.male) return 'male';
+    if (_donorGender == DonorGenderSelection.female) return 'female';
+    return null;
+  }
 
   String? _selectedLocation;
   bool _obscurePassword = true;
@@ -48,6 +58,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -88,6 +99,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       password: password,
       confirmPassword: confirmPassword,
       name: _type == UserType.donor ? name : null,
+      donorGender: _type == UserType.donor ? _genderForApi : null,
+      donorPhoneRaw: _type == UserType.donor ? _phoneController.text : null,
       bloodBankName: _type == UserType.bloodBank ? bloodBankName : null,
       location: _selectedLocation,
       bloodBankHasMapPin: _pickedLatLng != null,
@@ -110,6 +123,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         email: email,
         password: password,
         name: _type == UserType.donor ? name : null,
+        donorGender: _type == UserType.donor ? _genderForApi : null,
+        donorPhoneRaw: _type == UserType.donor ? _phoneController.text : null,
         bloodBankName: _type == UserType.bloodBank ? bloodBankName : null,
         location: _selectedLocation ?? '',
         // Pass exact map coordinates for blood bank if picked
@@ -188,14 +203,61 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     },
                   ),
                   const SizedBox(height: 14),
-                  if (_type == UserType.donor)
+                  if (_type == UserType.donor) ...[
                     TextField(
                       controller: _nameController,
                       decoration: AppTheme.underlineInputDecoration(
-                        hint: 'Username',
+                        hint: 'Full name',
                         icon: Icons.person_outline,
                       ),
                     ),
+                    const SizedBox(height: 14),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Gender',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: Colors.grey[800],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _GenderOptionTile(
+                            label: 'Male',
+                            selected: _donorGender == DonorGenderSelection.male,
+                            onTap: () => setState(
+                              () => _donorGender = DonorGenderSelection.male,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _GenderOptionTile(
+                            label: 'Female',
+                            selected:
+                                _donorGender == DonorGenderSelection.female,
+                            onTap: () => setState(
+                              () => _donorGender = DonorGenderSelection.female,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _phoneController,
+                      keyboardType: TextInputType.phone,
+                      decoration: AppTheme.underlineInputDecoration(
+                        hint: 'Mobile (Jordan, e.g. 0791234567)',
+                        icon: Icons.phone_android_outlined,
+                      ),
+                    ),
+                  ],
                   if (_type == UserType.bloodBank)
                     TextField(
                       controller: _hospitalNameController,
@@ -313,6 +375,44 @@ class _BloodBankLocationButton extends StatelessWidget {
               size: 20,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GenderOptionTile extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _GenderOptionTile({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.deepRed : const Color(0xfff4f5fb),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? AppTheme.deepRed : AppTheme.lineColor,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : Colors.black87,
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+          ),
         ),
       ),
     );

@@ -23,13 +23,11 @@ class DonorRequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
-
-  print("STATUS: ${request.myResponse}");
-  print("APPOINTMENT: ${request.appointmentAt}");
-
     final isUrgent = request.isUrgent == true;
     final isCompleted = request.isCompleted;
+    final process = request.donorProcessStatus?.toLowerCase();
+    final isRestrictedProcess = process == 'restricted';
+    final isDonationFinal = process == 'donated' || process == 'restricted';
     final cardBg = isUrgent ? AppTheme.urgentCardBg : Colors.white;
     final border = isUrgent ? const Color(0xFFFFCDD2) : const Color(0xFFE6EAF2);
     final my = request.myResponse;
@@ -110,11 +108,44 @@ class DonorRequestCard extends StatelessWidget {
                   style: const TextStyle(fontSize: 13, color: Colors.black54),
                 ),
                 const SizedBox(height: 6),
-               if (request.myResponse != null) ...[
-                 ResponseStatusPill(
-                  status: request.myResponse ?? 'pending',
-                  appointmentAt: request.appointmentAt,
-                   ),
+                if (request.myResponse != null) ...[
+                  ResponseStatusPill(
+                    status: request.myResponse ?? 'pending',
+                    appointmentAt: request.appointmentAt,
+                  ),
+                ],
+                if (isRestrictedProcess) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.orange.shade300),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.block_rounded,
+                          size: 14,
+                          color: Colors.orange.shade800,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Restricted',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.orange.shade900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
                 if (request.hospitalLocation.trim().isNotEmpty)
                   Row(
@@ -149,22 +180,32 @@ class DonorRequestCard extends StatelessWidget {
                 ],
                 if (showResponseRow) ...[
                   const SizedBox(height: 10),
-                  if (isCompleted)
+                  if (isCompleted || isDonationFinal)
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
-                        color: Colors.green.shade50,
+                        color: isRestrictedProcess
+                            ? Colors.orange.shade50
+                            : Colors.green.shade50,
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.green.shade200),
+                        border: Border.all(
+                          color: isRestrictedProcess
+                              ? Colors.orange.shade300
+                              : Colors.green.shade200,
+                        ),
                       ),
                       child: Text(
-                        'Donation completed.',
+                        isRestrictedProcess
+                            ? 'Restricted'
+                            : 'Donation completed',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: Colors.green.shade800,
+                          color: isRestrictedProcess
+                              ? Colors.orange.shade900
+                              : Colors.green.shade800,
                         ),
                       ),
                     )

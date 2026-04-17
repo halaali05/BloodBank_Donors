@@ -41,6 +41,8 @@ void main() {
       password: '',
       confirmPassword: '',
       name: '',
+      donorGender: 'male',
+      donorPhoneRaw: '0791234567',
       location: '',
     );
 
@@ -54,6 +56,8 @@ void main() {
       password: '123456',
       confirmPassword: '123456',
       name: 'Ali',
+      donorGender: 'male',
+      donorPhoneRaw: '0791234567',
       location: 'Amman',
     );
 
@@ -67,6 +71,8 @@ void main() {
       password: '123',
       confirmPassword: '123',
       name: 'Ali',
+      donorGender: 'male',
+      donorPhoneRaw: '0791234567',
       location: 'Amman',
     );
 
@@ -80,6 +86,8 @@ void main() {
       password: '123456',
       confirmPassword: '654321',
       name: 'Ali',
+      donorGender: 'male',
+      donorPhoneRaw: '0791234567',
       location: 'Amman',
     );
 
@@ -93,6 +101,8 @@ void main() {
       password: '123456',
       confirmPassword: '123456',
       name: '',
+      donorGender: 'male',
+      donorPhoneRaw: '0791234567',
       location: 'Amman',
     );
 
@@ -106,6 +116,8 @@ void main() {
       password: '123456',
       confirmPassword: '123456',
       name: 'Ali',
+      donorGender: 'male',
+      donorPhoneRaw: '0791234567',
       location: '',
     );
 
@@ -132,10 +144,45 @@ void main() {
       password: '123456',
       confirmPassword: '123456',
       name: 'Ali',
+      donorGender: 'male',
+      donorPhoneRaw: '0791234567',
       location: 'Amman',
     );
 
     expect(result, null);
+  });
+
+  test('validateForm returns error when donor gender missing', () {
+    final result = controller.validateForm(
+      userType: UserType.donor,
+      email: 'a@test.com',
+      password: '123456',
+      confirmPassword: '123456',
+      name: 'Ali',
+      donorGender: null,
+      donorPhoneRaw: '0791234567',
+      location: 'Amman',
+    );
+
+    expect(result, 'Please select your gender (male or female).');
+  });
+
+  test('validateForm returns error when donor phone invalid', () {
+    final result = controller.validateForm(
+      userType: UserType.donor,
+      email: 'a@test.com',
+      password: '123456',
+      confirmPassword: '123456',
+      name: 'Ali',
+      donorGender: 'female',
+      donorPhoneRaw: '12345',
+      location: 'Amman',
+    );
+
+    expect(
+      result,
+      'Enter a valid Jordan mobile number (e.g. 0791234567 or +962791234567).',
+    );
   });
 
   // =========================================================
@@ -143,20 +190,26 @@ void main() {
   // =========================================================
 
   test('register donor succeeds when email verified', () async {
-    when(() => mockAuth.signUpDonor(
-          fullName: any(named: 'fullName'),
-          email: any(named: 'email'),
-          password: any(named: 'password'),
-          location: any(named: 'location'),
-        )).thenAnswer((_) async => {
-          'emailVerified': true,
-        });
+    when(
+      () => mockAuth.signUpDonor(
+        fullName: any(named: 'fullName'),
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+        location: any(named: 'location'),
+        gender: any(named: 'gender'),
+        phoneNumber: any(named: 'phoneNumber'),
+        latitude: any(named: 'latitude'),
+        longitude: any(named: 'longitude'),
+      ),
+    ).thenAnswer((_) async => {'emailVerified': true});
 
     final result = await controller.register(
       userType: UserType.donor,
       email: 'a@test.com',
       password: '123456',
       name: 'Ali',
+      donorGender: 'male',
+      donorPhoneRaw: '0791234567',
       location: 'Amman',
     );
 
@@ -168,16 +221,17 @@ void main() {
   // REGISTER - BLOOD BANK SUCCESS
   // =========================================================
 
-  test('register blood bank succeeds when email not verified',
-      () async {
-    when(() => mockAuth.signUpBloodBank(
-          bloodBankName: any(named: 'bloodBankName'),
-          email: any(named: 'email'),
-          password: any(named: 'password'),
-          location: any(named: 'location'),
-        )).thenAnswer((_) async => {
-          'emailVerified': false,
-        });
+  test('register blood bank succeeds when email not verified', () async {
+    when(
+      () => mockAuth.signUpBloodBank(
+        bloodBankName: any(named: 'bloodBankName'),
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+        location: any(named: 'location'),
+        latitude: any(named: 'latitude'),
+        longitude: any(named: 'longitude'),
+      ),
+    ).thenAnswer((_) async => {'emailVerified': false});
 
     final result = await controller.register(
       userType: UserType.bloodBank,
@@ -201,6 +255,8 @@ void main() {
       email: 'a@test.com',
       password: '123456',
       name: '',
+      donorGender: 'male',
+      donorPhoneRaw: '0791234567',
       location: 'Amman',
     );
 
@@ -208,8 +264,7 @@ void main() {
     expect(result.errorTitle, 'Missing name');
   });
 
-  test('register blood bank fails when bloodBankName missing',
-      () async {
+  test('register blood bank fails when bloodBankName missing', () async {
     final result = await controller.register(
       userType: UserType.bloodBank,
       email: 'b@test.com',
@@ -226,22 +281,27 @@ void main() {
   // REGISTER - FIREBASE AUTH EXCEPTION
   // =========================================================
 
-  test('register returns proper message on email-already-in-use',
-      () async {
-    when(() => mockAuth.signUpDonor(
-          fullName: any(named: 'fullName'),
-          email: any(named: 'email'),
-          password: any(named: 'password'),
-          location: any(named: 'location'),
-        )).thenThrow(
-      FirebaseAuthException(code: 'email-already-in-use'),
-    );
+  test('register returns proper message on email-already-in-use', () async {
+    when(
+      () => mockAuth.signUpDonor(
+        fullName: any(named: 'fullName'),
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+        location: any(named: 'location'),
+        gender: any(named: 'gender'),
+        phoneNumber: any(named: 'phoneNumber'),
+        latitude: any(named: 'latitude'),
+        longitude: any(named: 'longitude'),
+      ),
+    ).thenThrow(FirebaseAuthException(code: 'email-already-in-use'));
 
     final result = await controller.register(
       userType: UserType.donor,
       email: 'a@test.com',
       password: '123456',
       name: 'Ali',
+      donorGender: 'male',
+      donorPhoneRaw: '0791234567',
       location: 'Amman',
     );
 
@@ -254,18 +314,26 @@ void main() {
   // =========================================================
 
   test('register maps network error correctly', () async {
-    when(() => mockAuth.signUpDonor(
-          fullName: any(named: 'fullName'),
-          email: any(named: 'email'),
-          password: any(named: 'password'),
-          location: any(named: 'location'),
-        )).thenThrow(Exception('network error'));
+    when(
+      () => mockAuth.signUpDonor(
+        fullName: any(named: 'fullName'),
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+        location: any(named: 'location'),
+        gender: any(named: 'gender'),
+        phoneNumber: any(named: 'phoneNumber'),
+        latitude: any(named: 'latitude'),
+        longitude: any(named: 'longitude'),
+      ),
+    ).thenThrow(Exception('network error'));
 
     final result = await controller.register(
       userType: UserType.donor,
       email: 'a@test.com',
       password: '123456',
       name: 'Ali',
+      donorGender: 'male',
+      donorPhoneRaw: '0791234567',
       location: 'Amman',
     );
 
@@ -273,25 +341,34 @@ void main() {
     expect(result.errorTitle, 'Connection error');
   });
 
-  test('register returns Sign up failed on generic invalid-argument exception',
+  test(
+    'register returns Sign up failed on generic invalid-argument exception',
     () async {
-  when(() => mockAuth.signUpDonor(
-        fullName: any(named: 'fullName'),
-        email: any(named: 'email'),
-        password: any(named: 'password'),
-        location: any(named: 'location'),
-      )).thenThrow(Exception('invalid-argument'));
+      when(
+        () => mockAuth.signUpDonor(
+          fullName: any(named: 'fullName'),
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+          location: any(named: 'location'),
+          gender: any(named: 'gender'),
+          phoneNumber: any(named: 'phoneNumber'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+        ),
+      ).thenThrow(Exception('invalid-argument'));
 
-  final result = await controller.register(
-    userType: UserType.donor,
-    email: 'a@test.com',
-    password: '123456',
-    name: 'Ali',
-    location: 'Amman',
+      final result = await controller.register(
+        userType: UserType.donor,
+        email: 'a@test.com',
+        password: '123456',
+        name: 'Ali',
+        donorGender: 'male',
+        donorPhoneRaw: '0791234567',
+        location: 'Amman',
+      );
+
+      expect(result.success, false);
+      expect(result.errorTitle, 'Sign up failed');
+    },
   );
-
-  expect(result.success, false);
-  expect(result.errorTitle, 'Sign up failed');
-});
-
 }

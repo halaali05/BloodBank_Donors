@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'chat_screen.dart';
 import '../services/cloud_functions_service.dart';
 import '../theme/app_theme.dart';
@@ -118,6 +119,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
               donor['fullName'] ?? donor['name'] ?? 'Donor';
           final donorLocation =
               donor['location'] ?? 'Unknown location';
+          final donorPhone = (donor['phoneNumber'] ?? donor['phone'] ?? '')
+              .toString()
+              .trim();
 
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -167,6 +171,47 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           ),
                         ],
                       ),
+                      if (donorPhone.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.phone_android_outlined,
+                              size: 16,
+                              color: Colors.black54,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: SelectableText(
+                                donorPhone,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              iconSize: 18,
+                              tooltip: 'Copy number',
+                              onPressed: () async {
+                                await Clipboard.setData(
+                                  ClipboardData(text: donorPhone),
+                                );
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Number copied'),
+                                    duration: Duration(seconds: 1),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.copy_rounded),
+                            ),
+                          ],
+                        ),
+                      ],
 
                       const SizedBox(height: 10),
 

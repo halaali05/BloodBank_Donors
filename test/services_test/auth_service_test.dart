@@ -55,6 +55,8 @@ void main() {
           role: 'donor',
           fullName: any(named: 'fullName'),
           location: any(named: 'location'),
+          gender: any(named: 'gender'),
+          phoneNumber: any(named: 'phoneNumber'),
         ),
       ).thenAnswer((_) async {
         return {'emailVerified': false, 'message': 'Verification email sent'};
@@ -65,6 +67,8 @@ void main() {
         email: 'donor@test.com',
         password: '123456',
         location: 'Amman',
+        gender: 'male',
+        phoneNumber: '+962791234567',
       );
 
       expect(result['emailVerified'], false);
@@ -75,6 +79,8 @@ void main() {
           role: 'donor',
           fullName: 'Donor',
           location: 'Amman',
+          gender: 'male',
+          phoneNumber: '+962791234567',
         ),
       ).called(1);
 

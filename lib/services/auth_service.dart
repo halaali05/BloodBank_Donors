@@ -36,6 +36,8 @@ class AuthService {
     required String email,
     required String password,
     required String location,
+    required String gender,
+    required String phoneNumber,
     double? latitude,
     double? longitude,
   }) async {
@@ -57,6 +59,8 @@ class AuthService {
         role: 'donor',
         fullName: fullName,
         location: location,
+        gender: gender,
+        phoneNumber: phoneNumber,
         latitude: latitude,
         longitude: longitude,
       );

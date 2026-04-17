@@ -1,0 +1,9 @@
+{
+  "name": "bloodbank-donors",
+  "private": true,
+  "description": "Convenience scripts for the Flutter app repo (see functions/ for Cloud Functions).",
+  "scripts": {
+    "delete-all-donors": "node ./functions/scripts/delete_all_donors.js",
+    "wipe-all-data": "node ./functions/scripts/wipe_all_app_data.js"
+  }
+}

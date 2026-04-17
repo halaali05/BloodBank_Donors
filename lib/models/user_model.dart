@@ -75,6 +75,12 @@ class User {
   /// Blood type (for donors, e.g., 'A+', 'O-')
   final String? bloodType;
 
+  /// Donor gender: `male` or `female` (from registration).
+  final String? gender;
+
+  /// Donor mobile in E.164 (e.g. +962791234567).
+  final String? phoneNumber;
+
   /// The role of the user (donor or hospital)
   final UserRole role;
 
@@ -91,6 +97,8 @@ class User {
     this.latitude,
     this.longitude,
     this.bloodType,
+    this.gender,
+    this.phoneNumber,
     this.createdAt,
   });
 
@@ -118,6 +126,8 @@ class User {
       latitude: parseDouble(data['latitude']),
       longitude: parseDouble(data['longitude']),
       bloodType: data['bloodType'] as String?,
+      gender: data['gender'] as String?,
+      phoneNumber: data['phoneNumber'] as String?,
       createdAt: _parseDate(data['createdAt']),
     );
   }
@@ -133,6 +143,8 @@ class User {
       if (latitude != null) 'latitude': latitude,
       if (longitude != null) 'longitude': longitude,
       if (bloodType != null) 'bloodType': bloodType,
+      if (gender != null) 'gender': gender,
+      if (phoneNumber != null) 'phoneNumber': phoneNumber,
     };
   }
 }

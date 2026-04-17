@@ -621,14 +621,26 @@ exports.getRequestDonorResponses = onCall(
 
         let fullName = d.fullName || "";
         let email = d.email || "";
+        let phoneNumber =
+          typeof d.phoneNumber === "string" && d.phoneNumber.trim()
+            ? d.phoneNumber.trim()
+            : "";
 
-        if (!fullName || !email) {
+        if (!fullName || !email || !phoneNumber) {
           try {
             const donorSnap = await db.collection("users").doc(doc.id).get();
             if (donorSnap.exists) {
               const du = donorSnap.data() || {};
               fullName = fullName || du.fullName || du.name || "Donor";
               email = email || du.email || "";
+              const p = du.phoneNumber;
+              if (
+                !phoneNumber &&
+                typeof p === "string" &&
+                p.trim()
+              ) {
+                phoneNumber = p.trim();
+              }
             }
           } catch (e) {
             console.warn("Failed to load donor user data:", e.message);
@@ -638,6 +650,7 @@ exports.getRequestDonorResponses = onCall(
           donorId: doc.id,
           fullName: fullName || "Donor",
           email,
+          phoneNumber,
           processStatus: d.processStatus || "accepted",
           appointmentAtMillis: toMillis(d.appointmentAt),
           reportId: d.reportId || null,

@@ -9,7 +9,9 @@
     "deploy": "cd .. && firebase deploy --only functions",
     "deploy:getRequestsByBloodBankId": "cd .. && firebase deploy --only functions:getRequestsByBloodBankId",
     "deploy:respondersAndDonorLists": "cd .. && firebase deploy --only \"functions:getRequestsByBloodBankId,functions:getRequestDonorResponses\"",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "delete-all-donors": "node scripts/delete_all_donors.js",
+    "wipe-all-data": "node scripts/wipe_all_app_data.js"
   },
   "engines": {
     "node": "22"

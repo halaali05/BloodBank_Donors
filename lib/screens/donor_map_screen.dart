@@ -607,6 +607,9 @@ class _ClusterRequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDonating = request.myResponse == 'accepted';
+    final process = request.donorProcessStatus?.toLowerCase();
+    final isDonationFinal = process == 'donated' || process == 'restricted';
+    final isActionDisabled = isResponding || isDonationFinal;
 
     return GestureDetector(
       onTap: onTap,
@@ -700,7 +703,7 @@ class _ClusterRequestCard extends StatelessWidget {
             const SizedBox(width: 8),
             // Action
             ElevatedButton(
-              onPressed: isResponding
+              onPressed: isActionDisabled
                   ? null
                   : () => onRespond(request, isDonating ? 'none' : 'accepted'),
               style: ElevatedButton.styleFrom(
@@ -726,7 +729,9 @@ class _ClusterRequestCard extends StatelessWidget {
                       ),
                     )
                   : Text(
-                      isDonating ? 'Selected' : 'I can donate',
+                      isDonationFinal
+                          ? 'Donation completed'
+                          : (isDonating ? 'Selected' : 'I can donate'),
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -762,6 +767,9 @@ class _RequestBottomSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDonating = request.myResponse == 'accepted';
+    final process = request.donorProcessStatus?.toLowerCase();
+    final isDonationFinal = process == 'donated' || process == 'restricted';
+    final isActionDisabled = isResponding || isDonationFinal;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
@@ -901,7 +909,7 @@ class _RequestBottomSheet extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: isResponding
+                    onPressed: isActionDisabled
                         ? null
                         : (isDonating ? onUndoDonate : onDonate),
                     icon: isResponding
@@ -920,7 +928,11 @@ class _RequestBottomSheet extends StatelessWidget {
                             size: 16,
                           ),
                     label: Text(
-                      isDonating ? 'Selected: I can donate' : 'I can donate',
+                      isDonationFinal
+                          ? 'Donation completed'
+                          : (isDonating
+                                ? 'Selected: I can donate'
+                                : 'I can donate'),
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     style: AppTheme.primaryButtonStyle().copyWith(

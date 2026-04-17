@@ -1,9 +1,15 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../controllers/donor_profile_controller.dart';
 import '../models/donor_medical_report.dart';
 import '../theme/app_theme.dart';
+import '../utils/platform_file_reader.dart';
 import '../widgets/donation_history_section.dart';
 
 /// Screen where donors can view and edit their profile information
@@ -39,6 +45,8 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
   Map<String, dynamic>? _userData;
   bool _isLoading = true;
   String? _error;
+  String? _photoUrl;
+  bool _avatarUploading = false;
 
   // Donation history
   List<DonorMedicalReport> _donationHistory = [];
@@ -115,12 +123,158 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
     }
   }
 
+  String? _genderLabelFromData() {
+    final m = _userData;
+    if (m == null) return null;
+    final g = (m['gender'] ?? '').toString().toLowerCase();
+    if (g == 'male') return 'Male';
+    if (g == 'female') return 'Female';
+    return null;
+  }
+
+  String? _phoneFromData() {
+    final m = _userData;
+    if (m == null) return null;
+    final p = (m['phoneNumber'] ?? m['phone'] ?? '').toString().trim();
+    return p.isEmpty ? null : p;
+  }
+
   /// Initializes form fields once with data from Cloud Functions
   /// Prevents overwriting user input if data updates
   void _initOnce(Map<String, dynamic> data) {
     if (_didInit) return;
     _didInit = true;
     _name.text = (data['name'] ?? data['fullName'] ?? '').toString();
+    _photoUrl =
+        (data['photoURL'] ??
+                data['photoUrl'] ??
+                data['avatarUrl'] ??
+                FirebaseAuth.instance.currentUser?.photoURL)
+            ?.toString();
+  }
+
+  Future<void> _pickAndUploadAvatar() async {
+    if (_avatarUploading) return;
+
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'webp'],
+        withData: kIsWeb,
+        withReadStream: !kIsWeb,
+      );
+      if (result == null || result.files.isEmpty) return;
+
+      final picked = result.files.first;
+      if (picked.size > 6 * 1024 * 1024) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Image is too large. Please choose one under 6 MB.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      Uint8List? bytes;
+      if (!kIsWeb && picked.path != null) {
+        try {
+          bytes = await File(picked.path!).readAsBytes();
+        } catch (_) {
+          bytes = await readPlatformFileBytes(picked);
+        }
+      } else {
+        bytes = await readPlatformFileBytes(picked);
+      }
+      if (bytes == null || bytes.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not read this image. Try another one.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      setState(() => _avatarUploading = true);
+      final ext = (picked.extension ?? 'jpg').toLowerCase();
+      final contentType = ext == 'png'
+          ? 'image/png'
+          : ext == 'webp'
+          ? 'image/webp'
+          : 'image/jpeg';
+
+      final auth = FirebaseAuth.instance;
+      final currentUser = auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('You are not authenticated. Please login again.');
+      }
+      final uid = currentUser.uid;
+
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('profile_images')
+          .child(uid)
+          .child('avatar_${DateTime.now().millisecondsSinceEpoch}.$ext');
+
+      final snap = await ref.putData(
+        bytes,
+        SettableMetadata(contentType: contentType),
+      );
+      final url = await snap.ref.getDownloadURL();
+
+      await currentUser.updatePhotoURL(url);
+
+      if (!mounted) return;
+      setState(() {
+        _photoUrl = url;
+        _profileUpdated = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Profile picture updated'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Authentication error while uploading image: ${e.message ?? e.code}',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      final isAuthError =
+          e.code.toLowerCase().contains('unauth') ||
+          e.code.toLowerCase().contains('permission') ||
+          e.message?.toLowerCase().contains('unauth') == true ||
+          e.message?.toLowerCase().contains('permission') == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isAuthError
+                ? 'Upload failed: image permission is blocked by storage rules. Please contact support.'
+                : 'Upload failed: ${e.message ?? e.code}',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to upload profile picture: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _avatarUploading = false);
+    }
   }
 
   /// Saves profile changes via Cloud Functions
@@ -188,16 +342,6 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
           'Profile',
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
-        actions: [
-          IconButton(
-            icon: Icon(
-              _isEditing ? Icons.close : Icons.edit,
-              color: AppTheme.deepRed,
-            ),
-            onPressed: () => setState(() => _isEditing = !_isEditing),
-          ),
-          const SizedBox(width: 6),
-        ],
       ),
       body: _isLoading && _userData == null
           ? const Center(child: CircularProgressIndicator())
@@ -225,50 +369,122 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
               ),
             )
           : RefreshIndicator(
-              onRefresh: _loadUserProfile,
-              child: SingleChildScrollView(
+              onRefresh: () async {
+                await _loadUserProfile();
+                await _loadDonationHistory();
+              },
+              child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF7A0009), Color(0xFFB71C1C)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: AppTheme.cardShadow,
+                    ),
+                    child: Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(16),
+                          width: 52,
+                          height: 52,
                           decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(18),
+                            color: Colors.white.withOpacity(0.2),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.35),
+                            ),
                           ),
-                          child: Row(
+                          child: ClipOval(
+                            child: _photoUrl != null && _photoUrl!.isNotEmpty
+                                ? Image.network(
+                                    _photoUrl!,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => const Icon(
+                                      Icons.person_rounded,
+                                      color: Colors.white,
+                                      size: 28,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.person_rounded,
+                                    color: Colors.white,
+                                    size: 28,
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              CircleAvatar(
-                                backgroundColor: AppTheme.deepRed.withOpacity(
-                                  0.12,
-                                ),
-                                child: const Icon(
-                                  Icons.person,
-                                  color: AppTheme.deepRed,
+                              const SizedBox(height: 2),
+                              Text(
+                                _name.text.isEmpty ? 'Donor' : _name.text,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 18,
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.18),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.3),
+                                  ),
+                                ),
+                                child: Row(
                                   children: [
-                                    Text(
-                                      _name.text.isEmpty ? 'Donor' : _name.text,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: 16,
+                                    const Icon(
+                                      Icons.email_outlined,
+                                      size: 13,
+                                      color: Colors.white,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        user.email ?? '',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9.2,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      user.email ?? '',
-                                      style: const TextStyle(
-                                        color: Colors.black54,
-                                      ),
+                                    IconButton(
+                                      onPressed: () async {
+                                        await Clipboard.setData(
+                                          ClipboardData(text: user.email ?? ''),
+                                        );
+                                        if (!context.mounted) return;
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Email copied'),
+                                            duration: Duration(seconds: 1),
+                                          ),
+                                        );
+                                      },
+                                      visualDensity: VisualDensity.compact,
+                                      iconSize: 16,
+                                      color: Colors.white,
+                                      icon: const Icon(Icons.copy_rounded),
+                                      tooltip: 'Copy email',
                                     ),
                                   ],
                                 ),
@@ -276,58 +492,582 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 14),
-
-                        TextFormField(
-                          controller: _name,
-                          enabled: _isEditing && !_saving,
-                          onChanged: (_) => setState(() {}),
-                          decoration: const InputDecoration(
-                            labelText: 'Full name',
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(),
-                          ),
-                          validator: (v) => (v ?? '').trim().length < 2
-                              ? 'Name is too short'
-                              : null,
-                        ),
-
-                        const SizedBox(height: 14),
-
-                        if (_isEditing)
-                          SizedBox(
-                            width: double.infinity,
-                            height: 46,
-                            child: ElevatedButton(
-                              style: AppTheme.primaryButtonStyle(
-                                borderRadius: 999,
-                              ),
-                              onPressed: _saving ? null : _save,
-                              child: _saving
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Text('Save changes'),
-                            ),
-                          ),
-
-                        // ── Donation History ──────────────────────
-                        const SizedBox(height: 20),
-                        DonationHistorySection(
-                          reports: _donationHistory,
-                          isLoading: _historyLoading,
-                        ),
                       ],
                     ),
                   ),
+                  const SizedBox(height: 14),
+                  _ProfileMenuTile(
+                    index: '| 01 |',
+                    title: 'Account',
+                    icon: Icons.manage_accounts_rounded,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => _AccountPage(
+                            formKey: _formKey,
+                            nameController: _name,
+                            email: user.email ?? '',
+                            genderLabel: _genderLabelFromData(),
+                            phoneDisplay: _phoneFromData(),
+                            photoUrl: _photoUrl,
+                            avatarUploading: _avatarUploading,
+                            initialIsEditing: _isEditing,
+                            saving: _saving,
+                            onPickAvatar: _pickAndUploadAvatar,
+                            onNameChanged: () => setState(() {}),
+                            onSave: _save,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  _ProfileMenuTile(
+                    index: '| 02 |',
+                    title: 'Donation History',
+                    icon: Icons.history_rounded,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => _DonationHistoryPage(
+                            reports: _donationHistory,
+                            isLoading: _historyLoading,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  _ProfileMenuTile(
+                    index: '| 03 |',
+                    title: 'Reports',
+                    icon: Icons.description_rounded,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => _ReportsPage(
+                            reports: _donationHistory,
+                            isLoading: _historyLoading,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+class _ProfileMenuTile extends StatelessWidget {
+  final String index;
+  final String title;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _ProfileMenuTile({
+    required this.index,
+    required this.title,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: ListTile(
+        onTap: onTap,
+        leading: Container(
+          width: 42,
+          height: 42,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppTheme.deepRed.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            index,
+            style: const TextStyle(
+              color: AppTheme.deepRed,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        trailing: Icon(icon, color: Colors.black54),
+      ),
+    );
+  }
+}
+
+class _AccountPage extends StatefulWidget {
+  final GlobalKey<FormState> formKey;
+  final TextEditingController nameController;
+  final String email;
+  final String? genderLabel;
+  final String? phoneDisplay;
+  final String? photoUrl;
+  final bool avatarUploading;
+  final bool saving;
+  final VoidCallback onPickAvatar;
+  final bool initialIsEditing;
+  final VoidCallback onNameChanged;
+  final Future<void> Function() onSave;
+
+  const _AccountPage({
+    required this.formKey,
+    required this.nameController,
+    required this.email,
+    this.genderLabel,
+    this.phoneDisplay,
+    required this.photoUrl,
+    required this.avatarUploading,
+    required this.initialIsEditing,
+    required this.saving,
+    required this.onPickAvatar,
+    required this.onNameChanged,
+    required this.onSave,
+  });
+
+  @override
+  State<_AccountPage> createState() => _AccountPageState();
+}
+
+class _AccountPageState extends State<_AccountPage> {
+  late bool _isEditing;
+  bool _localSaving = false;
+  final FocusNode _nameFocusNode = FocusNode();
+
+  Future<void> _handleNameEditAction() async {
+    if (_localSaving) return;
+    setState(() => _isEditing = true);
+    Future<void>.delayed(const Duration(milliseconds: 50), () {
+      if (mounted) _nameFocusNode.requestFocus();
+    });
+  }
+
+  Future<void> _handleNameSaveAction() async {
+    if (_localSaving) return;
+    setState(() => _localSaving = true);
+    try {
+      await widget.onSave();
+      if (!mounted) return;
+      setState(() => _isEditing = false);
+    } finally {
+      if (mounted) setState(() => _localSaving = false);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _isEditing = widget.initialIsEditing;
+  }
+
+  @override
+  void dispose() {
+    _nameFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.softBg,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'Account',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: widget.formKey,
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    GestureDetector(
+                      onTap: widget.onPickAvatar,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.center,
+                        children: [
+                          CircleAvatar(
+                            radius: 28,
+                            backgroundColor: AppTheme.deepRed.withOpacity(0.12),
+                            child: ClipOval(
+                              child:
+                                  (widget.photoUrl != null &&
+                                      widget.photoUrl!.isNotEmpty)
+                                  ? Image.network(
+                                      widget.photoUrl!,
+                                      width: 56,
+                                      height: 56,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (_, __, ___) => const Icon(
+                                        Icons.person_rounded,
+                                        color: AppTheme.deepRed,
+                                        size: 28,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.person_rounded,
+                                      color: AppTheme.deepRed,
+                                      size: 28,
+                                    ),
+                            ),
+                          ),
+                          Positioned(
+                            right: -2,
+                            bottom: -2,
+                            child: Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                color: AppTheme.deepRed,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 2,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.camera_alt_rounded,
+                                size: 12,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          if (widget.avatarUploading)
+                            const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.nameController.text.isEmpty
+                                ? 'Donor'
+                                : widget.nameController.text,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  widget.email,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 10.5,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () async {
+                                  await Clipboard.setData(
+                                    ClipboardData(text: widget.email),
+                                  );
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Email copied'),
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                },
+                                tooltip: 'Copy email',
+                                visualDensity: VisualDensity.compact,
+                                iconSize: 18,
+                                icon: const Icon(Icons.copy_rounded),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: widget.nameController,
+                focusNode: _nameFocusNode,
+                readOnly: !_isEditing || _localSaving,
+                onChanged: (_) => widget.onNameChanged(),
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+                decoration: InputDecoration(
+                  labelText: 'Name',
+                  hintText: 'Enter full name',
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: const OutlineInputBorder(),
+                  enabledBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFFD0D4F0)),
+                  ),
+                  disabledBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFFD0D4F0)),
+                  ),
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'Edit name',
+                        onPressed: _handleNameEditAction,
+                        icon: const Icon(
+                          Icons.edit_rounded,
+                          color: AppTheme.deepRed,
+                        ),
+                      ),
+                      if (_isEditing)
+                        IconButton(
+                          tooltip: 'Save name',
+                          onPressed: _localSaving
+                              ? null
+                              : _handleNameSaveAction,
+                          icon: _localSaving
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.check_rounded,
+                                  color: Colors.green,
+                                ),
+                        ),
+                    ],
+                  ),
+                ),
+                validator: (v) =>
+                    (v ?? '').trim().length < 2 ? 'Name is too short' : null,
+              ),
+              if (widget.genderLabel != null &&
+                  widget.genderLabel!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _ReadOnlyAccountField(
+                  icon: Icons.wc_outlined,
+                  label: 'Gender',
+                  value: widget.genderLabel!,
+                ),
+              ],
+              if (widget.phoneDisplay != null &&
+                  widget.phoneDisplay!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _ReadOnlyAccountField(
+                  icon: Icons.phone_android_outlined,
+                  label: 'Mobile',
+                  value: widget.phoneDisplay!,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReadOnlyAccountField extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _ReadOnlyAccountField({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F8FC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD0D4F0)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: AppTheme.deepRed, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.black54,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DonationHistoryPage extends StatelessWidget {
+  final List<DonorMedicalReport> reports;
+  final bool isLoading;
+
+  const _DonationHistoryPage({required this.reports, required this.isLoading});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.softBg,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'Donation History',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          DonationHistorySection(reports: reports, isLoading: isLoading),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReportsPage extends StatelessWidget {
+  final List<DonorMedicalReport> reports;
+  final bool isLoading;
+
+  const _ReportsPage({required this.reports, required this.isLoading});
+
+  @override
+  Widget build(BuildContext context) {
+    final uploadedReports = reports
+        .where((r) => r.reportFileUrl != null)
+        .toList();
+
+    return Scaffold(
+      backgroundColor: AppTheme.softBg,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'Reports',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : uploadedReports.isEmpty
+          ? const Center(
+              child: Text(
+                'No reports uploaded yet.',
+                style: TextStyle(color: Colors.black54),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: uploadedReports.length,
+              itemBuilder: (_, i) {
+                final report = uploadedReports[i];
+                final status = donorProcessStatusToString(report.status);
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: AppTheme.cardShadow,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${report.bloodType} report',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Status: $status',
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'File: uploaded',
+                        style: TextStyle(
+                          color: Colors.green.shade700,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
     );
   }

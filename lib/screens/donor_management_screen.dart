@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../models/donor_medical_report.dart';
 import '../models/blood_request_model.dart';
@@ -6,6 +7,8 @@ import '../services/cloud_functions_service.dart';
 import '../theme/app_theme.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+
+import '../utils/platform_file_reader.dart';
 
 /// Blood bank screen to manage accepted donors through the full process:
 /// accepted → scheduled → tested → donated / restricted
@@ -45,6 +48,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
               donorId: d.donorId,
               fullName: d.fullName,
               email: d.email,
+              phoneNumber: d.phoneNumber,
               status: parseDonorProcessStatus(d.processStatus),
               appointmentAt: d.appointmentAtMillis != null
                   ? DateTime.fromMillisecondsSinceEpoch(d.appointmentAtMillis!)
@@ -140,7 +144,6 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                 ),
               ],
             ),
-      floatingActionButton: _canComplete() ? _buildCompleteButton() : null,
     );
   }
 
@@ -165,6 +168,10 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
 
   Widget _buildRequestSummary() {
     final req = widget.request;
+    final acceptedCount = _donors
+        .where((d) => d.status != DonorProcessStatus.restricted)
+        .length;
+    final restrictedCount = _byStatus([DonorProcessStatus.restricted]).length;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       padding: const EdgeInsets.all(14),
@@ -242,13 +249,18 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              _statPill('✅ ${req.acceptedCount}', Colors.greenAccent),
-              const SizedBox(height: 4),
-              _statPill('❌ ${req.rejectedCount}', Colors.redAccent),
-            ],
+          SizedBox(
+            width: 170,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _statPill('✅ $acceptedCount', Colors.greenAccent),
+                
+                _statPill('⚠️ $restrictedCount', const Color(0xFFFFB74D)),
+              ],
+            ),
           ),
         ],
       ),
@@ -328,74 +340,6 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
     ),
   );
 
-  bool _canComplete() {
-    final pending = _byStatus([
-      DonorProcessStatus.accepted,
-      DonorProcessStatus.scheduled,
-      DonorProcessStatus.tested,
-    ]);
-    return pending.isEmpty && _donors.isNotEmpty;
-  }
-
-  Widget _buildCompleteButton() => FloatingActionButton.extended(
-    backgroundColor: AppTheme.deepRed,
-    icon: const Icon(Icons.check_circle_rounded),
-    label: const Text(
-      'Mark Request Completed',
-      style: TextStyle(fontWeight: FontWeight.w700),
-    ),
-    onPressed: _confirmComplete,
-  );
-
-  void _confirmComplete() {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Complete Request',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
-        content: const Text(
-          'All donors have been processed. Mark this request as completed?\n\nThis will finalize all donor reports and notify everyone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: AppTheme.primaryButtonStyle(),
-            onPressed: () async {
-              Navigator.pop(context);
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder: (_) =>
-                    const Center(child: CircularProgressIndicator()),
-              );
-              try {
-                await _cloudFunctions.markRequestCompleted(
-                  requestId: widget.request.id,
-                );
-                if (context.mounted) Navigator.pop(context);
-                _showSnack('Request marked as completed ✅', Colors.green[700]!);
-                if (context.mounted) Navigator.pop(context);
-              } catch (e) {
-                if (context.mounted) Navigator.pop(context);
-                _showSnack(
-                  e.toString().replaceFirst('Exception: ', ''),
-                  Colors.red,
-                );
-              }
-            },
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ─── Actions ────────────────────────────────────────────────
 
   void _onSchedule(_DonorCard donor) async {
@@ -449,8 +393,8 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
 
           // Optimistic UI update
           setState(() {
-            final idx = _donors.indexOf(donor);
-            _donors[idx] = donor.copyWith(status: status);
+            final idx = _donors.indexWhere((d) => d.donorId == donor.donorId);
+            if (idx != -1) _donors[idx] = donor.copyWith(status: status);
           });
 
           try {
@@ -463,6 +407,13 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
               reportFileUrl: reportFileUrl, // ← now passed
               canDonateAgainAt: canDonateAt?.toIso8601String(),
             );
+            if (!mounted) return;
+            await _loadDonors(showSpinner: false);
+            if (!mounted) return;
+            // Donor is now `donated` / `restricted` — show them under Done.
+            if (_tabController.length > 2) {
+              _tabController.animateTo(2);
+            }
             final msg = status == DonorProcessStatus.donated
                 ? '🩸 ${donor.fullName} donation recorded!'
                 : '⚠️ ${donor.fullName} marked as restricted';
@@ -553,6 +504,7 @@ class _DonorCard {
   final String donorId;
   final String fullName;
   final String email;
+  final String phoneNumber;
   final DonorProcessStatus status;
   final DateTime? appointmentAt;
 
@@ -560,6 +512,7 @@ class _DonorCard {
     required this.donorId,
     required this.fullName,
     required this.email,
+    this.phoneNumber = '',
     required this.status,
     this.appointmentAt,
   });
@@ -569,6 +522,7 @@ class _DonorCard {
         donorId: donorId,
         fullName: fullName,
         email: email,
+        phoneNumber: phoneNumber,
         status: status ?? this.status,
         appointmentAt: appointmentAt ?? this.appointmentAt,
       );
@@ -705,6 +659,29 @@ class _DonorTile extends StatelessWidget {
                     donor.email,
                     style: const TextStyle(color: Colors.black45, fontSize: 12),
                   ),
+                  if (donor.phoneNumber.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.phone_android_outlined,
+                          size: 12,
+                          color: Colors.black38,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: SelectableText(
+                            donor.phoneNumber,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black54,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   if (donor.appointmentAt != null) ...[
                     const SizedBox(height: 4),
                     Row(
@@ -883,6 +860,7 @@ class _ReportUploadSheetState extends State<_ReportUploadSheet> {
   final _reasonCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   DateTime? _canDonateAt;
+  bool _showValidationErrors = false;
 
   // ── PDF upload state ──────────────────────────────────────
   String? _pickedFileName;
@@ -903,24 +881,29 @@ class _ReportUploadSheetState extends State<_ReportUploadSheet> {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
-        withData: true,
+        withData: kIsWeb,
+        withReadStream: !kIsWeb,
       );
 
       if (result == null || result.files.isEmpty) return;
 
       final picked = result.files.first;
-      final bytes = picked.bytes;
+      final bytes = await readPlatformFileBytes(picked);
 
       if (bytes == null || bytes.isEmpty) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Could not read file data'),
+            content: Text(
+              'Could not read this file. Try another PDF/image or pick from Downloads.',
+            ),
             backgroundColor: Colors.red,
           ),
         );
         return;
       }
 
+      if (!mounted) return;
       setState(() {
         _pickedFileName = picked.name;
         _isUploading = true;
@@ -1013,9 +996,38 @@ class _ReportUploadSheetState extends State<_ReportUploadSheet> {
     }
   }
 
+  void _submitReport() {
+    final isRestricted = _outcome == DonorProcessStatus.restricted;
+    final reason = _reasonCtrl.text.trim();
+    final hasReasonError = isRestricted && reason.isEmpty;
+    final hasFileError = _uploadedFileUrl == null;
+
+    if (hasReasonError || hasFileError) {
+      setState(() => _showValidationErrors = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please fill all required fields marked with *'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    widget.onSubmit(
+      _outcome,
+      isRestricted ? reason : null,
+      _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+      isRestricted ? _canDonateAt : null,
+      _uploadedFileUrl,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isRestricted = _outcome == DonorProcessStatus.restricted;
+    final hasReasonError =
+        isRestricted && _showValidationErrors && _reasonCtrl.text.trim().isEmpty;
+    final hasFileError = _showValidationErrors && _uploadedFileUrl == null;
 
     return Container(
       decoration: const BoxDecoration(
@@ -1053,6 +1065,17 @@ class _ReportUploadSheetState extends State<_ReportUploadSheet> {
               widget.donor.email,
               style: const TextStyle(color: Colors.black45, fontSize: 13),
             ),
+            if (widget.donor.phoneNumber.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                widget.donor.phoneNumber,
+                style: const TextStyle(
+                  color: Colors.black54,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             const SizedBox(height: 20),
 
             // Outcome toggle
@@ -1084,7 +1107,7 @@ class _ReportUploadSheetState extends State<_ReportUploadSheet> {
 
             // ── PDF / Image Upload ──────────────────────────────
             const Text(
-              'Medical Report File',
+              'Medical Report File *',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
             ),
             const SizedBox(height: 8),
@@ -1101,7 +1124,10 @@ class _ReportUploadSheetState extends State<_ReportUploadSheet> {
                   border: Border.all(
                     color: _uploadedFileUrl != null
                         ? Colors.green.withOpacity(0.4)
+                        : hasFileError
+                        ? Colors.red
                         : Colors.black12,
+                    width: hasFileError ? 1.4 : 1,
                   ),
                 ),
                 child: _isUploading
@@ -1189,9 +1215,15 @@ class _ReportUploadSheetState extends State<_ReportUploadSheet> {
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Optional — PDF, JPG, or PNG',
-              style: TextStyle(color: Colors.black38, fontSize: 11),
+            Text(
+              hasFileError
+                  ? 'Required — attach PDF, JPG, or PNG'
+                  : 'Required — PDF, JPG, or PNG',
+              style: TextStyle(
+                color: hasFileError ? Colors.red : Colors.black45,
+                fontSize: 11,
+                fontWeight: hasFileError ? FontWeight.w600 : FontWeight.normal,
+              ),
             ),
 
             const SizedBox(height: 14),
@@ -1199,10 +1231,39 @@ class _ReportUploadSheetState extends State<_ReportUploadSheet> {
             if (isRestricted) ...[
               TextField(
                 controller: _reasonCtrl,
-                decoration: AppTheme.outlinedInputDecoration(
-                  label: 'Restriction Reason',
-                  icon: Icons.warning_amber_rounded,
-                ),
+                onChanged: (_) {
+                  if (_showValidationErrors) setState(() {});
+                },
+                decoration:
+                    AppTheme.outlinedInputDecoration(
+                      label: 'Restriction Reason *',
+                      icon: Icons.warning_amber_rounded,
+                    ).copyWith(
+                      labelStyle: TextStyle(
+                        fontSize: 13,
+                        color: hasReasonError ? Colors.red : Colors.black54,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.borderRadiusSmall,
+                        ),
+                        borderSide: BorderSide(
+                          color: hasReasonError
+                              ? Colors.red
+                              : const Color(0xffd0d4f0),
+                          width: hasReasonError ? 1.4 : 1,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.borderRadiusSmall,
+                        ),
+                        borderSide: BorderSide(
+                          color: hasReasonError ? Colors.red : AppTheme.deepRed,
+                          width: 1.6,
+                        ),
+                      ),
+                    ),
                 maxLines: 2,
               ),
               const SizedBox(height: 12),
@@ -1288,15 +1349,7 @@ class _ReportUploadSheetState extends State<_ReportUploadSheet> {
                 ),
                 onPressed: _isUploading
                     ? null // disable while uploading
-                    : () => widget.onSubmit(
-                        _outcome,
-                        isRestricted ? _reasonCtrl.text.trim() : null,
-                        _notesCtrl.text.trim().isEmpty
-                            ? null
-                            : _notesCtrl.text.trim(),
-                        isRestricted ? _canDonateAt : null,
-                        _uploadedFileUrl, // ← pass URL
-                      ),
+                    : _submitReport,
               ),
             ),
           ],

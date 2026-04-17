@@ -4,6 +4,9 @@ class DonorResponseEntry {
   final String fullName;
   final String email;
 
+  /// E.164 or stored mobile from `users/{donorId}` (may be empty for legacy donors).
+  final String phoneNumber;
+
   /// Hospital pipeline status from `donorResponses` (scheduled, tested, …).
   final String? processStatus;
 
@@ -14,6 +17,7 @@ class DonorResponseEntry {
     required this.donorId,
     required this.fullName,
     required this.email,
+    this.phoneNumber = '',
     this.processStatus,
     this.appointmentAtMillis,
   });
@@ -32,6 +36,7 @@ class DonorResponseEntry {
     final donorId = pick(['donorId', 'userId', 'uid']);
     var fullName = pick(['fullName', 'name', 'displayName']);
     final email = pick(['email']);
+    final phoneNumber = pick(['phoneNumber', 'phone']);
     if (fullName.isEmpty) fullName = 'Donor';
 
     int? appointmentAtMillis;
@@ -53,6 +58,7 @@ class DonorResponseEntry {
       donorId: donorId,
       fullName: fullName,
       email: email,
+      phoneNumber: phoneNumber,
       processStatus: processStatus,
       appointmentAtMillis: appointmentAtMillis,
     );

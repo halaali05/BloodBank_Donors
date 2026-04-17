@@ -161,7 +161,7 @@ async function deleteRequestCascade(requestRef, requestId) {
 }
 
 /**
- * Builds { donorId, fullName, email } from users/{donorId}, with Auth fallback
+ * Builds { donorId, fullName, email, phoneNumber } from users/{donorId}, with Auth fallback
  * when Firestore is missing name or email (common for older accounts).
  */
 async function buildDonorResponseEntry(donorId) {
@@ -172,7 +172,11 @@ async function buildDonorResponseEntry(donorId) {
     (typeof ud.name === "string" && ud.name.trim()) ||
     "";
   let email = typeof ud.email === "string" ? ud.email.trim() : "";
-  if (!email || !fullName) {
+  let phoneNumber =
+    typeof ud.phoneNumber === "string" && ud.phoneNumber.trim()
+      ? ud.phoneNumber.trim()
+      : "";
+  if (!email || !fullName || !phoneNumber) {
     try {
       const authUser = await admin.auth().getUser(donorId);
       if (!email && typeof authUser.email === "string" && authUser.email) {
@@ -185,12 +189,19 @@ async function buildDonorResponseEntry(donorId) {
       ) {
         fullName = authUser.displayName.trim();
       }
+      if (
+        !phoneNumber &&
+        typeof authUser.phoneNumber === "string" &&
+        authUser.phoneNumber.trim()
+      ) {
+        phoneNumber = authUser.phoneNumber.trim();
+      }
     } catch (_) {
       // Donor may be deleted from Auth
     }
   }
   if (!fullName) fullName = "Donor";
-  return { donorId, fullName, email };
+  return { donorId, fullName, email, phoneNumber };
 }
 
 /**
@@ -363,12 +374,18 @@ exports.getDonors = onCall(publicCallableOpts, async (request) => {
 
     const donors = donorsSnapshot.docs.map((doc) => {
       const donorData = doc.data();
+      const phoneRaw = donorData.phoneNumber;
+      const phoneNumber =
+        typeof phoneRaw === "string" && phoneRaw.trim()
+          ? phoneRaw.trim()
+          : "";
       return {
         id: doc.id,
         fullName: donorData.fullName || donorData.name || "Donor",
         location: donorData.location || "Unknown location",
         bloodType: donorData.bloodType || "",
         email: donorData.email || "",
+        phoneNumber,
       };
     });
 
@@ -429,7 +446,6 @@ exports.getRequests = onCall(publicCallableOpts, async (request) => {
             const respData = respSnap.data() || {};
             const st = respData.status;
 
-            
             if (st === "accepted" || st === "rejected") {
               myResponse = st;
             }
@@ -796,7 +812,8 @@ exports.updateRequestUnits = onCall(publicCallableOpts, async (request) => {
 });
 
 /**
- * getRequestDonorResponses — hospital only; donors who accepted / rejected (name + email).
+ * getRequestDonorResponses — hospital only; donors who accepted / rejected
+ * (name, email, phoneNumber, pipeline fields).
  */
 exports.getRequestDonorResponses = onCall(publicCallableOpts, async (request) => {
   try {
