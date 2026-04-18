@@ -288,7 +288,9 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => StatsScreen(stats: stats)),
+                MaterialPageRoute(
+                  builder: (_) => StatsScreen(requests: _requests),
+                ),
               );
             },
           ),
