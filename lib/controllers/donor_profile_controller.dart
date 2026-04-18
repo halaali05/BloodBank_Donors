@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/blood_request_model.dart';
 import '../models/donor_medical_report.dart';
@@ -13,18 +14,6 @@ class DonorProfileController {
     : _cloudFunctions = cloudFunctions ?? CloudFunctionsService();
 
   // ------------------ Profile Data Fetching ------------------
-  /// Fetches user profile data via Cloud Functions
-  ///
-  /// Security Architecture:
-  /// - All reads go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  /// - Server ensures users can only read their own profile
-  ///
-  /// Returns:
-  /// - Map with user profile data
-  ///
-  /// Throws:
-  /// - Exception if fetch fails
   Future<Map<String, dynamic>> fetchUserProfile() async {
     try {
       return await _cloudFunctions.getUserData();
@@ -34,22 +23,6 @@ class DonorProfileController {
   }
 
   // ------------------ Profile Update Logic ------------------
-  /// Updates user profile name
-  ///
-  /// Security Architecture:
-  /// - All profile updates go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  /// - Server ensures user can only update their own profile
-  /// - Server updates both Firestore and Firebase Auth display name
-  ///
-  /// Parameters:
-  /// - [name]: The new name to set for the user
-  ///
-  /// Returns:
-  /// - Map with success status and message
-  ///
-  /// Throws:
-  /// - Exception with error message if update fails
   Future<Map<String, dynamic>> updateProfileName({required String name}) async {
     try {
       return await _cloudFunctions.updateUserProfile(name: name);
@@ -59,29 +32,33 @@ class DonorProfileController {
   }
 
   // ------------------ Donation History ------------------
-  /// Fetches the donor's donation history (medical reports) via Cloud Functions
-  ///
-  /// Returns a list of [DonorMedicalReport] sorted by date descending.
-  /// Merges **active** acceptances from [getRequests] (same data as dashboard posts)
-  /// so scheduled appointments and in-progress steps appear here, not only on the feed.
+  /// يجيب التقارير مباشرة من Firestore بدل Cloud Function
   Future<List<DonorMedicalReport>> fetchDonationHistory() async {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) return [];
 
-    List<DonorMedicalReport> fromApi = [];
+    List<DonorMedicalReport> fromFirestore = [];
+
     try {
-      final result = await _cloudFunctions.getDonationHistory();
-      final raw = result['reports'] as List<dynamic>? ?? [];
-      fromApi = raw.map((item) {
-        final map = Map<String, dynamic>.from(item as Map);
-        final id = map['id']?.toString() ?? '';
-        return DonorMedicalReport.fromMap(map, id);
+      // نقرأ مباشرة من medicalReports collection
+      final snapshot = await FirebaseFirestore.instance
+          .collection('medicalReports')
+          .where('donorId', isEqualTo: uid)
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      fromFirestore = snapshot.docs.map((doc) {
+        return DonorMedicalReport.fromMap(doc.data(), doc.id);
       }).toList();
-    } catch (_) {
-      fromApi = [];
+
+      print('✅ Firestore reports: ${fromFirestore.length}');
+    } catch (e) {
+      print('❌ Firestore read error: $e');
+      fromFirestore = [];
     }
 
     final seenRequestIds = <String>{
-      for (final r in fromApi)
+      for (final r in fromFirestore)
         if (r.requestId.isNotEmpty) r.requestId,
     };
 
@@ -98,7 +75,7 @@ class DonorProfileController {
       feed = [];
     }
 
-    final merged = List<DonorMedicalReport>.from(fromApi);
+    final merged = List<DonorMedicalReport>.from(fromFirestore);
     for (final req in feed) {
       if (req.myResponse != 'accepted') continue;
       if (req.isCompleted) continue;

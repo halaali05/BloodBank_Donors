@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/donor_medical_report.dart';
 import '../theme/app_theme.dart';
 
 /// Displays the donor's full donation history on their profile.
-/// Each card shows a step-by-step journey timeline + PDF report link.
+/// Each card shows a step-by-step journey timeline only.
 class DonationHistorySection extends StatelessWidget {
   final List<DonorMedicalReport> reports;
   final bool isLoading;
@@ -20,7 +19,6 @@ class DonationHistorySection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Section Header ──────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(0, 8, 0, 14),
           child: Row(
@@ -87,13 +85,11 @@ class DonationHistorySection extends StatelessWidget {
           ),
         ),
 
-        // ── Stats Row ──────────────────────────────────────────
         if (reports.isNotEmpty) ...[
           _StatsRow(reports: reports),
           const SizedBox(height: 14),
         ],
 
-        // ── Loading ────────────────────────────────────────────
         if (isLoading)
           const Center(
             child: Padding(
@@ -101,10 +97,8 @@ class DonationHistorySection extends StatelessWidget {
               child: CircularProgressIndicator(color: AppTheme.deepRed),
             ),
           )
-        // ── Empty State ────────────────────────────────────────
         else if (reports.isEmpty)
           _EmptyHistoryCard()
-        // ── Journey Cards ──────────────────────────────────────
         else
           ...reports.map((r) => _JourneyCard(report: r)),
       ],
@@ -112,9 +106,6 @@ class DonationHistorySection extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Stats Row (mini summary at top)
-// ─────────────────────────────────────────────────────────────
 class _StatsRow extends StatelessWidget {
   final List<DonorMedicalReport> reports;
   const _StatsRow({required this.reports});
@@ -161,6 +152,7 @@ class _StatCard extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
+
   const _StatCard({
     required this.icon,
     required this.label,
@@ -200,9 +192,6 @@ class _StatCard extends StatelessWidget {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Empty State
-// ─────────────────────────────────────────────────────────────
 class _EmptyHistoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
@@ -243,10 +232,6 @@ class _EmptyHistoryCard extends StatelessWidget {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Journey Card — replaces the old _ReportCard
-// Shows a step-by-step timeline for each donation request
-// ─────────────────────────────────────────────────────────────
 class _JourneyCard extends StatefulWidget {
   final DonorMedicalReport report;
   const _JourneyCard({required this.report});
@@ -258,16 +243,14 @@ class _JourneyCard extends StatefulWidget {
 class _JourneyCardState extends State<_JourneyCard> {
   bool _expanded = true;
 
-  // Map each status to its index in the journey
   static const _statusOrder = {
     DonorProcessStatus.accepted: 0,
     DonorProcessStatus.scheduled: 1,
     DonorProcessStatus.tested: 1,
     DonorProcessStatus.donated: 2,
-    DonorProcessStatus.restricted: 2, // same level as donated (final step)
+    DonorProcessStatus.restricted: 2,
   };
 
-  // Journey step definitions
   List<_JourneyStep> get _steps {
     final s = widget.report.status;
     final currentIdx = _statusOrder[s] ?? 0;
@@ -302,9 +285,9 @@ class _JourneyCardState extends State<_JourneyCard> {
         activeIcon: isRestricted ? Icons.block_rounded : Icons.favorite_rounded,
         title: isRestricted ? 'Not Eligible' : 'Donation Completed',
         subtitle: isRestricted
-            ? (widget.report.restrictionReason ?? 'See notes below')
+            ? (widget.report.restrictionReason ?? 'Donation not allowed')
             : currentIdx >= 2
-            ? 'Report uploaded ... Thank you for saving lives! '
+            ? 'Donation completed successfully'
             : 'Awaiting results',
         currentIdx: currentIdx,
         isFinal: true,
@@ -341,7 +324,6 @@ class _JourneyCardState extends State<_JourneyCard> {
       ),
       child: Column(
         children: [
-          // ── Header ────────────────────────────────────────────
           InkWell(
             onTap: () => setState(() => _expanded = !_expanded),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
@@ -355,7 +337,6 @@ class _JourneyCardState extends State<_JourneyCard> {
               ),
               child: Row(
                 children: [
-                  // Blood type pill
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
@@ -451,7 +432,6 @@ class _JourneyCardState extends State<_JourneyCard> {
             ),
           ),
 
-          // ── Hospital + Date row ────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
             child: Row(
@@ -490,58 +470,16 @@ class _JourneyCardState extends State<_JourneyCard> {
             ),
           ),
 
-          // ── Animated Journey Timeline ──────────────────────────
           AnimatedCrossFade(
             duration: const Duration(milliseconds: 250),
             crossFadeState: _expanded
                 ? CrossFadeState.showFirst
                 : CrossFadeState.showSecond,
             firstChild: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
               child: Column(
                 children: [
-                  // Timeline steps
                   ..._steps.map((step) => _TimelineStepRow(step: step)),
-
-                  // ── Notes ──────────────────────────────────────
-                  if (widget.report.notes != null &&
-                      widget.report.notes!.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.withOpacity(0.06),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: Colors.black.withOpacity(0.07),
-                        ),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(
-                            Icons.notes_rounded,
-                            size: 14,
-                            color: Colors.black38,
-                          ),
-                          const SizedBox(width: 7),
-                          Expanded(
-                            child: Text(
-                              widget.report.notes!,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.black54,
-                                fontStyle: FontStyle.italic,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-
-                  // ── Can donate again ───────────────────────────
                   if (isRestricted &&
                       widget.report.canDonateAgainAt != null) ...[
                     const SizedBox(height: 8),
@@ -581,14 +519,7 @@ class _JourneyCardState extends State<_JourneyCard> {
                       ),
                     ),
                   ],
-
-                  // ── PDF Report Button ──────────────────────────
-                  if (widget.report.reportFileUrl != null) ...[
-                    const SizedBox(height: 12),
-                    _PdfReportButton(url: widget.report.reportFileUrl!),
-                  ],
-
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 6),
                 ],
               ),
             ),
@@ -624,9 +555,6 @@ class _JourneyCardState extends State<_JourneyCard> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Data class for one journey step
-// ─────────────────────────────────────────────────────────────
 class _JourneyStep {
   final int index;
   final IconData icon;
@@ -653,9 +581,6 @@ class _JourneyStep {
   bool get isPending => currentIdx < index;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Single row in the timeline stepper
-// ─────────────────────────────────────────────────────────────
 class _TimelineStepRow extends StatelessWidget {
   final _JourneyStep step;
   const _TimelineStepRow({required this.step});
@@ -688,12 +613,10 @@ class _TimelineStepRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Left column: dot + vertical line ──────────────────
           SizedBox(
             width: 32,
             child: Column(
               children: [
-                // Dot
                 Container(
                   width: 28,
                   height: 28,
@@ -711,7 +634,6 @@ class _TimelineStepRow extends StatelessWidget {
                     color: dotColor.withOpacity(isPending ? 0.3 : 1.0),
                   ),
                 ),
-                // Vertical connector line (hidden for last step)
                 if (!isLast)
                   Expanded(
                     child: Container(
@@ -726,10 +648,7 @@ class _TimelineStepRow extends StatelessWidget {
               ],
             ),
           ),
-
           const SizedBox(width: 12),
-
-          // ── Right column: title + subtitle ────────────────────
           Expanded(
             child: Padding(
               padding: EdgeInsets.only(bottom: isLast ? 0 : 16, top: 4),
@@ -783,97 +702,6 @@ class _TimelineStepRow extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-// PDF Report Button — opens the URL in browser/PDF viewer
-// ─────────────────────────────────────────────────────────────
-class _PdfReportButton extends StatefulWidget {
-  final String url;
-  const _PdfReportButton({required this.url});
-
-  @override
-  State<_PdfReportButton> createState() => _PdfReportButtonState();
-}
-
-class _PdfReportButtonState extends State<_PdfReportButton> {
-  bool _loading = false;
-
-  Future<void> _open() async {
-    setState(() => _loading = true);
-    try {
-      final uri = Uri.parse(widget.url);
-      final canOpen = await canLaunchUrl(uri);
-      if (canOpen) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Could not open report. Try again later.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to open report.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _loading ? null : _open,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        decoration: BoxDecoration(
-          color: AppTheme.deepRed.withOpacity(0.06),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.deepRed.withOpacity(0.25)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (_loading)
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppTheme.deepRed,
-                ),
-              )
-            else
-              const Icon(
-                Icons.picture_as_pdf_rounded,
-                color: AppTheme.deepRed,
-                size: 18,
-              ),
-            const SizedBox(width: 8),
-            Text(
-              _loading ? 'Opening...' : 'Open Medical Attachment',
-              style: const TextStyle(
-                color: AppTheme.deepRed,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

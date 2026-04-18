@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../controllers/donor_profile_controller.dart';
 import '../models/donor_medical_report.dart';
 import '../theme/app_theme.dart';
@@ -32,15 +33,13 @@ class DonorProfileScreen extends StatefulWidget {
 class _DonorProfileScreenState extends State<DonorProfileScreen> {
   final DonorProfileController _controller = DonorProfileController();
 
-  // Form and state
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
 
-  bool _isEditing = false; // Whether profile is in edit mode
-  bool _saving = false; // Show loading while saving
-  bool _didInit = false; // Track if form has been initialized
-  bool _profileUpdated =
-      false; // Track if profile was updated during this session
+  bool _isEditing = false;
+  bool _saving = false;
+  bool _didInit = false;
+  bool _profileUpdated = false;
   Timer? _refreshTimer;
   Map<String, dynamic>? _userData;
   bool _isLoading = true;
@@ -48,21 +47,22 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
   String? _photoUrl;
   bool _avatarUploading = false;
 
-  // Donation history
   List<DonorMedicalReport> _donationHistory = [];
   bool _historyLoading = true;
 
-  /// Get current user's UID
   String get uid => FirebaseAuth.instance.currentUser!.uid;
 
   @override
   void initState() {
     super.initState();
     _loadUserProfile();
-    _loadDonationHistory();
 
-    // Set up periodic refresh (every 30 seconds) for real-time updates
-    // Increased interval to improve performance
+    FirebaseAuth.instance.authStateChanges().first.then((user) {
+      if (user != null && mounted) {
+        _loadDonationHistory();
+      }
+    });
+
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) {
         _loadUserProfile();
@@ -78,7 +78,6 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
     super.dispose();
   }
 
-  /// Loads user profile data via Cloud Functions
   Future<void> _loadUserProfile() async {
     if (!mounted) return;
 
@@ -106,9 +105,14 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
     }
   }
 
-  /// Loads donation history (medical reports) for this donor
   Future<void> _loadDonationHistory() async {
     if (!mounted) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    await user.getIdToken();
+
     setState(() => _historyLoading = true);
     try {
       final history = await _controller.fetchDonationHistory();
@@ -118,7 +122,8 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
           _historyLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      print('loadDonationHistory: $e');
       if (mounted) setState(() => _historyLoading = false);
     }
   }
@@ -139,8 +144,6 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
     return p.isEmpty ? null : p;
   }
 
-  /// Initializes form fields once with data from Cloud Functions
-  /// Prevents overwriting user input if data updates
   void _initOnce(Map<String, dynamic> data) {
     if (_didInit) return;
     _didInit = true;
@@ -176,6 +179,7 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
         );
         return;
       }
+
       Uint8List? bytes;
       if (!kIsWeb && picked.path != null) {
         try {
@@ -186,6 +190,7 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
       } else {
         bytes = await readPlatformFileBytes(picked);
       }
+
       if (bytes == null || bytes.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -277,29 +282,19 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
     }
   }
 
-  /// Saves profile changes via Cloud Functions
-  ///
-  /// Flow:
-  /// 1. Validates form
-  /// 2. Calls Cloud Function to update profile (server-side)
-  /// 3. Shows success/error message
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _saving = true);
     try {
       final newName = _name.text.trim();
-
-      // Update profile via Cloud Function (server-side)
       await _controller.updateProfileName(name: newName);
-
-      // Refresh profile data after update
       await _loadUserProfile();
 
       if (!mounted) return;
       setState(() {
         _isEditing = false;
-        _profileUpdated = true; // Mark that profile was updated
+        _profileUpdated = true;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -999,7 +994,7 @@ class _ReportsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final uploadedReports = reports
-        .where((r) => r.reportFileUrl != null)
+        .where((r) => r.reportFileUrl != null && r.reportFileUrl!.isNotEmpty)
         .toList();
 
     return Scaffold(
@@ -1015,12 +1010,37 @@ class _ReportsPage extends StatelessWidget {
         ),
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : uploadedReports.isEmpty
           ? const Center(
-              child: Text(
-                'No reports uploaded yet.',
-                style: TextStyle(color: Colors.black54),
+              child: CircularProgressIndicator(color: AppTheme.deepRed),
+            )
+          : uploadedReports.isEmpty
+          ? Center(
+              child: Container(
+                margin: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: AppTheme.cardShadow,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.description_outlined,
+                      size: 34,
+                      color: Colors.black38,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'No reports uploaded yet',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             )
           : ListView.builder(
@@ -1029,39 +1049,142 @@ class _ReportsPage extends StatelessWidget {
               itemBuilder: (_, i) {
                 final report = uploadedReports[i];
                 final status = donorProcessStatusToString(report.status);
+                final hasNotes =
+                    report.notes != null && report.notes!.trim().isNotEmpty;
+
+                final isRestricted =
+                    status.toLowerCase().contains('restricted') ||
+                    status.toLowerCase().contains('not eligible');
+
+                final statusColor = isRestricted ? Colors.orange : Colors.green;
+
                 return Container(
-                  margin: const EdgeInsets.only(bottom: 10),
+                  margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(16),
                     boxShadow: AppTheme.cardShadow,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '${report.bloodType} report',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14,
-                        ),
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.picture_as_pdf_rounded,
+                              color: Colors.red.shade700,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${report.bloodType} Report',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  report.bloodBankName,
+                                  style: const TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              status,
+                              style: TextStyle(
+                                color: isRestricted
+                                    ? Colors.orange.shade700
+                                    : Colors.green.shade700,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Status: $status',
-                        style: const TextStyle(
-                          color: Colors.black54,
-                          fontSize: 12,
+
+                      if (hasNotes) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withOpacity(0.06),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            report.notes!.trim(),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black54,
+                              height: 1.5,
+                            ),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'File: uploaded',
-                        style: TextStyle(
-                          color: Colors.green.shade700,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
+                      ],
+
+                      const SizedBox(height: 12),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            try {
+                              final url = Uri.parse(report.reportFileUrl!);
+                              await launchUrl(
+                                url,
+                                mode: LaunchMode.inAppBrowserView,
+                              );
+                            } catch (e) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.deepRed,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          icon: const Icon(Icons.open_in_new_rounded),
+                          label: const Text(
+                            'View Report',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
                         ),
                       ),
                     ],

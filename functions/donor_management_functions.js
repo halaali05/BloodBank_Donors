@@ -266,7 +266,9 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       throw new HttpsError("invalid-argument", "donorId is required");
     }
 
-    const normalizedStatus = String(status || "").trim().toLowerCase();
+    const normalizedStatus = String(status || "")
+      .trim()
+      .toLowerCase();
     if (normalizedStatus !== "donated" && normalizedStatus !== "restricted") {
       throw new HttpsError(
         "invalid-argument",
@@ -362,13 +364,13 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       batch.set(
         donorRef,
         {
-          restrictedUntil: admin.firestore.Timestamp.fromDate(canDonateAgainDate),
+          restrictedUntil:
+            admin.firestore.Timestamp.fromDate(canDonateAgainDate),
           restrictionReason: restrictionReason ? restrictionReason.trim() : "",
         },
         { merge: true },
       );
     } else if (normalizedStatus === "donated") {
-      // FieldValue.delete() inside set(merge) on a NEW user doc fails the whole batch.
       if (donorUserSnap.exists) {
         batch.update(donorRef, {
           restrictedUntil: admin.firestore.FieldValue.delete(),
@@ -394,21 +396,39 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
         const du = donorSnap.data() || {};
         const fcmToken = du.fcmToken;
 
+        const title =
+          normalizedStatus === "donated"
+            ? "🩸 Donation Confirmed!"
+            : "⚠️ Donation Result";
+
+        const body =
+          normalizedStatus === "donated"
+            ? `${req.bloodBankName || "The blood bank"} confirmed your ${
+                req.bloodType || ""
+              } donation. Your report is now available.`
+            : `${req.bloodBankName || "The blood bank"} uploaded your donation report. Check your profile.`;
+
+        // ✅ احفظ الإشعار داخل التطبيق
+        const notifRef = db
+          .collection("notifications")
+          .doc(donorId)
+          .collection("user_notifications")
+          .doc();
+
+        await notifRef.set({
+          title,
+          body,
+          type: "medical_report_saved",
+          requestId: String(requestId),
+          reportId: String(reportRef.id),
+          status: String(normalizedStatus),
+          isRead: false,
+          read: false,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // ✅ ابعث push notification
         if (typeof fcmToken === "string" && fcmToken.trim()) {
-          const title =
-            normalizedStatus === "donated"
-              ? "🩸 Donation Confirmed!"
-              : "⚠️ Donation Result";
-
-          const body =
-            normalizedStatus === "donated"
-              ? `${req.bloodBankName || "The blood bank"} confirmed your ${
-                  req.bloodType || ""
-                } donation. Thank you!`
-              : `${req.bloodBankName || "The blood bank"} has a note regarding your ${
-                  req.bloodType || ""
-                } donation. Check your profile.`;
-
           await admin.messaging().send({
             token: fcmToken.trim(),
             notification: { title, body },
@@ -422,7 +442,10 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
         }
       }
     } catch (e) {
-      console.warn("FCM failed (saveMedicalReport):", e.message);
+      console.warn(
+        "Notification or FCM failed (saveMedicalReport):",
+        e.message || e,
+      );
     }
 
     return { success: true, reportId: reportRef.id };
@@ -435,7 +458,6 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
     );
   }
 });
-
 // ---------------------------------------------------------------------------
 // 3. getDonationHistory
 // ---------------------------------------------------------------------------
@@ -634,11 +656,7 @@ exports.getRequestDonorResponses = onCall(
               fullName = fullName || du.fullName || du.name || "Donor";
               email = email || du.email || "";
               const p = du.phoneNumber;
-              if (
-                !phoneNumber &&
-                typeof p === "string" &&
-                p.trim()
-              ) {
+              if (!phoneNumber && typeof p === "string" && p.trim()) {
                 phoneNumber = p.trim();
               }
             }
