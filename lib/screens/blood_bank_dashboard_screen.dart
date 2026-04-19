@@ -125,6 +125,7 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
     );
 
     if (confirmed != true) return;
+    if (!context.mounted) return;
 
     showDialog(
       context: context,
@@ -134,10 +135,12 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
 
     try {
       await _controller.deleteRequest(requestId: request.id);
-      if (context.mounted) Navigator.pop(context);
+      if (!context.mounted) return;
+      Navigator.pop(context);
       await _loadRequests();
     } catch (_) {
-      if (context.mounted) Navigator.pop(context);
+      if (!context.mounted) return;
+      Navigator.pop(context);
     }
   }
 
@@ -169,6 +172,7 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
     );
 
     if (confirmed != true) return;
+    if (!context.mounted) return;
 
     showDialog(
       context: context,
@@ -178,7 +182,8 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
 
     try {
       await _controller.markRequestCompleted(requestId: request.id);
-      if (context.mounted) Navigator.pop(context);
+      if (!context.mounted) return;
+      Navigator.pop(context);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Request marked as completed.')),
@@ -186,7 +191,8 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
 
       await _loadRequests();
     } catch (e) {
-      if (context.mounted) Navigator.pop(context);
+      if (!context.mounted) return;
+      Navigator.pop(context);
 
       final message = e.toString().replaceFirst('Exception: ', '');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -228,6 +234,7 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
     controller.dispose();
 
     if (updatedUnits == null || updatedUnits == request.units) return;
+    if (!context.mounted) return;
 
     showDialog(
       context: context,
@@ -240,15 +247,15 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
         requestId: request.id,
         units: updatedUnits,
       );
-      if (context.mounted) Navigator.pop(context);
-      if (!mounted) return;
+      if (!context.mounted) return;
+      Navigator.pop(context);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Request units updated.')));
       await _loadRequests();
     } catch (e) {
-      if (context.mounted) Navigator.pop(context);
-      if (!mounted) return;
+      if (!context.mounted) return;
+      Navigator.pop(context);
       final message = e.toString().replaceFirst('Exception: ', '');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message.isEmpty ? 'Failed.' : message)),

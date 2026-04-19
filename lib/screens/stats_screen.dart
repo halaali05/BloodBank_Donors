@@ -42,10 +42,13 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   List<BloodRequest> get _filtered => widget.requests.where((r) {
-    if (_year != null && (r.createdAt == null || r.createdAt!.year != _year))
+    if (_year != null && (r.createdAt == null || r.createdAt!.year != _year)) {
       return false;
-    if (_month != null && (r.createdAt == null || r.createdAt!.month != _month))
+    }
+    if (_month != null &&
+        (r.createdAt == null || r.createdAt!.month != _month)) {
       return false;
+    }
     return true;
   }).toList();
 
