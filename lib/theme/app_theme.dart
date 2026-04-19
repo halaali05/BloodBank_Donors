@@ -148,10 +148,12 @@ class AppTheme {
     IconData? icon,
     Color? fillColor,
     double? borderRadius,
+    Widget? suffixIcon,
   }) {
     return InputDecoration(
       labelText: label,
       prefixIcon: icon != null ? Icon(icon, color: Colors.grey[700]) : null,
+      suffixIcon: suffixIcon,
       filled: true,
       fillColor: fillColor ?? fieldFill,
       labelStyle: const TextStyle(fontSize: 13, color: Colors.black54),

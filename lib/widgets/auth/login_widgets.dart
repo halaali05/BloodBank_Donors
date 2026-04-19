@@ -39,7 +39,7 @@ class LoginAvatar extends StatelessWidget {
       width: 90,
       height: 90,
       decoration: BoxDecoration(
-        color: AppTheme.deepRed.withOpacity(0.10),
+        color: AppTheme.deepRed.withValues(alpha: 0.10),
         shape: BoxShape.circle,
       ),
       child: const Icon(
@@ -56,16 +56,35 @@ class PasswordField extends StatelessWidget {
   final TextEditingController controller;
   final bool obscureText;
   final VoidCallback onToggleVisibility;
+  final bool useOutlinedInput;
 
   const PasswordField({
     super.key,
     required this.controller,
     required this.obscureText,
     required this.onToggleVisibility,
+    this.useOutlinedInput = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (useOutlinedInput) {
+      return TextField(
+        controller: controller,
+        obscureText: obscureText,
+        decoration: AppTheme.outlinedInputDecoration(
+          label: 'Password',
+          icon: Icons.lock_outline,
+          suffixIcon: IconButton(
+            icon: Icon(
+              obscureText ? Icons.visibility_off : Icons.visibility,
+              color: Colors.grey[700],
+            ),
+            onPressed: onToggleVisibility,
+          ),
+        ),
+      );
+    }
     return TextField(
       controller: controller,
       obscureText: obscureText,

@@ -181,7 +181,6 @@ lib/widgets/
 - `UserTypeToggle` - Toggle between donor/blood bank
 - `ConfirmPasswordField` - Password confirmation field
 - `LocationDropdown` - Location selection dropdown
-- `ScreenTitle` - Screen title widget
 - `LoginLink` - Link to login screen
 
 **Purpose**: Reusable components for registration screen

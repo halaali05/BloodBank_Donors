@@ -48,6 +48,14 @@ flutter:
   uses-material-design: true
   assets:
     - images/logoBLOOD.png
+    - assets/docs/restriction_page_01.png
+    - assets/docs/restriction_page_02.png
+    - assets/docs/restriction_page_03.png
+    - assets/docs/restriction_page_04.png
+    - assets/docs/restriction_page_05.png
+    - assets/docs/restriction_page_06.png
+    - assets/docs/restriction_page_07.png
+    - assets/docs/restriction_page_08.png
 
 flutter_launcher_icons:
   android: true

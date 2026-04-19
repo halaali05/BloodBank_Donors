@@ -686,4 +686,35 @@ class CloudFunctionsService {
       throw _handleNetworkError(e);
     }
   }
+
+  /// Donors who completed at least one donation (`donated`) at this blood bank
+  /// (medicalReports for this bank; excludes data removed when a request is deleted).
+  Future<Map<String, dynamic>> listBloodBankPastDonors() async {
+    try {
+      final callable = _functions.httpsCallable('listBloodBankPastDonors');
+      final result = await callable.call();
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
+
+  /// Medical reports for [donorId] at the authenticated blood bank only.
+  Future<Map<String, dynamic>> getBloodBankDonorMedicalHistory({
+    required String donorId,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable(
+        'getBloodBankDonorMedicalHistory',
+      );
+      final result = await callable.call({'donorId': donorId});
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
 }

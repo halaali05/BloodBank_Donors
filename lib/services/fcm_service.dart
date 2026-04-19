@@ -5,11 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import '../main.dart';
-import '../screens/welcome_screen.dart';
-import '../screens/notifications_screen.dart';
-import '../screens/donor_dashboard_screen.dart';
-import '../screens/blood_bank_dashboard_screen.dart';
-import '../screens/chat_screen.dart';
+import '../views/welcome_screen.dart';
+import '../views/notifications_screen.dart';
+import '../views/donor_dashboard_screen.dart';
+import '../views/blood_bank_dashboard_screen.dart';
+import '../views/chat_screen.dart';
 import '../services/auth_service.dart';
 import '../services/cloud_functions_service.dart';
 import '../models/user_model.dart' as models;
@@ -356,6 +356,8 @@ class FCMService {
       user = null;
     }
 
+    if (!context.mounted) return;
+
     if (!isAuthenticated || user == null) {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const WelcomeScreen()),
@@ -367,6 +369,8 @@ class FCMService {
     try {
       final authService = AuthService();
       final userData = await authService.getUserData(user.uid);
+
+      if (!context.mounted) return;
 
       if (userData == null) {
         Navigator.of(context).pushAndRemoveUntil(
@@ -472,6 +476,7 @@ class FCMService {
         );
       }
     } catch (_) {
+      if (!context.mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const WelcomeScreen()),
         (route) => false,

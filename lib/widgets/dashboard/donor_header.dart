@@ -25,7 +25,7 @@ class DonorHeader extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppTheme.deepRed.withOpacity(0.10), Colors.white],
+          colors: [AppTheme.deepRed.withValues(alpha: 0.10), Colors.white],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),
@@ -40,7 +40,7 @@ class DonorHeader extends StatelessWidget {
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: AppTheme.deepRed.withOpacity(0.12),
+              color: AppTheme.deepRed.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -142,7 +142,7 @@ class _PillStat extends StatelessWidget {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: fg.withOpacity(0.85),
+              color: fg.withValues(alpha: 0.85),
             ),
           ),
         ],

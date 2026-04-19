@@ -7,7 +7,7 @@ import '../models/blood_request_model.dart';
 import '../controllers/donor_dashboard_controller.dart';
 import 'notifications_screen.dart';
 import '../services/fcm_service.dart';
-import 'donor_profile_screen.dart';
+import 'donor_profile/donor_profile_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common/app_bar_with_logo.dart';
 import '../widgets/common/error_box.dart';
@@ -16,6 +16,8 @@ import '../widgets/common/section_header.dart';
 import '../widgets/common/empty_state.dart';
 import '../widgets/dashboard/donor_header.dart';
 import '../widgets/dashboard/donor_request_card.dart';
+import '../widgets/common/donor_cooldown_blocked_message.dart';
+import '../utils/donor_eligibility.dart';
 import 'donor_map_screen.dart';
 
 /// Main dashboard screen for donors
@@ -65,6 +67,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) {
         _loadRequests();
+        _loadUserProfile();
       }
     });
 
@@ -199,12 +202,43 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
     );
   }
 
+  bool get _donationCooldownActive =>
+      DonorEligibility.isCooldownActive(_userProfile);
+
+  DateTime? _donationCooldownEndsAt() =>
+      DonorEligibility.cooldownEndsAt(_userProfile);
+
   Future<void> _submitDonorResponse(BloodRequest request, String status) async {
     if (_respondingRequestId != null) return;
     if (request.isCompleted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('This request is completed. Responses are disabled.'),
+        ),
+      );
+      return;
+    }
+    if (status == 'accepted' &&
+        _donationCooldownActive &&
+        request.myResponse != 'accepted') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.grey.shade900,
+          content: DonorCooldownBlockedMessage(
+            baseStyle: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              height: 1.35,
+            ),
+            linkStyle: TextStyle(
+              color: Colors.amber.shade100,
+              fontSize: 14,
+              height: 1.35,
+              fontWeight: FontWeight.w800,
+              decoration: TextDecoration.underline,
+            ),
+          ),
         ),
       );
       return;
@@ -226,10 +260,34 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
         ),
       );
       await _loadRequests();
+      await _loadUserProfile();
     } catch (e) {
       if (!mounted) return;
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      final showLinked =
+          msg.toLowerCase().contains('not eligible') ||
+          msg.toLowerCase().contains('when can i donate');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.grey.shade900,
+          content: showLinked
+              ? DonorCooldownBlockedMessage(
+                  baseStyle: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    height: 1.35,
+                  ),
+                  linkStyle: TextStyle(
+                    color: Colors.amber.shade100,
+                    fontSize: 14,
+                    height: 1.35,
+                    fontWeight: FontWeight.w800,
+                    decoration: TextDecoration.underline,
+                  ),
+                )
+              : Text(msg, style: const TextStyle(color: Colors.white)),
+        ),
       );
     } finally {
       if (mounted) {
@@ -335,6 +393,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
                                 request: request,
                                 isSubmittingResponse:
                                     _respondingRequestId == request.id,
+                                acceptBlockedByCooldown: _donationCooldownActive,
                                 onDonate: () =>
                                     _submitDonorResponse(request, 'accepted'),
                                 onUndoDonate: () =>
@@ -353,6 +412,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
             requests: _requests,
             donorGovernorate: _userProfile?['location'] as String?,
             respondingRequestId: _respondingRequestId,
+            nextDonationEligibleAt: _donationCooldownEndsAt(),
             onRespond: _submitDonorResponse,
           ),
         ],
@@ -395,25 +455,24 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
   /// Builds header with donor name and statistics
   /// Uses Cloud Functions to get user profile data (polling every 30 seconds)
   Widget _buildHeader(User? user) {
-   
-  final activeRequests =
-      _requests.where((r) => !r.isCompleted).toList();
+    final activeRequests =
+        _requests.where((r) => !r.isCompleted).toList();
 
-  final activeUnits = activeRequests.fold(
-    0,
-    (sum, r) => sum + r.units,
-  );
+    final activeUnits = activeRequests.fold(
+      0,
+      (sum, r) => sum + r.units,
+    );
 
-  final donorName = _controller.extractDonorName(
-    _userProfile,
-    user?.displayName,
-  );
+    final donorName = _controller.extractDonorName(
+      _userProfile,
+      user?.displayName,
+    );
 
-  return DonorHeader(
-    donorName: donorName, 
-    activeRequests: activeRequests.length,
-    activeUnits: activeUnits,
-  );
-}
+    return DonorHeader(
+      donorName: donorName,
+      activeRequests: activeRequests.length,
+      activeUnits: activeUnits,
+    );
+  }
 }
 

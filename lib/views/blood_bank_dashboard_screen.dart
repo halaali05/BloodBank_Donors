@@ -4,9 +4,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'new_request_screen.dart';
 import 'login_screen.dart';
-import 'donor_management_screen.dart';
+import 'donor_management/donor_management_screen.dart';
 
 import 'stats_screen.dart';
+import 'blood_bank_past_donors_screen.dart';
 
 import '../models/blood_request_model.dart';
 import '../controllers/blood_bank_dashboard_controller.dart';
@@ -291,6 +292,18 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
         title: 'Blood Bank',
         actions: [
           IconButton(
+            tooltip: 'Donors',
+            icon: const Icon(Icons.groups_2_outlined, color: AppTheme.deepRed),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const BloodBankPastDonorsScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.info_outline, color: AppTheme.deepRed),
             onPressed: () {
               Navigator.push(
@@ -309,12 +322,17 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
       ),
       body: SafeArea(
         child: _isLoading && _requests.isEmpty
-            ? const LoadingIndicator()
+            ? const LoadingIndicator(color: AppTheme.deepRed)
             : _error != null
-            ? ErrorBox(title: 'Error', message: _error!)
+            ? ErrorBox(
+                title: 'Error',
+                message: _error!,
+                onRetry: _loadRequests,
+              )
             : RefreshIndicator(
                 onRefresh: _loadRequests,
                 child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(AppTheme.padding),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,

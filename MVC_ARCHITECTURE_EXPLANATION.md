@@ -37,7 +37,7 @@ Your project implements **MVC/MVP (Model-View-Presenter)** pattern with the foll
 │  - Displays UI                                              │
 │  - Handles user interactions                                │
 │  - Delegates business logic to Controllers                  │
-│  Location: lib/screens/                                     │
+│  Location: lib/views/                                     │
 └───────────────────────┬─────────────────────────────────────┘
                         │
                         │ User Action / Data Request
@@ -117,7 +117,7 @@ class LoginResult {
 
 ---
 
-### 2. VIEW Layer (`lib/screens/`)
+### 2. VIEW Layer (`lib/views/`)
 
 **Purpose**: Displays UI and handles user interactions
 
@@ -135,7 +135,7 @@ class LoginResult {
 
 **Example**:
 ```dart
-// lib/screens/login_screen.dart
+// lib/views/login_screen.dart
 class LoginScreen extends StatefulWidget {
   // UI components only
 }
@@ -348,7 +348,7 @@ Let's trace through a complete login flow to see MVC in action:
 ### Step 1: User Interaction (VIEW)
 
 ```dart
-// lib/screens/login_screen.dart
+// lib/views/login_screen.dart
 class _LoginScreenState extends State<LoginScreen> {
   final LoginController _loginController = LoginController();
   final TextEditingController _emailController = TextEditingController();
@@ -911,7 +911,7 @@ Your project also includes a **Service Layer** that acts as an API interface:
 
 ### 1. VIEW Layer
 ```dart
-// lib/screens/login_screen.dart
+// lib/views/login_screen.dart
 class _LoginScreenState extends State<LoginScreen> {
   final LoginController _loginController = LoginController();
   
@@ -1096,7 +1096,7 @@ class LoginResult {
    - Enums
    - No business logic
 
-2. **VIEW** (`lib/screens/`)
+2. **VIEW** (`lib/views/`)
    - UI components
    - User interactions
    - Navigation

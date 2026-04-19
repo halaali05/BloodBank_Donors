@@ -1,8 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
-import '../../screens/chat_screen.dart';
-import '../../screens/request_details_screen.dart';
+import '../../views/chat_screen.dart';
+import '../../views/request_details_screen.dart';
 
 /// Widget that displays a single notification in the notifications list
 /// Shows notification details, urgent badge, and allows navigation to request details and chat
@@ -127,7 +127,7 @@ class NotificationItemCloud extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: AppTheme.deepRed.withOpacity(0.1),
+                    color: AppTheme.deepRed.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(iconData, color: AppTheme.deepRed, size: 24),

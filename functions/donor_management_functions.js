@@ -40,6 +40,31 @@ async function getRequest(requestId) {
   return { id: reqSnap.id, ...d };
 }
 
+function serializeMedicalReportDoc(doc) {
+  const d = doc.data() || {};
+  const toISO = (ts) => {
+    if (!ts) return null;
+    if (ts.toDate) return ts.toDate().toISOString();
+    if (ts instanceof Date) return ts.toISOString();
+    return null;
+  };
+  return {
+    id: doc.id,
+    requestId: d.requestId || "",
+    bloodBankId: d.bloodBankId || "",
+    bloodBankName: d.bloodBankName || "",
+    bloodType: d.bloodType || "",
+    isUrgent: !!d.isUrgent,
+    status: d.status || "",
+    restrictionReason: d.restrictionReason || null,
+    notes: d.notes || null,
+    reportFileUrl: d.reportFileUrl || null,
+    canDonateAgainAt: toISO(d.canDonateAgainAt),
+    appointmentAt: toISO(d.appointmentAt),
+    createdAt: toISO(d.createdAt),
+  };
+}
+
 function parseAppointmentInstant(appointmentAt) {
   if (appointmentAt == null) return null;
 
@@ -319,10 +344,31 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
 
     const donorResponseData = donorResponseSnap.data() || {};
     const donorUserSnap = await db.collection("users").doc(donorId).get();
+    const donorUserData = donorUserSnap.exists ? donorUserSnap.data() || {} : {};
+    const genderRaw = String(donorUserData.gender || "")
+      .trim()
+      .toLowerCase();
+    // WHO-style whole-blood spacing: 120 days for women, 90 for men.
+    const donationCooldownDays = genderRaw === "female" ? 120 : 90;
+
+    let postDonationEligibleDate = null;
+    if (normalizedStatus === "donated") {
+      postDonationEligibleDate = new Date();
+      postDonationEligibleDate.setUTCDate(
+        postDonationEligibleDate.getUTCDate() + donationCooldownDays,
+      );
+    }
 
     const apt = donorResponseData.appointmentAt;
     const appointmentAtForReport =
       apt && typeof apt.toMillis === "function" ? apt : null;
+
+    const reportCanDonateTs =
+      normalizedStatus === "donated" && postDonationEligibleDate
+        ? admin.firestore.Timestamp.fromDate(postDonationEligibleDate)
+        : canDonateAgainDate
+          ? admin.firestore.Timestamp.fromDate(canDonateAgainDate)
+          : null;
 
     const reportData = {
       requestId,
@@ -339,9 +385,7 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
         typeof reportFileUrl === "string" && reportFileUrl.trim()
           ? reportFileUrl.trim()
           : null,
-      canDonateAgainAt: canDonateAgainDate
-        ? admin.firestore.Timestamp.fromDate(canDonateAgainDate)
-        : null,
+      canDonateAgainAt: reportCanDonateTs,
       appointmentAt: appointmentAtForReport,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
@@ -359,6 +403,7 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
     });
 
     const donorRef = db.collection("users").doc(donorId);
+    const requestRef = db.collection("requests").doc(requestId);
 
     if (normalizedStatus === "restricted" && canDonateAgainDate) {
       batch.set(
@@ -370,22 +415,25 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
         },
         { merge: true },
       );
-    } else if (normalizedStatus === "donated") {
+    } else if (normalizedStatus === "donated" && postDonationEligibleDate) {
+      const nextElig = admin.firestore.Timestamp.fromDate(
+        postDonationEligibleDate,
+      );
+      const donorDonatedUpdate = {
+        restrictedUntil: admin.firestore.FieldValue.delete(),
+        restrictionReason: admin.firestore.FieldValue.delete(),
+        lastDonatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        nextDonationEligibleAt: nextElig,
+      };
       if (donorUserSnap.exists) {
-        batch.update(donorRef, {
-          restrictedUntil: admin.firestore.FieldValue.delete(),
-          restrictionReason: admin.firestore.FieldValue.delete(),
-          lastDonatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+        batch.update(donorRef, donorDonatedUpdate);
       } else {
-        batch.set(
-          donorRef,
-          {
-            lastDonatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true },
-        );
+        batch.set(donorRef, donorDonatedUpdate, { merge: true });
       }
+      batch.update(requestRef, {
+        isCompleted: true,
+        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
     }
 
     await batch.commit();
@@ -686,6 +734,155 @@ exports.getRequestDonorResponses = onCall(
       if (e instanceof HttpsError) throw e;
       console.error("[getRequestDonorResponses] unhandled:", e);
       throw new HttpsError("internal", "Failed to fetch donor responses.");
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// 5. listBloodBankPastDonors (hospital — donors with status donated here)
+// ---------------------------------------------------------------------------
+exports.listBloodBankPastDonors = onCall(
+  publicCallableOpts,
+  async (request) => {
+    try {
+      const callerUid = requireAuth(request);
+      await requireRole(callerUid, "hospital");
+
+      const snap = await db
+        .collection("medicalReports")
+        .where("bloodBankId", "==", callerUid)
+        .limit(500)
+        .get();
+
+      /** @param {FirebaseFirestore.DocumentData} d */
+      function reportRequestId(d) {
+        const a = d.requestId;
+        const b = d.requestID;
+        const raw = a != null && String(a).trim() ? a : b;
+        if (raw == null) return "";
+        const s = String(raw).trim();
+        return s || "";
+      }
+
+      /** donorId -> { rows: { ms, rid }[] } */
+      const byDonor = new Map();
+      const allRequestIds = new Set();
+      for (const doc of snap.docs) {
+        const d = doc.data() || {};
+        if (String(d.status || "").toLowerCase() !== "donated") continue;
+        const donorId = d.donorId;
+        if (!donorId || typeof donorId !== "string") continue;
+        const ts = d.createdAt;
+        let ms = 0;
+        if (ts && typeof ts.toMillis === "function") ms = ts.toMillis();
+        else if (ts instanceof Date) ms = ts.getTime();
+        const rid = reportRequestId(d);
+        if (rid) allRequestIds.add(rid);
+        const cur = byDonor.get(donorId) || { rows: [] };
+        cur.rows.push({ ms, rid });
+        byDonor.set(donorId, cur);
+      }
+
+      const existingRequestIds = new Set();
+      const reqIdList = [...allRequestIds];
+      for (let i = 0; i < reqIdList.length; i += 10) {
+        const chunk = reqIdList.slice(i, i + 10);
+        const reqSnaps = await db.getAll(
+          ...chunk.map((id) => db.collection("requests").doc(id)),
+        );
+        for (const rs of reqSnaps) {
+          if (rs.exists) existingRequestIds.add(rs.id);
+        }
+      }
+
+      const donorIds = [...byDonor.keys()];
+      const donors = [];
+      for (let i = 0; i < donorIds.length; i += 10) {
+        const chunk = donorIds.slice(i, i + 10);
+        const snaps = await db.getAll(
+          ...chunk.map((id) => db.collection("users").doc(id)),
+        );
+        for (let j = 0; j < chunk.length; j++) {
+          const donorId = chunk[j];
+          const u = snaps[j];
+          const ud = u.exists ? u.data() || {} : {};
+          let phoneNumber = "";
+          const p = ud.phoneNumber;
+          if (typeof p === "string" && p.trim()) phoneNumber = p.trim();
+          const agg = byDonor.get(donorId);
+          const rows = (agg.rows || []).slice();
+          rows.sort((a, b) => b.ms - a.ms);
+          let lastMs = 0;
+          for (const r of rows) lastMs = Math.max(lastMs, r.ms);
+          let messageRequestId = null;
+          for (const r of rows) {
+            if (r.rid && existingRequestIds.has(r.rid)) {
+              messageRequestId = r.rid;
+              break;
+            }
+          }
+          donors.push({
+            donorId,
+            fullName: ud.fullName || ud.name || "Donor",
+            email: typeof ud.email === "string" ? ud.email : "",
+            phoneNumber,
+            donationCount: rows.length,
+            lastDonatedAtMs: lastMs || null,
+            messageRequestId,
+          });
+        }
+      }
+
+      donors.sort(
+        (a, b) => (b.lastDonatedAtMs || 0) - (a.lastDonatedAtMs || 0),
+      );
+      return { ok: true, donors };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[listBloodBankPastDonors] unhandled:", e);
+      throw new HttpsError("internal", "Failed to list past donors.");
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// 6. getBloodBankDonorMedicalHistory (hospital — reports at this bank)
+// ---------------------------------------------------------------------------
+exports.getBloodBankDonorMedicalHistory = onCall(
+  publicCallableOpts,
+  async (request) => {
+    try {
+      const callerUid = requireAuth(request);
+      await requireRole(callerUid, "hospital");
+      const donorId = (request.data || {}).donorId;
+      if (!donorId || typeof donorId !== "string") {
+        throw new HttpsError("invalid-argument", "donorId is required");
+      }
+
+      const snap = await db
+        .collection("medicalReports")
+        .where("bloodBankId", "==", callerUid)
+        .limit(500)
+        .get();
+
+      const rows = snap.docs
+        .filter((doc) => (doc.data() || {}).donorId === donorId)
+        .map(serializeMedicalReportDoc)
+        .sort((a, b) => {
+          const at = Date.parse(a.createdAt || 0) || 0;
+          const bt = Date.parse(b.createdAt || 0) || 0;
+          return bt - at;
+        })
+        .slice(0, 100);
+
+      return { reports: rows };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[getBloodBankDonorMedicalHistory] unhandled:", e);
+      throw new HttpsError(
+        "internal",
+        "Failed to fetch donor medical history.",
+      );
     }
   },
 );

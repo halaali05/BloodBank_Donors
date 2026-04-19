@@ -1,11 +1,11 @@
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'dart:convert';
-
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'firebase_options.dart';
-import 'screens/welcome_screen.dart';
+import 'views/welcome_screen.dart';
 import 'services/fcm_service.dart';
 import 'services/local_notif_service.dart';
 
@@ -89,8 +89,21 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
+/// Web-only FCM startup; use try/catch instead of [Future.catchError] so the
+/// error handler return type cannot trip `Future<void>` / JS interop.
+Future<void> _initFcmForWeb() async {
+  try {
+    await FCMService.instance.initFCM();
+  } catch (e, st) {
+    debugPrint('FCM init (web): $e');
+    debugPrint('$st');
+  }
+}
+
 // ------------------ App Initialization ------------------
-/// Main entry point of the application
+/// **Single entry point** for every platform Flutter supports here
+/// (Android, iOS, Web, Windows, Linux, macOS). Do not add a separate
+/// `main` for web; `flutter run` / `flutter build` use this file by default.
 ///
 /// Initialization flow:
 /// 1. Ensure Flutter bindings are initialized
@@ -100,26 +113,36 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 /// 5. Run the app
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint(details.exceptionAsString());
+  };
 
-  // Initialize Firebase
+  try {
+    await _bootstrapApp();
+  } catch (e, st) {
+    debugPrint('Startup failed: $e\n$st');
+    runApp(_StartupFailureApp(message: '$e'));
+  }
+}
+
+Future<void> _bootstrapApp() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Register background message handler only on mobile platforms (not web)
   if (!kIsWeb) {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
-  // Create Android notification channel before any FCM can arrive (data-only path).
   if (!kIsWeb) {
     await LocalNotifService.instance.init();
+    await FCMService.instance.initFCM();
   }
-
-  // Initialize Firebase Cloud Messaging for push notifications
-  await FCMService.instance.initFCM();
 
   runApp(const HayatApp());
 
   if (kIsWeb) {
+    unawaited(_initFcmForWeb());
+
     final encodedPayload = Uri.base.queryParameters['notificationData'];
     if (encodedPayload != null && encodedPayload.isNotEmpty) {
       try {
@@ -131,10 +154,32 @@ void main() async {
             });
           });
         }
-      } catch (_) {
-        // Ignore malformed payloads.
-      }
+      } catch (_) {}
     }
+  }
+}
+
+/// Shown if Firebase/bootstrap throws before [HayatApp] can run (helps debug web).
+class _StartupFailureApp extends StatelessWidget {
+  final String message;
+
+  const _StartupFailureApp({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: SelectableText(
+              'App failed to start.\n\n$message',
+              style: const TextStyle(fontSize: 14, height: 1.4),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -156,7 +201,7 @@ class HayatApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
-      title: 'Hayah',
+      title: 'HAYAH',
       debugShowCheckedModeBanner: false,
       theme: _buildTheme(),
       home: const WelcomeScreen(),
@@ -170,7 +215,8 @@ class HayatApp extends StatelessWidget {
       primaryColor: _primaryColor,
       scaffoldBackgroundColor: _bgColor,
       colorScheme: ColorScheme.fromSeed(seedColor: _primaryColor),
-      fontFamily: 'Roboto',
+      // Web: bundled "Roboto" is not included; unspecified uses a good system UI font.
+      fontFamily: kIsWeb ? null : 'Roboto',
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           shape: RoundedRectangleBorder(

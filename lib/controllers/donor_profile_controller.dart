@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -51,9 +52,9 @@ class DonorProfileController {
         return DonorMedicalReport.fromMap(doc.data(), doc.id);
       }).toList();
 
-      print('✅ Firestore reports: ${fromFirestore.length}');
+      debugPrint('Firestore reports: ${fromFirestore.length}');
     } catch (e) {
-      print('❌ Firestore read error: $e');
+      debugPrint('Firestore read error: $e');
       fromFirestore = [];
     }
 

@@ -2,8 +2,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import '../models/user_model.dart' as models;
 import '../models/login_models.dart';
-import '../screens/donor_dashboard_screen.dart';
-import '../screens/blood_bank_dashboard_screen.dart';
+import '../views/donor_dashboard_screen.dart';
+import '../views/blood_bank_dashboard_screen.dart';
 
 /// Controller for handling login business logic
 /// Separates business logic from UI for better maintainability

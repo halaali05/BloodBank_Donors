@@ -9,7 +9,7 @@ This report provides a comprehensive analysis of all screens in the Blood Bank D
 
 ### Screen Pattern
 - **Purpose**: Display UI and handle user interactions
-- **Location**: `lib/screens/` (with subfolders for related screens)
+- **Location**: `lib/views/` (with subfolders for related screens)
 - **Pattern**: MVC/MVP (Model-View-Controller / Model-View-Presenter)
 - **Business Logic**: Delegated to Controllers
 - **Security**: All database operations via Cloud Functions (server-side)
@@ -48,7 +48,7 @@ User Interaction → Screen → Controller → Service → Cloud Functions → F
 ## Screen Categories
 
 ### 1. Authentication Screens
-**Location**: `lib/screens/` and `lib/screens/password_reset/`
+**Location**: `lib/views/` and `lib/views/password_reset/`
 
 #### WelcomeScreen
 - **Type**: StatelessWidget
@@ -107,7 +107,7 @@ User Interaction → Screen → Controller → Service → Cloud Functions → F
 ---
 
 ### 2. Dashboard Screens
-**Location**: `lib/screens/`
+**Location**: `lib/views/`
 
 #### DonorDashboardScreen
 - **Type**: StatefulWidget
@@ -140,7 +140,7 @@ User Interaction → Screen → Controller → Service → Cloud Functions → F
 ---
 
 ### 3. Profile & Settings Screens
-**Location**: `lib/screens/`
+**Location**: `lib/views/`
 
 #### DonorProfileScreen
 - **Type**: StatefulWidget
@@ -158,7 +158,7 @@ User Interaction → Screen → Controller → Service → Cloud Functions → F
 ---
 
 ### 4. Communication Screens
-**Location**: `lib/screens/`
+**Location**: `lib/views/`
 
 #### NotificationsScreen
 - **Type**: StatefulWidget
@@ -201,7 +201,7 @@ User Interaction → Screen → Controller → Service → Cloud Functions → F
 ---
 
 ### 5. Request Management Screens
-**Location**: `lib/screens/`
+**Location**: `lib/views/`
 
 #### NewRequestScreen
 - **Type**: StatefulWidget
@@ -235,7 +235,7 @@ User Interaction → Screen → Controller → Service → Cloud Functions → F
 
 ### File Structure
 ```
-lib/screens/
+lib/views/
 ├── welcome_screen.dart
 ├── login_screen.dart
 ├── register_screen.dart

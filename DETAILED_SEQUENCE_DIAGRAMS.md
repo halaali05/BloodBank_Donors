@@ -318,7 +318,7 @@ sequenceDiagram
 
 ### Actual Method Calls:
 
-1. **NewRequestScreen._submit()** (`lib/screens/new_request_screen.dart`)
+1. **NewRequestScreen._submit()** (`lib/views/new_request_screen.dart`)
    - Calls: `_controller.createRequest(...)` - delegates to controller
 
 2. **NewRequestController.createRequest()** (`lib/controllers/new_request_controller.dart`)
@@ -365,7 +365,7 @@ sequenceDiagram
 - **Cloud Functions**: `updateLastLoginAt`, `completeProfileAfterVerification`, `getUserData`
 
 ### Create Request Flow:
-- **NewRequestScreen** (`lib/screens/new_request_screen.dart`): `_submit()`
+- **NewRequestScreen** (`lib/views/new_request_screen.dart`): `_submit()`
 - **FirebaseFunctions**: `instanceFor(region: 'us-central1').httpsCallable('addRequest').call()`
 - **addRequest** (`functions/src/requests.js`): `requireAuth()`, `db.collection('users').doc().get()`, `db.collection('requests').doc().set()`
 - **sendRequestMessageToDonors** (`functions/src/requests.js`): `onDocumentCreated()`, `db.collection('users').where().get()`, `admin.messaging().sendAll()`

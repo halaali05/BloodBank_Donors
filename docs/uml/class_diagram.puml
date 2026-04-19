@@ -705,12 +705,6 @@ build(): Widget
 }
 StatelessWidget <|-- LocationDropdown
 LocationDropdown ..> ValueChanged
-class ScreenTitle {
----
-text: String
-build(): Widget
-}
-StatelessWidget <|-- ScreenTitle
 class LoginLink {
 ---
 onTap: VoidCallback

@@ -196,7 +196,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                             width: 42,
                             height: 42,
                             decoration: BoxDecoration(
-                              color: AppTheme.deepRed.withOpacity(0.10),
+                              color: AppTheme.deepRed.withValues(alpha: 0.10),
                               borderRadius: BorderRadius.circular(14),
                             ),
                             child: const Icon(

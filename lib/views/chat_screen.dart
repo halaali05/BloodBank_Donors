@@ -154,6 +154,7 @@ class _ChatScreenState extends State<ChatScreen> {
         requestOwnerId: _requestOwnerId,
       );
 
+      if (!mounted) return;
       _textController.clear();
       FocusScope.of(context).unfocus();
 

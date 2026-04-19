@@ -4,11 +4,11 @@ import 'dart:convert';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../main.dart';
-import '../screens/welcome_screen.dart';
-import '../screens/notifications_screen.dart';
-import '../screens/donor_dashboard_screen.dart';
-import '../screens/blood_bank_dashboard_screen.dart';
-import '../screens/chat_screen.dart';
+import '../views/welcome_screen.dart';
+import '../views/notifications_screen.dart';
+import '../views/donor_dashboard_screen.dart';
+import '../views/blood_bank_dashboard_screen.dart';
+import '../views/chat_screen.dart';
 import '../services/auth_service.dart';
 import '../models/user_model.dart' as models;
 
@@ -264,6 +264,8 @@ class LocalNotifService {
       user = null;
     }
 
+    if (!context.mounted) return;
+
     // If not authenticated, navigate to welcome screen
     if (!isAuthenticated || user == null) {
       Navigator.of(context).pushAndRemoveUntil(
@@ -277,6 +279,8 @@ class LocalNotifService {
     try {
       final authService = AuthService();
       final userData = await authService.getUserData(user.uid);
+
+      if (!context.mounted) return;
 
       if (userData == null) {
         // If user data not found, go to welcome screen
@@ -383,6 +387,7 @@ class LocalNotifService {
       }
     } catch (e) {
       // Failed to get user role - navigate to welcome screen
+      if (!context.mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const WelcomeScreen()),
         (route) => false,

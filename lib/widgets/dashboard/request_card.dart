@@ -43,7 +43,7 @@ class RequestCard extends StatelessWidget {
 
         boxShadow: [
         BoxShadow(
-        color: isUrgent? const Color.fromARGB(255, 189, 79, 71).withOpacity(0.5): Colors.black12,
+        color: isUrgent? const Color.fromARGB(255, 189, 79, 71).withValues(alpha: 0.5): Colors.black12,
         blurRadius: isUrgent ? 12 : 6,
         offset: const Offset(0, 3),
       ),
@@ -59,8 +59,8 @@ class RequestCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: isUrgent
-            ? Colors.red.withOpacity(0.15)
-            : AppTheme.deepRed.withOpacity(0.10),
+            ? Colors.red.withValues(alpha: 0.15)
+            : AppTheme.deepRed.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
@@ -251,7 +251,7 @@ class _CountLink extends StatelessWidget {
                 fontWeight: FontWeight.w900,
                 color: color,
                 decoration: TextDecoration.underline,
-                decorationColor: color.withOpacity(0.5),
+                decorationColor: color.withValues(alpha: 0.5),
               ),
             ),
           ],

@@ -78,6 +78,15 @@ class User {
   /// Donor gender: `male` or `female` (from registration).
   final String? gender;
 
+  /// After a completed donation, donor cannot use "I can donate" until this time.
+  final DateTime? nextDonationEligibleAt;
+
+  /// Last successful donation timestamp (server), used with gender if needed.
+  final DateTime? lastDonatedAt;
+
+  /// Medical restriction end time (from restricted report), if any.
+  final DateTime? restrictedUntil;
+
   /// Donor mobile in E.164 (e.g. +962791234567).
   final String? phoneNumber;
 
@@ -98,6 +107,9 @@ class User {
     this.longitude,
     this.bloodType,
     this.gender,
+    this.nextDonationEligibleAt,
+    this.lastDonatedAt,
+    this.restrictedUntil,
     this.phoneNumber,
     this.createdAt,
   });
@@ -127,6 +139,9 @@ class User {
       longitude: parseDouble(data['longitude']),
       bloodType: data['bloodType'] as String?,
       gender: data['gender'] as String?,
+      nextDonationEligibleAt: _parseDate(data['nextDonationEligibleAt']),
+      lastDonatedAt: _parseDate(data['lastDonatedAt']),
+      restrictedUntil: _parseDate(data['restrictedUntil']),
       phoneNumber: data['phoneNumber'] as String?,
       createdAt: _parseDate(data['createdAt']),
     );

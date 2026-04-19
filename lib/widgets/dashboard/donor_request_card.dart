@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../common/donor_cooldown_blocked_message.dart';
 import '../../theme/app_theme.dart';
 import '../../models/blood_request_model.dart';
 import '../common/urgent_badge.dart';
@@ -12,6 +13,9 @@ class DonorRequestCard extends StatelessWidget {
   final VoidCallback? onUndoDonate;
   final bool isSubmittingResponse;
 
+  /// When true, new "I can donate" taps are blocked (post-donation cooldown).
+  final bool acceptBlockedByCooldown;
+
   const DonorRequestCard({
     super.key,
     required this.request,
@@ -19,6 +23,7 @@ class DonorRequestCard extends StatelessWidget {
     this.onDonate,
     this.onUndoDonate,
     this.isSubmittingResponse = false,
+    this.acceptBlockedByCooldown = false,
   });
 
   @override
@@ -33,6 +38,8 @@ class DonorRequestCard extends StatelessWidget {
     final my = request.myResponse;
     final isDonating = my == 'accepted';
     final showResponseRow = onDonate != null;
+    final cooldownBlocksAccept =
+        acceptBlockedByCooldown && !isDonating && !isDonationFinal;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -49,7 +56,7 @@ class DonorRequestCard extends StatelessWidget {
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color: AppTheme.deepRed.withOpacity(0.10),
+              color: AppTheme.deepRed.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(16),
             ),
             alignment: Alignment.center,
@@ -180,6 +187,36 @@ class DonorRequestCard extends StatelessWidget {
                 ],
                 if (showResponseRow) ...[
                   const SizedBox(height: 10),
+                  if (cooldownBlocksAccept) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.blueGrey.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.blueGrey.shade200),
+                      ),
+                      child: DonorCooldownBlockedMessage(
+                        baseStyle: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blueGrey.shade900,
+                          height: 1.3,
+                        ),
+                        linkStyle: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          height: 1.3,
+                          color: AppTheme.deepRed,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   if (isCompleted || isDonationFinal)
                     Container(
                       width: double.infinity,
@@ -233,7 +270,7 @@ class DonorRequestCard extends StatelessWidget {
                                 )
                               : BorderSide.none,
                         ),
-                        onPressed: isSubmittingResponse
+                        onPressed: isSubmittingResponse || cooldownBlocksAccept
                             ? null
                             : (isDonating ? onUndoDonate : onDonate),
                         icon: Icon(

@@ -129,6 +129,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       // Refresh notifications after marking as read
       await _loadNotifications();
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('All notifications marked as read'),

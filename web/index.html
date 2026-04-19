@@ -18,6 +18,7 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="description" content="A new Flutter project.">
 
   <!-- iOS meta tags & icons -->
@@ -44,6 +45,7 @@
       });
     }
   </script>
-  <script src="flutter_bootstrap.js" async></script>
+  <!-- No async: must run after module scripts above have assigned pdfjsLib. -->
+  <script src="flutter_bootstrap.js"></script>
 </body>
 </html>

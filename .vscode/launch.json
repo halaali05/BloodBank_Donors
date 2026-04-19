@@ -2,16 +2,35 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Flutter Web (main.dart)",
+      "name": "bloodbank_donors (pick device)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart"
+    },
+    {
+      "name": "bloodbank_donors (Android)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
-      "args": [
-        "-d",
-        "chrome",
-        "--web-port",
-        "8080"
-      ]
+      "deviceId": "android"
+    },
+    {
+      "name": "bloodbank_donors (web — Chrome)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "deviceId": "chrome",
+      "toolArgs": ["--web-port=8080", "--no-web-resources-cdn"]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "bloodbank_donors (web + Android together)",
+      "configurations": [
+        "bloodbank_donors (web — Chrome)",
+        "bloodbank_donors (Android)"
+      ],
+      "stopAll": true
     }
   ]
 }

@@ -25,7 +25,7 @@ class WelcomeScreen extends StatelessWidget {
           ),
 
           // Semi-transparent white overlay for better text readability
-          Container(color: Colors.white.withOpacity(0.78)),
+          Container(color: Colors.white.withValues(alpha: 0.78)),
 
           SafeArea(
             child: Stack(

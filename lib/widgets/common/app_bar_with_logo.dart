@@ -48,8 +48,24 @@ class AppBarWithLogo extends StatelessWidget implements PreferredSizeWidget {
               fit: BoxFit.contain,
             ),
           if (leading == null) const SizedBox(width: 10),
-          if (!centerTitle)
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          Expanded(
+            child: centerTitle
+                ? Center(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  )
+                : Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+          ),
         ],
       ),
       actions: [

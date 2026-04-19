@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import '../widgets/common/donor_cooldown_blocked_message.dart';
 import '../models/blood_request_model.dart';
 import '../theme/app_theme.dart';
 import 'request_details_screen.dart';
@@ -13,12 +14,17 @@ class DonorMapScreen extends StatefulWidget {
   final Future<void> Function(BloodRequest, String) onRespond;
   final String? respondingRequestId;
 
+  /// Until this instant (exclusive of equality handled in helper), new
+  /// "I can donate" responses are blocked after a completed donation.
+  final DateTime? nextDonationEligibleAt;
+
   const DonorMapScreen({
     super.key,
     required this.requests,
     this.donorGovernorate,
     required this.onRespond,
     this.respondingRequestId,
+    this.nextDonationEligibleAt,
   });
 
   @override
@@ -47,6 +53,13 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
   void initState() {
     super.initState();
     _currentZoom = _initialZoom;
+  }
+
+  /// Blocks starting a new "I can donate" while post-donation cooldown active.
+  bool _cooldownBlocksNewAccept(BloodRequest request) {
+    final end = widget.nextDonationEligibleAt;
+    if (end == null || !end.isAfter(DateTime.now())) return false;
+    return request.myResponse != 'accepted';
   }
 
   @override
@@ -162,6 +175,7 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
             child: _RequestBottomSheet(
               request: _selectedRequest!,
               isResponding: widget.respondingRequestId == _selectedRequest!.id,
+              cooldownBlocksAccept: _cooldownBlocksNewAccept(_selectedRequest!),
               onDonate: () => widget.onRespond(_selectedRequest!, 'accepted'),
               onUndoDonate: () => widget.onRespond(_selectedRequest!, 'none'),
               onDetails: () {
@@ -184,6 +198,7 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
             child: _ClusterBottomSheet(
               requests: _clusterRequests!,
               respondingRequestId: widget.respondingRequestId,
+              nextDonationEligibleAt: widget.nextDonationEligibleAt,
               onRespond: widget.onRespond,
               onSelectRequest: (r) {
                 setState(() {
@@ -492,6 +507,7 @@ class _PinTailPainter extends CustomPainter {
 class _ClusterBottomSheet extends StatelessWidget {
   final List<BloodRequest> requests;
   final String? respondingRequestId;
+  final DateTime? nextDonationEligibleAt;
   final Future<void> Function(BloodRequest, String) onRespond;
   final ValueChanged<BloodRequest> onSelectRequest;
   final VoidCallback onClose;
@@ -499,10 +515,16 @@ class _ClusterBottomSheet extends StatelessWidget {
   const _ClusterBottomSheet({
     required this.requests,
     required this.respondingRequestId,
+    this.nextDonationEligibleAt,
     required this.onRespond,
     required this.onSelectRequest,
     required this.onClose,
   });
+
+  static bool _blocks(BloodRequest request, DateTime? end) {
+    if (end == null || !end.isAfter(DateTime.now())) return false;
+    return request.myResponse != 'accepted';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -579,6 +601,7 @@ class _ClusterBottomSheet extends StatelessWidget {
                 return _ClusterRequestCard(
                   request: r,
                   isResponding: respondingRequestId == r.id,
+                  cooldownBlocksAccept: _blocks(r, nextDonationEligibleAt),
                   onRespond: onRespond,
                   onTap: () => onSelectRequest(r),
                 );
@@ -594,12 +617,14 @@ class _ClusterBottomSheet extends StatelessWidget {
 class _ClusterRequestCard extends StatelessWidget {
   final BloodRequest request;
   final bool isResponding;
+  final bool cooldownBlocksAccept;
   final Future<void> Function(BloodRequest, String) onRespond;
   final VoidCallback onTap;
 
   const _ClusterRequestCard({
     required this.request,
     required this.isResponding,
+    required this.cooldownBlocksAccept,
     required this.onRespond,
     required this.onTap,
   });
@@ -609,7 +634,8 @@ class _ClusterRequestCard extends StatelessWidget {
     final isDonating = request.myResponse == 'accepted';
     final process = request.donorProcessStatus?.toLowerCase();
     final isDonationFinal = process == 'donated' || process == 'restricted';
-    final isActionDisabled = isResponding || isDonationFinal;
+    final isActionDisabled =
+        isResponding || isDonationFinal || cooldownBlocksAccept;
 
     return GestureDetector(
       onTap: onTap,
@@ -731,7 +757,9 @@ class _ClusterRequestCard extends StatelessWidget {
                   : Text(
                       isDonationFinal
                           ? 'Donation completed'
-                          : (isDonating ? 'Selected' : 'I can donate'),
+                          : (cooldownBlocksAccept
+                                ? 'Not eligible'
+                                : (isDonating ? 'Selected' : 'I can donate')),
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -750,6 +778,7 @@ class _ClusterRequestCard extends StatelessWidget {
 class _RequestBottomSheet extends StatelessWidget {
   final BloodRequest request;
   final bool isResponding;
+  final bool cooldownBlocksAccept;
   final VoidCallback onDonate;
   final VoidCallback onUndoDonate;
   final VoidCallback onDetails;
@@ -758,6 +787,7 @@ class _RequestBottomSheet extends StatelessWidget {
   const _RequestBottomSheet({
     required this.request,
     required this.isResponding,
+    required this.cooldownBlocksAccept,
     required this.onDonate,
     required this.onUndoDonate,
     required this.onDetails,
@@ -769,7 +799,8 @@ class _RequestBottomSheet extends StatelessWidget {
     final isDonating = request.myResponse == 'accepted';
     final process = request.donorProcessStatus?.toLowerCase();
     final isDonationFinal = process == 'donated' || process == 'restricted';
-    final isActionDisabled = isResponding || isDonationFinal;
+    final isActionDisabled =
+        isResponding || isDonationFinal || cooldownBlocksAccept;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
@@ -904,6 +935,25 @@ class _RequestBottomSheet extends StatelessWidget {
                   ),
                 ],
 
+                if (cooldownBlocksAccept) ...[
+                  const SizedBox(height: 10),
+                  DonorCooldownBlockedMessage(
+                    baseStyle: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blueGrey.shade800,
+                      height: 1.35,
+                    ),
+                    linkStyle: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      height: 1.35,
+                      color: AppTheme.deepRed,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ],
+
                 const SizedBox(height: 14),
 
                 SizedBox(
@@ -930,9 +980,11 @@ class _RequestBottomSheet extends StatelessWidget {
                     label: Text(
                       isDonationFinal
                           ? 'Donation completed'
-                          : (isDonating
-                                ? 'Selected: I can donate'
-                                : 'I can donate'),
+                          : (cooldownBlocksAccept
+                                ? 'Not eligible yet'
+                                : (isDonating
+                                      ? 'Selected: I can donate'
+                                      : 'I can donate')),
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     style: AppTheme.primaryButtonStyle().copyWith(

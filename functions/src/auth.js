@@ -158,8 +158,12 @@ exports.getUserData = onCall(publicCallableOpts, async (request) => {
     }
 
     const d = snap.data() || {};
-    const toMillis = (v) =>
-      v && typeof v.toMillis === "function" ? v.toMillis() : null;
+    const toMillis = (v) => {
+      if (v == null) return null;
+      if (typeof v.toMillis === "function") return v.toMillis();
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      return null;
+    };
 
     return {
       uid: targetUid,
@@ -167,6 +171,9 @@ exports.getUserData = onCall(publicCallableOpts, async (request) => {
       createdAt: toMillis(d.createdAt),
       activatedAt: toMillis(d.activatedAt),
       emailVerifiedAt: toMillis(d.emailVerifiedAt),
+      lastDonatedAt: toMillis(d.lastDonatedAt),
+      nextDonationEligibleAt: toMillis(d.nextDonationEligibleAt),
+      restrictedUntil: toMillis(d.restrictedUntil),
     };
   } catch (err) {
     console.error("[getUserData] ERROR:", err);

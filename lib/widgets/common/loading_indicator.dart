@@ -13,19 +13,16 @@ class LoadingIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final indicator = CircularProgressIndicator(
+      strokeWidth: 2,
+      valueColor: color != null
+          ? AlwaysStoppedAnimation<Color>(color!)
+          : null,
+    );
     return Center(
       child: size != null
-          ? SizedBox(
-              width: size,
-              height: size,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: color != null
-                    ? AlwaysStoppedAnimation<Color>(color!)
-                    : null,
-              ),
-            )
-          : const CircularProgressIndicator(),
+          ? SizedBox(width: size, height: size, child: indicator)
+          : indicator,
     );
   }
 }

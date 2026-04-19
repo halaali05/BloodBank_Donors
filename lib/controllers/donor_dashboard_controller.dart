@@ -148,6 +148,10 @@ class DonorDashboardController {
             userData.fullName ?? '', // Use fullName as name for compatibility
         'email': userData.email,
         'location': userData.location ?? '',
+        'gender': userData.gender,
+        'nextDonationEligibleAt': userData.nextDonationEligibleAt,
+        'lastDonatedAt': userData.lastDonatedAt,
+        'restrictedUntil': userData.restrictedUntil,
       };
     } catch (e) {
       return null;

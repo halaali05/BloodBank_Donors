@@ -131,7 +131,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 CircleAvatar(
-                  backgroundColor: AppTheme.deepRed.withOpacity(0.1),
+                  backgroundColor: AppTheme.deepRed.withValues(alpha: 0.1),
                   child: Text(donorName[0].toUpperCase()),
                 ),
 

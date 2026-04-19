@@ -56,3 +56,6 @@ exports.cleanupOrphanMessages = notificationFunctions.cleanupOrphanMessages;
 exports.scheduleDonorAppointment = donorMgmt.scheduleDonorAppointment;
 exports.saveMedicalReport = donorMgmt.saveMedicalReport;
 exports.getDonationHistory = donorMgmt.getDonationHistory;
+exports.listBloodBankPastDonors = donorMgmt.listBloodBankPastDonors;
+exports.getBloodBankDonorMedicalHistory =
+  donorMgmt.getBloodBankDonorMedicalHistory;

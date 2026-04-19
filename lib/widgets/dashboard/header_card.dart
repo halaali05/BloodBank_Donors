@@ -31,7 +31,7 @@ class HeaderCard extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            color.withOpacity(0.12),
+            color.withValues(alpha: 0.12),
             Colors.white,
           ],
           begin: Alignment.topLeft,
@@ -50,7 +50,7 @@ class HeaderCard extends StatelessWidget {
                 width: 60,
                 height: 60,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
+                  color: color.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Icon(icon, color: color, size: 28),
@@ -103,8 +103,10 @@ class HeaderCard extends StatelessWidget {
 
           const SizedBox(height: 18),
 
-          /// 🟢 Stats Row
+          /// Stats row: fixed equal height (avoid stretch + Expanded under
+          /// unbounded height from [SingleChildScrollView], which can collapse on web).
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: _HeaderStat(
@@ -153,30 +155,42 @@ class _HeaderStat extends StatelessWidget {
     final color = isUrgent ? Colors.red : Colors.black87;
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14),
+      width: double.infinity,
+      height: 88,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
       decoration: BoxDecoration(
-        color: isUrgent ? Colors.red[50] : const Color(0xFFF5F7FB),
+        color: isUrgent ? Colors.red[50] : Colors.white,
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 17,
-              color: color,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              value,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 17,
+                color: color,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: color.withOpacity(0.7),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.2,
+                color: color.withValues(alpha: 0.7),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

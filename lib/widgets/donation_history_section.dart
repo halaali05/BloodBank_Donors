@@ -30,7 +30,7 @@ class DonationHistorySection extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: AppTheme.deepRed.withOpacity(0.08),
+                    color: AppTheme.deepRed.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Row(
@@ -207,7 +207,7 @@ class _EmptyHistoryCard extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppTheme.deepRed.withOpacity(0.06),
+            color: AppTheme.deepRed.withValues(alpha: 0.06),
             shape: BoxShape.circle,
           ),
           child: const Icon(
@@ -320,7 +320,7 @@ class _JourneyCardState extends State<_JourneyCard> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         boxShadow: AppTheme.cardShadow,
-        border: Border.all(color: headerColor.withOpacity(0.18)),
+        border: Border.all(color: headerColor.withValues(alpha: 0.18)),
       ),
       child: Column(
         children: [
@@ -330,7 +330,7 @@ class _JourneyCardState extends State<_JourneyCard> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: headerColor.withOpacity(0.06),
+                color: headerColor.withValues(alpha: 0.06),
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(18),
                 ),
@@ -386,7 +386,7 @@ class _JourneyCardState extends State<_JourneyCard> {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: headerColor.withOpacity(0.12),
+                          color: headerColor.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
@@ -489,10 +489,10 @@ class _JourneyCardState extends State<_JourneyCard> {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.07),
+                        color: Colors.orange.withValues(alpha: 0.07),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: Colors.orange.withOpacity(0.2),
+                          color: Colors.orange.withValues(alpha: 0.2),
                         ),
                       ),
                       child: Row(
@@ -597,16 +597,16 @@ class _TimelineStepRow extends StatelessWidget {
 
     if (step.isRestricted && isDone) {
       dotColor = Colors.orange;
-      lineColor = Colors.orange.withOpacity(0.25);
+      lineColor = Colors.orange.withValues(alpha: 0.25);
     } else if (isDone) {
       dotColor = Colors.green;
-      lineColor = Colors.green.withOpacity(0.25);
+      lineColor = Colors.green.withValues(alpha: 0.25);
     } else if (isActive) {
       dotColor = AppTheme.deepRed;
-      lineColor = AppTheme.deepRed.withOpacity(0.15);
+      lineColor = AppTheme.deepRed.withValues(alpha: 0.15);
     } else {
       dotColor = Colors.black12;
-      lineColor = Colors.black.withOpacity(0.06);
+      lineColor = Colors.black.withValues(alpha: 0.06);
     }
 
     return IntrinsicHeight(
@@ -621,17 +621,17 @@ class _TimelineStepRow extends StatelessWidget {
                   width: 28,
                   height: 28,
                   decoration: BoxDecoration(
-                    color: dotColor.withOpacity(isPending ? 0.08 : 0.15),
+                    color: dotColor.withValues(alpha: isPending ? 0.08 : 0.15),
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: dotColor.withOpacity(isPending ? 0.2 : 0.6),
+                      color: dotColor.withValues(alpha: isPending ? 0.2 : 0.6),
                       width: isActive ? 2 : 1.5,
                     ),
                   ),
                   child: Icon(
                     isDone || isActive ? step.activeIcon : step.icon,
                     size: 14,
-                    color: dotColor.withOpacity(isPending ? 0.3 : 1.0),
+                    color: dotColor.withValues(alpha: isPending ? 0.3 : 1.0),
                   ),
                 ),
                 if (!isLast)
@@ -674,7 +674,7 @@ class _TimelineStepRow extends StatelessWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: AppTheme.deepRed.withOpacity(0.1),
+                            color: AppTheme.deepRed.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: const Text(

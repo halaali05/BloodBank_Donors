@@ -56,7 +56,7 @@ A Flutter-based mobile application that connects blood banks/hospitals with bloo
 
 | Component | Location | Description | Connects To |
 |-----------|----------|-------------|-------------|
-| **Screens** | `lib/screens/` | User interface screens | → Controllers |
+| **Screens** | `lib/views/` | User interface screens | → Controllers |
 | • LoginScreen | `login_screen.dart` | User login interface | LoginController |
 | • RegisterScreen | `register_screen.dart` | User registration interface | RegisterController |
 | • DonorDashboardScreen | `donor_dashboard_screen.dart` | Donor main dashboard | DonorDashboardController |

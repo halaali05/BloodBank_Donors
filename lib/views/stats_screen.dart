@@ -158,7 +158,7 @@ class _StatsScreenState extends State<StatsScreen> {
                 ),
                 const SizedBox(width: 8),
                 _StatChip(
-                  label: 'Donors',
+                  label: 'donors',
                   value: '$accepted',
                   bg: const Color(0xFFECFDF5),
                   iconColor: const Color(0xFF065F46),

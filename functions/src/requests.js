@@ -29,11 +29,175 @@ function isRequestExpired(createdAtValue) {
   return Date.now() - createdAtValue.toMillis() > REQUEST_TTL_MS;
 }
 
+/** Parse Firestore Timestamp / Date / epoch ms from user document fields. */
+function millisFromFirestoreValue(v) {
+  if (v == null) return null;
+  if (typeof v.toMillis === "function") return v.toMillis();
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (
+    typeof v === "object" &&
+    typeof v._seconds === "number" &&
+    Number.isFinite(v._seconds)
+  ) {
+    return v._seconds * 1000 + Math.floor((v._nanoseconds || 0) / 1e6);
+  }
+  return null;
+}
+
+/**
+ * End of post-donation "I can donate" cooldown (epoch ms), or null.
+ * Uses max(nextDonationEligibleAt, lastDonatedAt + 90/120d) so older profiles
+ * without nextDonationEligibleAt are still enforced.
+ */
+function donorDonationCooldownEndMs(userData) {
+  if (!userData || typeof userData !== "object") return null;
+  const explicit = millisFromFirestoreValue(userData.nextDonationEligibleAt);
+  const lastDon = millisFromFirestoreValue(userData.lastDonatedAt);
+  const genderRaw = String(userData.gender || "").trim().toLowerCase();
+  const days = genderRaw === "female" ? 120 : 90;
+  let fromLast = null;
+  if (lastDon != null) {
+    fromLast = lastDon + days * 86400000;
+  }
+  const parts = [explicit, fromLast].filter(
+    (x) => x != null && Number.isFinite(x),
+  );
+  if (parts.length === 0) return null;
+  return Math.max(...parts);
+}
+
+function assertDonorMayAcceptNewRequest(userData) {
+  const now = Date.now();
+  const coolEnd = donorDonationCooldownEndMs(userData);
+  if (coolEnd != null && now < coolEnd) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Now, you're not eligible to donate. Open When can I donate? for more details.",
+    );
+  }
+  const restr = millisFromFirestoreValue(userData.restrictedUntil);
+  if (restr != null && now < restr) {
+    throw new HttpsError(
+      "failed-precondition",
+      "You are medically restricted from donating until the restriction date.",
+    );
+  }
+}
+
+/**
+ * After medical reports are removed, align users/{donorId} lastDonatedAt /
+ * nextDonationEligibleAt with the newest remaining "donated" report, or clear
+ * those fields when the donor has no donated reports left.
+ */
+/**
+ * Removes this request's id from users/{donorId}.donorAcceptedRequestIds
+ * (handles string vs number entries). Stops getDonationHistory from surfacing
+ * stale pipeline rows after the request and donorResponses are removed.
+ */
+async function stripDonorAcceptedRequestIdFromUser(donorId, requestIdVariantSet) {
+  if (!donorId || typeof donorId !== "string" || !donorId.trim()) return;
+  const wantDelete = (x) => {
+    const sx = String(x);
+    const nx = Number(sx);
+    for (const rid of requestIdVariantSet) {
+      if (rid === x || rid === sx) return true;
+      if (
+        typeof rid === "number" &&
+        Number.isFinite(rid) &&
+        Number.isFinite(nx) &&
+        rid === nx
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+  try {
+    const ref = db.collection("users").doc(donorId.trim());
+    await db.runTransaction(async (t) => {
+      const snap = await t.get(ref);
+      if (!snap.exists) return;
+      const u = snap.data() || {};
+      const raw = u.donorAcceptedRequestIds;
+      if (!Array.isArray(raw) || raw.length === 0) return;
+      const next = raw.filter((x) => !wantDelete(x));
+      if (next.length === raw.length) return;
+      t.set(ref, { donorAcceptedRequestIds: next }, { merge: true });
+    });
+  } catch (e) {
+    console.warn(
+      `[stripDonorAcceptedRequestIdFromUser] donor=${donorId}:`,
+      e.message || e,
+    );
+  }
+}
+
+async function reconcileDonorDonationProfileFromReports(donorId) {
+  if (!donorId || typeof donorId !== "string") return;
+  try {
+    const snap = await db
+      .collection("medicalReports")
+      .where("donorId", "==", donorId)
+      .orderBy("createdAt", "desc")
+      .limit(100)
+      .get();
+
+    let latestDonated = null;
+    let latestMs = -1;
+    for (const doc of snap.docs) {
+      const d = doc.data() || {};
+      if (String(d.status || "").toLowerCase() !== "donated") continue;
+      const ts = d.createdAt;
+      let ms = 0;
+      if (ts && typeof ts.toMillis === "function") ms = ts.toMillis();
+      else if (ts instanceof Date) ms = ts.getTime();
+      if (ms >= latestMs) {
+        latestMs = ms;
+        latestDonated = d;
+      }
+    }
+
+    const donorRef = db.collection("users").doc(donorId);
+    if (!latestDonated) {
+      await donorRef.set(
+        {
+          lastDonatedAt: admin.firestore.FieldValue.delete(),
+          nextDonationEligibleAt: admin.firestore.FieldValue.delete(),
+        },
+        { merge: true },
+      );
+      return;
+    }
+
+    const patch = {};
+    const createdAt = latestDonated.createdAt;
+    if (createdAt && typeof createdAt.toMillis === "function") {
+      patch.lastDonatedAt = createdAt;
+    }
+    const canAgain = latestDonated.canDonateAgainAt;
+    if (canAgain && typeof canAgain.toMillis === "function") {
+      patch.nextDonationEligibleAt = canAgain;
+    } else {
+      patch.nextDonationEligibleAt = admin.firestore.FieldValue.delete();
+    }
+    await donorRef.set(patch, { merge: true });
+  } catch (e) {
+    console.warn(
+      `[reconcileDonorDonationProfileFromReports] donor=${donorId}:`,
+      e.message || e,
+    );
+  }
+}
+
 async function deleteRequestCascade(requestRef, requestId) {
   let notificationsDeleted = 0;
 
   const trimmedRequestId = String(requestId ?? "").trim();
   const responsesSnapshot = await requestRef.collection("donorResponses").get();
+  const donorIdsFromResponses = responsesSnapshot.docs
+    .map((doc) => doc.id)
+    .filter((id) => typeof id === "string" && id.trim());
 
   const requestIdVariants = [trimmedRequestId];
   const asNumber = Number(trimmedRequestId);
@@ -156,8 +320,80 @@ async function deleteRequestCascade(requestRef, requestId) {
     }
   }
 
+  // Medical reports reference requestId; remove them so past-donor lists and
+  // per-donor donation history match deleted posts.
+  let medicalReportsDeleted = 0;
+  const medicalReportByPath = new Map();
+  const medQueries = [];
+  for (const idValue of requestIdVariants) {
+    if (idValue === "" || idValue == null) continue;
+    medQueries.push(
+      db.collection("medicalReports").where("requestId", "==", idValue).get(),
+    );
+    medQueries.push(
+      db.collection("medicalReports").where("requestID", "==", idValue).get(),
+    );
+  }
+  const medSettled = await Promise.allSettled(medQueries);
+  medSettled.forEach((r, i) => {
+    if (r.status === "fulfilled") {
+      for (const doc of r.value.docs) {
+        medicalReportByPath.set(doc.ref.path, doc);
+      }
+    } else {
+      console.warn(
+        `[deleteRequestCascade] medicalReports query ${i} failed: ${
+          r.reason && r.reason.message ? r.reason.message : r.reason
+        }`,
+      );
+    }
+  });
+
+  const donorIdsToReconcile = new Set();
+  for (const doc of medicalReportByPath.values()) {
+    const d = doc.data() || {};
+    if (typeof d.donorId === "string" && d.donorId.trim()) {
+      donorIdsToReconcile.add(d.donorId.trim());
+    }
+  }
+
+  const medRefsToDelete = [...medicalReportByPath.values()].map((d) => d.ref);
+  if (medRefsToDelete.length > 0) {
+    const batchSize = 500;
+    for (let i = 0; i < medRefsToDelete.length; i += batchSize) {
+      const batch = db.batch();
+      medRefsToDelete.slice(i, i + batchSize).forEach((ref) => {
+        batch.delete(ref);
+        medicalReportsDeleted++;
+      });
+      await batch.commit();
+    }
+  }
+
+  const donorIdsList = [...donorIdsToReconcile];
+  const RECONCILE_CHUNK = 12;
+  for (let i = 0; i < donorIdsList.length; i += RECONCILE_CHUNK) {
+    const slice = donorIdsList.slice(i, i + RECONCILE_CHUNK);
+    await Promise.all(
+      slice.map((donorId) => reconcileDonorDonationProfileFromReports(donorId)),
+    );
+  }
+
+  const requestIdVariantSet = new Set(
+    requestIdVariants.filter((v) => v !== "" && v != null),
+  );
+  const stripChunk = 20;
+  for (let i = 0; i < donorIdsFromResponses.length; i += stripChunk) {
+    const slice = donorIdsFromResponses.slice(i, i + stripChunk);
+    await Promise.all(
+      slice.map((donorId) =>
+        stripDonorAcceptedRequestIdFromUser(donorId, requestIdVariantSet),
+      ),
+    );
+  }
+
   await requestRef.delete();
-  return { notificationsDeleted };
+  return { notificationsDeleted, medicalReportsDeleted };
 }
 
 /**
@@ -621,6 +857,12 @@ exports.setDonorRequestResponse = onCall(publicCallableOpts, async (request) => 
     const userRef = db.collection("users").doc(uid);
 
     await db.runTransaction(async (t) => {
+      if (newStatus === "accepted") {
+        const uSnap = await t.get(userRef);
+        const uData = uSnap.exists ? uSnap.data() || {} : {};
+        assertDonorMayAcceptNewRequest(uData);
+      }
+
       const reqSnap = await t.get(requestRef);
       if (!reqSnap.exists) {
         throw new HttpsError("not-found", "Request not found.");
@@ -902,19 +1144,27 @@ exports.deleteRequest = onCall(publicCallableOpts, async (request) => {
       );
     }
 
-    const { notificationsDeleted } = await deleteRequestCascade(
-      requestRef,
-      requestId,
-    );
+    const { notificationsDeleted, medicalReportsDeleted } =
+      await deleteRequestCascade(requestRef, requestId);
     console.log("[deleteRequest] Request document deleted from Firestore");
+
+    const parts = ["Request and messages deleted"];
+    if (notificationsDeleted > 0) {
+      parts.push(`${notificationsDeleted} notification(s)`);
+    }
+    if (medicalReportsDeleted > 0) {
+      parts.push(`${medicalReportsDeleted} donation record(s)`);
+    }
+    const message =
+      parts.length > 1
+        ? `${parts[0]}; ${parts.slice(1).join("; ")} successfully.`
+        : "Request and messages deleted successfully.";
 
     return {
       ok: true,
-      message:
-        notificationsDeleted > 0
-          ? `Request, messages, and ${notificationsDeleted} notification(s) deleted successfully.`
-          : "Request and messages deleted successfully.",
+      message,
       notificationsDeleted,
+      medicalReportsDeleted,
     };
   } catch (err) {
     console.error("[deleteRequest] ERROR:", err);
