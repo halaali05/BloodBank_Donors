@@ -170,14 +170,14 @@ class _DonorEligibilityScreenState extends State<DonorEligibilityScreen> {
           highlight: active,
         ),
         const SizedBox(height: 16),
-        _statRow('Date of ending waiting period', _fmtDateTime(end)),
+        _statRow('Eligible again on :', _fmtDateTime(end)),
         _statRow(
-          'Your interval',
+          'Your interval :',
           '$ruleDays days (${gender == 'female' ? 'women' : 'men'})',
         ),
         if (active) ...[
           _statRow(
-            'Days left',
+            'Days left :',
             '$calDaysLeft',
             valueColor: AppTheme.deepRed,
           ),
