@@ -104,6 +104,7 @@ void main() {
       expect(r.success, false);
       expect(r.errorType, LoginErrorType.profileNotReady);
     });
+  
   });
 
   // =========================================================
@@ -310,5 +311,128 @@ void main() {
       expect(r.success, false);
       expect(r.errorTitle, 'Error');
     });
+
+
   });
+
+test('network error message mapping', () async {
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenThrow(Exception('Exception: network failure'));
+
+  final r = await controller.login(email: 'a', password: 'b');
+
+  expect(r.errorTitle, 'Connection error');
+});
+
+test('email only spaces returns false', () {
+  expect(controller.validateInput('   ', '123'), false);
+});
+
+test('getUserData succeeds on retry', () async {
+  final user = MockUser();
+
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenAnswer((_) async {});
+
+  when(() => mockAuth.isEmailVerified()).thenAnswer((_) async => true);
+  when(() => mockAuth.currentUser).thenReturn(user);
+  when(() => user.uid).thenReturn('u5');
+
+  when(() => mockAuth.completeProfileAfterVerification())
+      .thenAnswer((_) async => {});
+
+  int callCount = 0;
+  when(() => mockAuth.getUserData('u5')).thenAnswer((_) async {
+    callCount++;
+    if (callCount == 1) return null;
+    return models.User(
+      uid: 'u5',
+      email: 'a@test.com',
+      role: models.UserRole.donor,
+    );
+  });
+
+  final r = await controller.login(
+    email: 'a@test.com',
+    password: '123',
+  );
+
+  expect(r.success, true);
+});
+
+test('Exception prefix parsing - network', () async {
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenThrow(Exception('Exception: network failure'));
+
+  final r = await controller.login(email: 'a', password: 'b');
+
+  expect(r.errorType, LoginErrorType.genericError);
+  expect(r.errorTitle, 'Connection error');
+});
+
+test('Exception prefix parsing - permission', () async {
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenThrow(Exception('Exception: permission denied'));
+
+  final r = await controller.login(email: 'a', password: 'b');
+
+  expect(r.errorTitle, 'Permission denied');
+});
+
+
+test('Exception prefix parsing - profile', () async {
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenThrow(Exception('Exception: profile not found'));
+
+  final r = await controller.login(email: 'a', password: 'b');
+
+  expect(r.errorTitle, 'Profile not found');
+});
+
+
+test('Exception prefix parsing - default branch', () async {
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenThrow(Exception('Exception: something weird'));
+
+  final r = await controller.login(email: 'a', password: 'b');
+
+  expect(r.errorTitle, 'Login error');
+});
+
+test('non Exception format → connection error', () async {
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenThrow(Exception('random error'));
+
+  final r = await controller.login(email: 'a', password: 'b');
+
+  expect(r.errorTitle, 'Login error');
+});
+
+
+test('unknown firebase error → default mapping', () async {
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenThrow(FirebaseAuthException(code: 'some-random-code'));
+
+  final r = await controller.login(email: 'a', password: 'b');
+
+  expect(r.errorTitle, 'Login failed');
+});
+
+
 }

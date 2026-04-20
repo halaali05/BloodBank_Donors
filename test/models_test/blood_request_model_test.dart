@@ -124,7 +124,123 @@ void main() {
       expect(map['hospitalLocation'], 'Zarqa');
     });
     
+    test('units defaults to 1', () {
+  final request = BloodRequest.fromMap({
+    'bloodBankId': 'b',
+    'bloodBankName': 'Bank',
+    'bloodType': 'A+',
+    'units': 0,
+    'isUrgent': false,
+  }, 'r1');
+
+  expect(request.units, 1);
+});
+
+  test('parses units from string', () {
+  final request = BloodRequest.fromMap({
+    'bloodBankId': 'b',
+    'bloodBankName': 'Bank',
+    'bloodType': 'A+',
+    'units': '5',
+    'isUrgent': false,
+  }, 'r1');
+
+  expect(request.units, 5);
+});
+
+  test('parses isUrgent from string', () {
+  final request = BloodRequest.fromMap({
+    'bloodBankId': 'b',
+    'bloodBankName': 'Bank',
+    'bloodType': 'A+',
+    'units': 1,
+    'isUrgent': 'true',
+  }, 'r1');
+
+  expect(request.isUrgent, true);
+});
+
+  test('parses myResponse correctly', () {
+  final request = BloodRequest.fromMap({
+    'bloodBankId': 'b',
+    'bloodBankName': 'Bank',
+    'bloodType': 'A+',
+    'units': 1,
+    'isUrgent': false,
+    'myResponse': 'ACCEPTED',
+  }, 'r1');
+
+  expect(request.myResponse, 'accepted');
+});
+
+  test('invalid myResponse returns null', () {
+  final request = BloodRequest.fromMap({
+    'bloodBankId': 'b',
+    'bloodBankName': 'Bank',
+    'bloodType': 'A+',
+    'units': 1,
+    'isUrgent': false,
+    'myResponse': 'maybe',
+  }, 'r1');
+
+  expect(request.myResponse, null);
+});
+
+  test('parses createdAt from milliseconds', () {
+  final now = DateTime.now().millisecondsSinceEpoch;
+
+  final request = BloodRequest.fromMap({
+    'bloodBankId': 'b',
+    'bloodBankName': 'Bank',
+    'bloodType': 'A+',
+    'units': 1,
+    'isUrgent': false,
+    'createdAt': now,
+  }, 'r1');
+
+  expect(request.createdAt, isNotNull);
+});
+
+  test('parses createdAt from string', () {
+  final request = BloodRequest.fromMap({
+    'bloodBankId': 'b',
+    'bloodBankName': 'Bank',
+    'bloodType': 'A+',
+    'units': 1,
+    'isUrgent': false,
+    'createdAt': '2024-01-01T00:00:00.000Z',
+  }, 'r1');
+
+  expect(request.createdAt, isNotNull);
+});
+
+  test('handles invalid donor list gracefully', () {
+  final request = BloodRequest.fromMap({
+    'bloodBankId': 'b',
+    'bloodBankName': 'Bank',
+    'bloodType': 'A+',
+    'units': 1,
+    'isUrgent': false,
+    'acceptedDonors': 'invalid',
+  }, 'r1');
+
+  expect(request.acceptedDonors, isEmpty);
+});
+
+  test('parses latitude/longitude correctly', () {
+  final request = BloodRequest.fromMap({
+    'bloodBankId': 'b',
+    'bloodBankName': 'Bank',
+    'bloodType': 'A+',
+    'units': 1,
+    'isUrgent': false,
+    'hospitalLatitude': '31.95',
+    'hospitalLongitude': 35.91,
+  }, 'r1');
+
+  expect(request.hospitalLatitude, 31.95);
+  expect(request.hospitalLongitude, 35.91);
+});
 
   });
-  
 }

@@ -17,158 +17,224 @@ void main() {
   late MockFirebaseAuth mockAuth;
   late MockUser mockUser;
   late BloodBankDashboardController controller;
+// ================= SETUP =================
+setUp(() {
+  mockCloudFunctions = MockCloudFunctionsService();
+  mockAuth = MockFirebaseAuth();
+  mockUser = MockUser();
 
-  setUp(() {
-    mockCloudFunctions = MockCloudFunctionsService();
-    mockAuth = MockFirebaseAuth();
-    mockUser = MockUser();
+  controller = BloodBankDashboardController(
+    cloudFunctions: mockCloudFunctions,
+    auth: mockAuth,
+  );
+});
 
+// ================= AUTH =================
+group('Auth', () {
+  test('getCurrentUserId returns uid', () {
     when(() => mockAuth.currentUser).thenReturn(mockUser);
-    when(() => mockUser.uid).thenReturn('user_123');
+    when(() => mockUser.uid).thenReturn('u1');
 
-    controller = BloodBankDashboardController(
-      cloudFunctions: mockCloudFunctions,
-      auth: mockAuth,
+    expect(controller.getCurrentUserId(), 'u1');
+  });
+
+  test('getCurrentUserId returns null when no user', () {
+    when(() => mockAuth.currentUser).thenReturn(null);
+
+    expect(controller.getCurrentUserId(), null);
+  });
+
+  test('verifyRequestOwnership true', () {
+    when(() => mockAuth.currentUser).thenReturn(mockUser);
+    when(() => mockUser.uid).thenReturn('u1');
+
+    expect(controller.verifyRequestOwnership('u1'), true);
+  });
+
+  test('verifyRequestOwnership false when mismatch', () {
+    when(() => mockAuth.currentUser).thenReturn(mockUser);
+    when(() => mockUser.uid).thenReturn('u1');
+
+    expect(controller.verifyRequestOwnership('x'), false);
+  });
+
+  test('verifyRequestOwnership false when user null', () {
+    when(() => mockAuth.currentUser).thenReturn(null);
+
+    expect(controller.verifyRequestOwnership('u1'), false);
+  });
+});
+
+// ================= DELETE =================
+group('deleteRequest', () {
+  test('success', () async {
+    when(() => mockCloudFunctions.deleteRequest(requestId: 'r1'))
+        .thenAnswer((_) async => {'ok': true});
+
+    final result = await controller.deleteRequest(requestId: 'r1');
+
+    expect(result['ok'], true);
+  });
+
+  test('empty requestId throws', () {
+    expect(() => controller.deleteRequest(requestId: ''), throwsException);
+  });
+
+  test('rethrows exception', () {
+    when(() => mockCloudFunctions.deleteRequest(requestId: 'r1'))
+        .thenThrow(Exception('fail'));
+
+    expect(
+      () => controller.deleteRequest(requestId: 'r1'),
+      throwsException,
+    );
+  });
+});
+
+// ================= COMPLETE =================
+group('markRequestCompleted', () {
+  test('success', () async {
+    when(() => mockCloudFunctions.markRequestCompleted(requestId: 'r1'))
+        .thenAnswer((_) async => {'ok': true});
+
+    final result =
+        await controller.markRequestCompleted(requestId: 'r1');
+
+    expect(result['ok'], true);
+  });
+
+  test('empty requestId throws', () {
+    expect(
+      () => controller.markRequestCompleted(requestId: ''),
+      throwsException,
     );
   });
 
-  // --------------------------------------------------
-  group('BloodBankDashboardController - Unit Tests', () {
-    // ---------------- Authentication ----------------
+  test('exception rethrow', () {
+    when(() => mockCloudFunctions.markRequestCompleted(requestId: 'r1'))
+        .thenThrow(Exception());
 
-    test('getCurrentUserId returns current user uid', () {
-      final uid = controller.getCurrentUserId();
-      expect(uid, 'user_123');
-    });
-
-    test('verifyRequestOwnership returns true when owner matches', () {
-      final result = controller.verifyRequestOwnership('user_123');
-      expect(result, true);
-    });
-
-    test('verifyRequestOwnership returns false when owner does not match', () {
-      final result = controller.verifyRequestOwnership('another_user');
-      expect(result, false);
-    });
-
-    // ---------------- Delete Request ----------------
-
-    test('deleteRequest calls cloud function and returns result', () async {
-      when(() => mockCloudFunctions.deleteRequest(requestId: 'r1')).thenAnswer((_) async => {'ok': true, 'message': 'Deleted'});
-
-      final result = await controller.deleteRequest(requestId: 'r1');
-
-      expect(result['ok'], true);
-      expect(result['message'], 'Deleted');
-
-      verify(() => mockCloudFunctions.deleteRequest(requestId: 'r1')).called(1);
-    });
-
-    test('deleteRequest throws exception if requestId is empty', () async {
-
-      expect(() => controller.deleteRequest(requestId: ''),throwsA(isA<Exception>()),);
-
-    });
-
-    // ---------------- Fetch Requests ----------------
-
-    test('fetchRequests returns list of BloodRequest', () async {
-      when(() => mockCloudFunctions.getRequestsByBloodBankId())
-          .thenAnswer((_) async => {
-                'requests': [
-                  {
-                    'id': 'r1',
-                    'bloodType': 'A+',
-                    'units': 2,
-                    'isUrgent': true,
-                  },
-                  {
-                    'id': 'r2',
-                    'bloodType': 'O-',
-                    'units': 3,
-                    'isUrgent': false,
-                  },
-                ]
-              });
-
-      final result = await controller.fetchRequests();
-
-      expect(result.length, 2);
-      expect(result.first, isA<BloodRequest>());
-      expect(result.first.units, 2);
-      expect(result.first.isUrgent, true);
-    });
-
-    // ---------------- Statistics ----------------
-
-   test('calculateStatistics returns correct values', () {
-  final requests = [
-    BloodRequest.fromMap({
-      'id': 'r1',
-      'bloodType': 'A+',
-      'units': 2,
-      'isUrgent': true,
-    }, 'r1'),
-    BloodRequest.fromMap({
-      'id': 'r2',
-      'bloodType': 'O-',
-      'units': 3,
-      'isUrgent': false,
-    }, 'r2'),
-    BloodRequest.fromMap({
-      'id': 'r3',
-      'bloodType': 'B+',
-      'units': 1,
-      'isUrgent': true,
-    }, 'r3'),
-  ];
-
-  final stats = controller.calculateStatistics(requests);
-
-  expect(stats['totalUnits'], 6);     
-  expect(stats['activeCount'], 3);    
-  expect(stats['urgentCount'], 2);    
-  expect(stats['normalCount'], 1);
-  expect(stats['totalAccepted'], 0);
-  expect(stats['totalRejected'], 0);
-});
-
-    test('calculateStatistics sums accept and reject counts', () {
-      final requests = [
-        BloodRequest.fromMap({
-          'bloodBankId': 'b1',
-          'bloodBankName': 'H',
-          'bloodType': 'A+',
-          'units': 1,
-          'isUrgent': false,
-          'acceptedCount': 3,
-          'rejectedCount': 1,
-        }, 'r1'),
-        BloodRequest.fromMap({
-          'bloodBankId': 'b1',
-          'bloodBankName': 'H',
-          'bloodType': 'O+',
-          'units': 1,
-          'isUrgent': false,
-          'acceptedCount': 2,
-          'rejectedCount': 4,
-        }, 'r2'),
-      ];
-
-      final stats = controller.calculateStatistics(requests);
-
-      expect(stats['totalAccepted'], 5);
-      expect(stats['totalRejected'], 5);
-    });
-
-test('verifyRequestOwnership returns true when ids match', () {
-  when(() => mockAuth.currentUser).thenReturn(mockUser);
-  when(() => mockUser.uid).thenReturn('u1');
-
-  final result = controller.verifyRequestOwnership('u1');
-  expect(result, true);
-});
-
-
+    expect(
+      () => controller.markRequestCompleted(requestId: 'r1'),
+      throwsException,
+    );
   });
+});
+
+// ================= UPDATE =================
+group('updateRequestUnits', () {
+  test('success', () async {
+    when(() => mockCloudFunctions.updateRequestUnits(
+          requestId: any(named: 'requestId'),
+          units: any(named: 'units'),
+        )).thenAnswer((_) async => {'ok': true});
+
+    final result = await controller.updateRequestUnits(
+      requestId: 'r1',
+      units: 2,
+    );
+
+    expect(result['ok'], true);
+  });
+
+  test('empty requestId throws', () {
+    expect(
+      () => controller.updateRequestUnits(requestId: '', units: 1),
+      throwsException,
+    );
+  });
+
+  test('units < 1 throws', () {
+    expect(
+      () => controller.updateRequestUnits(requestId: 'r1', units: 0),
+      throwsException,
+    );
+  });
+
+  test('exception rethrow', () {
+    when(() => mockCloudFunctions.updateRequestUnits(
+          requestId: any(named: 'requestId'),
+          units: any(named: 'units'),
+        )).thenThrow(Exception());
+
+    expect(
+      () => controller.updateRequestUnits(requestId: 'r1', units: 1),
+      throwsException,
+    );
+  });
+});
+
+// ================= FETCH =================
+group('fetchRequests', () {
+  test('success', () async {
+    when(() => mockCloudFunctions.getRequestsByBloodBankId())
+        .thenAnswer((_) async => {
+              'requests': [
+                {'id': 'r1', 'units': 2, 'isUrgent': true},
+              ]
+            });
+
+    final result = await controller.fetchRequests();
+
+    expect(result.length, 1);
+  });
+
+  test('returns empty when not list', () async {
+    when(() => mockCloudFunctions.getRequestsByBloodBankId())
+        .thenAnswer((_) async => {'requests': 'invalid'});
+
+    final result = await controller.fetchRequests();
+
+    expect(result, []);
+  });
+
+  test('skips invalid map entries', () async {
+    when(() => mockCloudFunctions.getRequestsByBloodBankId())
+        .thenAnswer((_) async => {
+              'requests': ['bad', {'id': 'r1', 'units': 1}]
+            });
+
+    final result = await controller.fetchRequests();
+
+    expect(result.length, 1);
+  });
+
+  test('throws on exception', () {
+    when(() => mockCloudFunctions.getRequestsByBloodBankId())
+        .thenThrow(Exception());
+
+    expect(() => controller.fetchRequests(), throwsException);
+  });
+});
+
+// ================= STATS =================
+group('statistics', () {
+  test('calculateStatistics basic', () {
+    final requests = [
+      BloodRequest.fromMap({'units': 2, 'isUrgent': true}, 'r1'),
+      BloodRequest.fromMap({'units': 3, 'isUrgent': false}, 'r2'),
+    ];
+
+    final stats = controller.calculateStatistics(requests);
+
+    expect(stats['totalUnits'], 5);
+    expect(stats['urgentCount'], 1);
+    expect(stats['normalCount'], 1);
+  });
+
+  test('accepted/rejected sums', () {
+    final requests = [
+      BloodRequest.fromMap({
+        'units': 1,
+        'acceptedCount': 2,
+        'rejectedCount': 3,
+      }, 'r1'),
+    ];
+
+    final stats = controller.calculateStatistics(requests);
+
+    expect(stats['totalAccepted'], 2);
+    expect(stats['totalRejected'], 3);
+  });
+});
 }

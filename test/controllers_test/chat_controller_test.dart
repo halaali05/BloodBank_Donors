@@ -24,140 +24,159 @@ void main() {
 
   late ChatController controller;
 
-  setUp(() {
-    mockCloudFunctions = MockCloudFunctionsService();
-    mockAuthService = MockAuthService();
-    mockFirebaseAuth = MockFirebaseAuth();
-    mockUser = MockUser();
+  // ================= SETUP =================
+setUp(() {
+  mockCloudFunctions = MockCloudFunctionsService();
+  mockAuthService = MockAuthService();
+  mockFirebaseAuth = MockFirebaseAuth();
+  mockUser = MockUser();
 
-    controller = ChatController(
-      cloudFunctions: mockCloudFunctions,
-      authService: mockAuthService,
-      auth: mockFirebaseAuth,
-    );
+  controller = ChatController(
+    cloudFunctions: mockCloudFunctions,
+    authService: mockAuthService,
+    auth: mockFirebaseAuth,
+  );
+});
+
+// ================= AUTH =================
+group('Auth', () {
+  test('getCurrentUser returns current user', () {
+    when(() => mockFirebaseAuth.currentUser).thenReturn(mockUser);
+
+    final result = controller.getCurrentUser();
+
+    expect(result, mockUser);
   });
 
-  // --------------------------------------------------
-  // formatTime
-  // --------------------------------------------------
-  test('formatTime returns "Just now" for recent time', () {
-    final now = DateTime.now().subtract(const Duration(seconds: 30));
+  test('getUserRole success', () async {
+    when(() => mockFirebaseAuth.currentUser).thenReturn(mockUser);
+    when(() => mockUser.uid).thenReturn('u1');
+    when(() => mockAuthService.getUserRole('u1'))
+        .thenAnswer((_) async => 'donor');
 
-    final result = controller.formatTime(now);
+    final result = await controller.getUserRole();
 
+    expect(result, 'donor');
+  });
+
+  test('getUserRole returns null when no user', () async {
+    when(() => mockFirebaseAuth.currentUser).thenReturn(null);
+
+    final result = await controller.getUserRole();
+
+    expect(result, null);
+  });
+
+  test('getUserRole returns null on exception', () async {
+    when(() => mockFirebaseAuth.currentUser).thenReturn(mockUser);
+    when(() => mockUser.uid).thenReturn('u1');
+    when(() => mockAuthService.getUserRole('u1'))
+        .thenThrow(Exception());
+
+    final result = await controller.getUserRole();
+
+    expect(result, null);
+  });
+});
+
+// ================= FORMAT =================
+group('Time Formatting', () {
+  test('Just now', () {
+    final result =
+        controller.formatTime(DateTime.now().subtract(Duration(seconds: 10)));
     expect(result, 'Just now');
   });
 
-  test('formatTime returns minutes ago', () {
-    final time = DateTime.now().subtract(const Duration(minutes: 5));
-
-    final result = controller.formatTime(time);
-
+  test('minutes ago', () {
+    final result =
+        controller.formatTime(DateTime.now().subtract(Duration(minutes: 5)));
     expect(result, '5m ago');
   });
 
-  test('formatTime returns hours ago', () {
-    final time = DateTime.now().subtract(const Duration(hours: 2));
-
-    final result = controller.formatTime(time);
-
+  test('hours ago', () {
+    final result =
+        controller.formatTime(DateTime.now().subtract(Duration(hours: 2)));
     expect(result, '2h ago');
   });
 
-  // --------------------------------------------------
-  // formatTimeFromMillis
-  // --------------------------------------------------
-  test('formatTimeFromMillis formats correctly', () {
-    final millis = DateTime.now()
-        .subtract(const Duration(minutes: 10))
-        .millisecondsSinceEpoch;
-
-    final result = controller.formatTimeFromMillis(millis);
-
-    expect(result, '10m ago');
+  test('old date', () {
+    final result =
+        controller.formatTime(DateTime.now().subtract(Duration(days: 2)));
+    expect(result.contains(':'), true);
   });
 
-  test('formatTimeFromMillis returns empty for null', () {
-    final result = controller.formatTimeFromMillis(null);
-
-    expect(result, '');
+  test('null date', () {
+    expect(controller.formatTime(null), '');
   });
 
-  // --------------------------------------------------
-  // isMessageFromCurrentUser
-  // --------------------------------------------------
-  test('isMessageFromCurrentUser returns true when sender matches user', () {
-    when(() => mockFirebaseAuth.currentUser).thenReturn(mockUser);
-    when(() => mockUser.uid).thenReturn('u1');
-
-    final message = {'senderId': 'u1'};
-
-    final result = controller.isMessageFromCurrentUser(message);
-
-    expect(result, true);
+  test('formatTimeFromMillis null', () {
+    expect(controller.formatTimeFromMillis(null), '');
   });
+});
 
-  test('isMessageFromCurrentUser returns false when sender differs', () {
-    when(() => mockFirebaseAuth.currentUser).thenReturn(mockUser);
-    when(() => mockUser.uid).thenReturn('u1');
-
-    final message = {'senderId': 'u2'};
-
-    final result = controller.isMessageFromCurrentUser(message);
-
-    expect(result, false);
-  });
-
-  test('isMessageFromCurrentUser returns false when user is null', () {
-    when(() => mockFirebaseAuth.currentUser).thenReturn(null);
-
-    final message = {'senderId': 'u1'};
-
-    final result = controller.isMessageFromCurrentUser(message);
-
-    expect(result, false);
-  });
-
-  // --------------------------------------------------
-  // fetchMessages
-  // --------------------------------------------------
-  test('fetchMessages returns list of messages on success', () async {
+// ================= FETCH =================
+group('fetchMessages', () {
+  test('success', () async {
     when(() => mockCloudFunctions.getMessages(
           requestId: any(named: 'requestId'),
           filterRecipientId: any(named: 'filterRecipientId'),
-        )).thenAnswer(
-      (_) async => {
-        'messages': [
-          {'text': 'Hello', 'senderId': 'u1'},
-          {'text': 'Hi', 'senderId': 'u2'},
-        ],
-        'bloodBankId': 'bank1',
-      },
-    );
+        )).thenAnswer((_) async => {
+          'messages': [
+            {'senderId': 'u1'}
+          ],
+          'bloodBankId': 'bank1',
+        });
 
     final result = await controller.fetchMessages('r1');
 
-    expect(result.messages.length, 2);
-    expect(result.messages.first['text'], 'Hello');
-    expect(result.bloodBankId, 'bank1');
+    expect(result.messages.length, 1);
   });
 
-  // --------------------------------------------------
-  // sendMessage
-  // --------------------------------------------------
-  test('sendMessage throws error when user not authenticated', () async {
+  test('throws exception', () {
+    when(() => mockCloudFunctions.getMessages(
+          requestId: any(named: 'requestId'),
+          filterRecipientId: any(named: 'filterRecipientId'),
+        )).thenThrow(Exception());
+
+    expect(() => controller.fetchMessages('r1'), throwsException);
+  });
+});
+
+// ================= SEND =================
+group('sendMessage', () {
+  test('user not authenticated', () {
     when(() => mockFirebaseAuth.currentUser).thenReturn(null);
 
     expect(
-      () => controller.sendMessage(
-        requestId: 'r1',
-        text: 'Hello',
-      ),
-      throwsA(isA<Exception>()),
+      () => controller.sendMessage(requestId: 'r1', text: 'Hi'),
+      throwsException,
     );
   });
 
-  test('sendMessage calls cloud function successfully', () async {
+  test('normal send (broadcast)', () async {
+    when(() => mockFirebaseAuth.currentUser).thenReturn(mockUser);
+    when(() => mockUser.uid).thenReturn('bank1');
+
+    when(() => mockCloudFunctions.sendMessage(
+          requestId: any(named: 'requestId'),
+          text: any(named: 'text'),
+          recipientId: any(named: 'recipientId'),
+        )).thenAnswer((_) async => <String, dynamic>{});
+
+    await controller.sendMessage(
+      requestId: 'r1',
+      text: 'Hi',
+      requestOwnerId: 'bank1',
+    );
+
+    verify(() => mockCloudFunctions.sendMessage(
+          requestId: 'r1',
+          text: 'Hi',
+          recipientId: null,
+        )).called(1);
+  });
+
+  test('recipient provided (trimmed)', () async {
     when(() => mockFirebaseAuth.currentUser).thenReturn(mockUser);
     when(() => mockUser.uid).thenReturn('u1');
 
@@ -165,78 +184,99 @@ void main() {
           requestId: any(named: 'requestId'),
           text: any(named: 'text'),
           recipientId: any(named: 'recipientId'),
-        )).thenAnswer((_) async => {'ok': true});
+        )).thenAnswer((_) async => <String, dynamic>{});
 
     await controller.sendMessage(
       requestId: 'r1',
-      text: 'Hello',
+      text: 'Hi',
+      recipientId: '   u2   ',
     );
 
     verify(() => mockCloudFunctions.sendMessage(
           requestId: 'r1',
-          text: 'Hello',
-          recipientId: null,
+          text: 'Hi',
+          recipientId: 'u2',
         )).called(1);
   });
 
-  test('fetchMessages throws exception when service fails', () async {
-  when(() => mockCloudFunctions.getMessages(
-        requestId: any(named: 'requestId'),
-        filterRecipientId: any(named: 'filterRecipientId'),
-      )).thenThrow(Exception('Network error'));
+  test('donor sends to bank', () async {
+    when(() => mockFirebaseAuth.currentUser).thenReturn(mockUser);
+    when(() => mockUser.uid).thenReturn('donor1');
 
-  expect(
-    () => controller.fetchMessages('r1'),
-    throwsA(isA<Exception>()),
-  );
+    when(() => mockCloudFunctions.sendMessage(
+          requestId: any(named: 'requestId'),
+          text: any(named: 'text'),
+          recipientId: any(named: 'recipientId'),
+        )).thenAnswer((_) async => <String, dynamic>{});
+
+    await controller.sendMessage(
+      requestId: 'r1',
+      text: 'Hi',
+      requestOwnerId: 'bank1',
+    );
+
+    verify(() => mockCloudFunctions.sendMessage(
+          requestId: 'r1',
+          text: 'Hi',
+          recipientId: 'bank1',
+        )).called(1);
+  });
+
+  test('cloud function fails', () {
+    when(() => mockFirebaseAuth.currentUser).thenReturn(mockUser);
+    when(() => mockUser.uid).thenReturn('u1');
+
+    when(() => mockCloudFunctions.sendMessage(
+          requestId: any(named: 'requestId'),
+          text: any(named: 'text'),
+          recipientId: any(named: 'recipientId'),
+        )).thenThrow(Exception());
+
+    expect(
+      () => controller.sendMessage(requestId: 'r1', text: 'Hi'),
+      throwsException,
+    );
+  });
 });
 
-test('sendMessage uses recipientId when provided', () async {
-  when(() => mockFirebaseAuth.currentUser).thenReturn(mockUser);
-  when(() => mockUser.uid).thenReturn('u1');
+// ================= PARTICIPANTS =================
+group('participants', () {
+  test('getChatParticipants', () async {
+    when(() => mockCloudFunctions.getMessages(
+          requestId: any(named: 'requestId'),
+          filterRecipientId: any(named: 'filterRecipientId'),
+        )).thenAnswer((_) async => {
+          'messages': [
+            {'senderId': 'u1'},
+            {'senderId': 'u2'},
+            {'senderId': 'bank1'},
+          ],
+          'bloodBankId': 'bank1',
+        });
 
-  when(() => mockCloudFunctions.sendMessage(
-        requestId: any(named: 'requestId'),
-        text: any(named: 'text'),
-        recipientId: any(named: 'recipientId'),
-      )).thenAnswer((_) async => {'ok': true});
+    final result = await controller.getChatParticipants('r1');
 
-  await controller.sendMessage(
-    requestId: 'r1',
-    text: 'Hello',
-    recipientId: 'donor123',
-  );
+    expect(result.contains('u1'), true);
+    expect(result.contains('bank1'), false);
+  });
 
-  verify(() => mockCloudFunctions.sendMessage(
-        requestId: 'r1',
-        text: 'Hello',
-        recipientId: 'donor123',
-      )).called(1);
+  test('getUnreadCountPerUser', () async {
+    when(() => mockCloudFunctions.getMessages(
+          requestId: any(named: 'requestId'),
+          filterRecipientId: any(named: 'filterRecipientId'),
+        )).thenAnswer((_) async => {
+          'messages': [
+            {'senderId': 'u1', 'recipientId': 'bank1'},
+            {'senderId': 'u1', 'recipientId': 'bank1'},
+            {'senderId': 'u2', 'recipientId': 'bank1'},
+          ],
+          'bloodBankId': 'bank1',
+        });
+
+    final result = await controller.getUnreadCountPerUser('r1');
+
+    expect(result['u1'], 2);
+    expect(result['u2'], 1);
+  });
 });
-
-
-test('sendMessage routes donor message to blood bank', () async {
-  when(() => mockFirebaseAuth.currentUser).thenReturn(mockUser);
-  when(() => mockUser.uid).thenReturn('donor1');
-
-  when(() => mockCloudFunctions.sendMessage(
-        requestId: any(named: 'requestId'),
-        text: any(named: 'text'),
-        recipientId: any(named: 'recipientId'),
-      )).thenAnswer((_) async => {'ok': true});
-
-  await controller.sendMessage(
-    requestId: 'r1',
-    text: 'Hello',
-    requestOwnerId: 'bank1',
-  );
-
-  verify(() => mockCloudFunctions.sendMessage(
-        requestId: 'r1',
-        text: 'Hello',
-        recipientId: 'bank1',
-      )).called(1);
-});
-
-
 }

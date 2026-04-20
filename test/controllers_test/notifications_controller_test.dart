@@ -38,10 +38,7 @@ void main() {
     );
   });
 
-  // =====================================================
   // getCurrentUser
-  // =====================================================
-
   test('getCurrentUser returns current user', () {
     final user = MockUser();
     when(() => mockAuth.currentUser).thenReturn(user);
@@ -51,10 +48,7 @@ void main() {
     expect(result, user);
   });
 
-  // =====================================================
-  // fetchNotifications
-  // =====================================================
-
+group('fetchNotifications', () {
   test('fetchNotifications returns list on success', () async {
     when(() => mockCloud.getNotifications()).thenAnswer(
       (_) async => {
@@ -80,11 +74,9 @@ void main() {
       throwsA(isA<Exception>()),
     );
   });
+});
 
-  // =====================================================
-  // markAllAsRead
-  // =====================================================
-
+group('markAllAsRead', () {
   test('markAllAsRead completes successfully', () async {
     when(() => mockNotifService.markAllAsRead())
         .thenAnswer((_) async {});
@@ -103,11 +95,9 @@ void main() {
       throwsA(isA<Exception>()),
     );
   });
+});
 
-  // =====================================================
-  // markAsRead
-  // =====================================================
-
+group('markAsRead', () {
   test('markAsRead completes successfully', () async {
     when(() => mockNotifService.markAsRead(any()))
         .thenAnswer((_) async {});
@@ -126,11 +116,10 @@ void main() {
       throwsA(isA<Exception>()),
     );
   });
+});
+ 
 
-  // =====================================================
-  // deleteNotification
-  // =====================================================
-
+group('deleteNotification', () {
   test('deleteNotification completes successfully', () async {
     when(() => mockNotifService.deleteNotification(any()))
         .thenAnswer((_) async {});
@@ -150,10 +139,29 @@ void main() {
     );
   });
 
-  // =====================================================
-  // getUnreadNotifications
-  // =====================================================
+test('deleteOldNotifications returns count on success', () async {
+  when(() => mockNotifService.deleteOldNotifications(days: any(named: 'days')))
+      .thenAnswer((_) async => 5);
 
+  final result = await controller.deleteOldNotifications(days: 10);
+
+  expect(result, 5);
+
+  verify(() => mockNotifService.deleteOldNotifications(days: 10)).called(1);
+});
+
+test('deleteOldNotifications throws on error', () async {
+  when(() => mockNotifService.deleteOldNotifications(days: any(named: 'days')))
+      .thenThrow(Exception());
+
+  expect(
+    () => controller.deleteOldNotifications(),
+    throwsException,
+  );
+});
+});
+
+group('getUnreadNotifications', () {
   test('getUnreadNotifications filters unread correctly', () {
     final input = [
       {'id': 'n1', 'read': false},
@@ -167,6 +175,34 @@ void main() {
     expect(result.any((n) => n['id'] == 'n1'), true);
     expect(result.any((n) => n['id'] == 'n3'), true);
   });
+test('getUnreadNotifications returns empty when all read', () {
+  final input = [
+    {'read': true},
+    {'isRead': true},
+  ];
+
+  final result = controller.getUnreadNotifications(input);
+
+  expect(result, []);
+});
+test('getUnreadNotifications handles empty list', () {
+  final result = controller.getUnreadNotifications([]);
+
+  expect(result, []);
+});
+});
+
+group('formatTime', () {
+
+test('formatTime returns empty for null', () {
+  final context = FakeBuildContext();
+
+  final result = controller.formatTime(context, null);
+
+  expect(result, '');
+});
+
+});
 
 
 }

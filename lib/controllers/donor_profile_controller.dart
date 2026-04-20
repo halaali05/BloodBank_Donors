@@ -11,8 +11,17 @@ import '../services/cloud_functions_service.dart';
 class DonorProfileController {
   final CloudFunctionsService _cloudFunctions;
 
-  DonorProfileController({CloudFunctionsService? cloudFunctions})
-    : _cloudFunctions = cloudFunctions ?? CloudFunctionsService();
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _firestore;
+
+  DonorProfileController({
+    CloudFunctionsService? cloudFunctions,
+    FirebaseAuth? auth,
+    FirebaseFirestore? firestore,
+  })  : _cloudFunctions = cloudFunctions ?? CloudFunctionsService(),
+        _auth = auth ?? FirebaseAuth.instance,
+        _firestore = firestore ?? FirebaseFirestore.instance;
+
 
   // ------------------ Profile Data Fetching ------------------
   Future<Map<String, dynamic>> fetchUserProfile() async {
@@ -35,14 +44,14 @@ class DonorProfileController {
   // ------------------ Donation History ------------------
   /// يجيب التقارير مباشرة من Firestore بدل Cloud Function
   Future<List<DonorMedicalReport>> fetchDonationHistory() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final uid = _auth.currentUser?.uid ?? '';
     if (uid.isEmpty) return [];
 
     List<DonorMedicalReport> fromFirestore = [];
 
     try {
       // نقرأ مباشرة من medicalReports collection
-      final snapshot = await FirebaseFirestore.instance
+      final snapshot = await _firestore
           .collection('medicalReports')
           .where('donorId', isEqualTo: uid)
           .orderBy('createdAt', descending: true)
