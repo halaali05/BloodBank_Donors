@@ -639,6 +639,7 @@ class CloudFunctionsService {
     String? notes,
     String? reportFileUrl,
     String? canDonateAgainAt,
+    String? confirmedBloodType,
   }) async {
     try {
       final callable = _functions.httpsCallable('saveMedicalReport');
@@ -650,6 +651,8 @@ class CloudFunctionsService {
         if (notes != null) 'notes': notes,
         if (reportFileUrl != null) 'reportFileUrl': reportFileUrl,
         if (canDonateAgainAt != null) 'canDonateAgainAt': canDonateAgainAt,
+        if (confirmedBloodType != null)
+          'confirmedBloodType': confirmedBloodType,
       });
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {

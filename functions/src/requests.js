@@ -54,7 +54,9 @@ function donorDonationCooldownEndMs(userData) {
   if (!userData || typeof userData !== "object") return null;
   const explicit = millisFromFirestoreValue(userData.nextDonationEligibleAt);
   const lastDon = millisFromFirestoreValue(userData.lastDonatedAt);
-  const genderRaw = String(userData.gender || "").trim().toLowerCase();
+  const genderRaw = String(userData.gender || "")
+    .trim()
+    .toLowerCase();
   const days = genderRaw === "female" ? 120 : 90;
   let fromLast = null;
   if (lastDon != null) {
@@ -95,7 +97,10 @@ function assertDonorMayAcceptNewRequest(userData) {
  * (handles string vs number entries). Stops getDonationHistory from surfacing
  * stale pipeline rows after the request and donorResponses are removed.
  */
-async function stripDonorAcceptedRequestIdFromUser(donorId, requestIdVariantSet) {
+async function stripDonorAcceptedRequestIdFromUser(
+  donorId,
+  requestIdVariantSet,
+) {
   if (!donorId || typeof donorId !== "string" || !donorId.trim()) return;
   const wantDelete = (x) => {
     const sx = String(x);
@@ -612,9 +617,7 @@ exports.getDonors = onCall(publicCallableOpts, async (request) => {
       const donorData = doc.data();
       const phoneRaw = donorData.phoneNumber;
       const phoneNumber =
-        typeof phoneRaw === "string" && phoneRaw.trim()
-          ? phoneRaw.trim()
-          : "";
+        typeof phoneRaw === "string" && phoneRaw.trim() ? phoneRaw.trim() : "";
       return {
         id: doc.id,
         fullName: donorData.fullName || donorData.name || "Donor",
@@ -734,7 +737,7 @@ exports.getRequests = onCall(publicCallableOpts, async (request) => {
               ? d.createdAt.toMillis()
               : null,
         };
-      })
+      }),
     );
 
     return {
@@ -750,206 +753,216 @@ exports.getRequests = onCall(publicCallableOpts, async (request) => {
 /**
  * getRequestsByBloodBankId - Get all requests for a specific blood bank.
  */
-exports.getRequestsByBloodBankId = onCall(publicCallableOpts, async (request) => {
-  try {
-    const uid = requireAuth(request);
+exports.getRequestsByBloodBankId = onCall(
+  publicCallableOpts,
+  async (request) => {
+    try {
+      const uid = requireAuth(request);
 
-    const userSnap = await db.collection("users").doc(uid).get();
-    if (!userSnap.exists) {
-      throw new HttpsError("not-found", "User profile not found.");
-    }
+      const userSnap = await db.collection("users").doc(uid).get();
+      if (!userSnap.exists) {
+        throw new HttpsError("not-found", "User profile not found.");
+      }
 
-    const userData = userSnap.data() || {};
-    if (userData.role !== "hospital") {
-      throw new HttpsError(
-        "permission-denied",
-        "Only hospitals can view their requests.",
-      );
-    }
+      const userData = userSnap.data() || {};
+      if (userData.role !== "hospital") {
+        throw new HttpsError(
+          "permission-denied",
+          "Only hospitals can view their requests.",
+        );
+      }
 
-    const snapshot = await db
-      .collection("requests")
-      .where("bloodBankId", "==", uid)
-      .orderBy("createdAt", "desc")
-      .get();
+      const snapshot = await db
+        .collection("requests")
+        .where("bloodBankId", "==", uid)
+        .orderBy("createdAt", "desc")
+        .get();
 
-    const requests = await Promise.all(
-      snapshot.docs.map(async (doc) => {
-        const d = doc.data() || {};
-        if (isRequestExpired(d.createdAt)) {
-          return null;
-        }
-        const responsesSnap = await doc.ref.collection("donorResponses").get();
-        const acceptedDonors = [];
-        const rejectedDonors = [];
-        for (const rdoc of responsesSnap.docs) {
-          const donorId = rdoc.id;
-          const st = (rdoc.data() || {}).status;
-          const entry = await buildDonorManagementEntry(donorId, rdoc.data());
-          if (st === "accepted") {
-            acceptedDonors.push(entry);
-          } else if (st === "rejected") {
-            rejectedDonors.push(entry);
+      const requests = await Promise.all(
+        snapshot.docs.map(async (doc) => {
+          const d = doc.data() || {};
+          if (isRequestExpired(d.createdAt)) {
+            return null;
           }
-        }
-        return {
-          id: doc.id,
-          ...d,
-          acceptedCount:
-            typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
-          rejectedCount:
-            typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
-          acceptedDonors,
-          rejectedDonors,
-          createdAt:
-            d.createdAt && typeof d.createdAt.toMillis === "function"
-              ? d.createdAt.toMillis()
-              : null,
-        };
-      }),
-    );
+          const responsesSnap = await doc.ref
+            .collection("donorResponses")
+            .get();
+          const acceptedDonors = [];
+          const rejectedDonors = [];
+          for (const rdoc of responsesSnap.docs) {
+            const donorId = rdoc.id;
+            const st = (rdoc.data() || {}).status;
+            const entry = await buildDonorManagementEntry(donorId, rdoc.data());
+            if (st === "accepted") {
+              acceptedDonors.push(entry);
+            } else if (st === "rejected") {
+              rejectedDonors.push(entry);
+            }
+          }
+          return {
+            id: doc.id,
+            ...d,
+            acceptedCount:
+              typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
+            rejectedCount:
+              typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
+            acceptedDonors,
+            rejectedDonors,
+            createdAt:
+              d.createdAt && typeof d.createdAt.toMillis === "function"
+                ? d.createdAt.toMillis()
+                : null,
+          };
+        }),
+      );
 
-    const liveRequests = requests.filter((r) => r !== null);
-    return { requests: liveRequests, count: liveRequests.length };
-  } catch (err) {
-    console.error("[getRequestsByBloodBankId] ERROR:", err);
-    throw toHttpsError(err, "Failed to load requests.");
-  }
-});
+      const liveRequests = requests.filter((r) => r !== null);
+      return { requests: liveRequests, count: liveRequests.length };
+    } catch (err) {
+      console.error("[getRequestsByBloodBankId] ERROR:", err);
+      throw toHttpsError(err, "Failed to load requests.");
+    }
+  },
+);
 
 /**
  * setDonorRequestResponse — donors set or clear "I can donate".
  * Stores per-donor choice under requests/{id}/donorResponses/{uid}
  * and maintains acceptedCount / rejectedCount on the request document.
  */
-exports.setDonorRequestResponse = onCall(publicCallableOpts, async (request) => {
-  try {
-    const uid = requireAuth(request);
-    const data = request.data || {};
-    const requestId = nonEmptyString(data.requestId, "requestId");
-    const responseRaw =
-      typeof data.response === "string"
-        ? data.response.trim().toLowerCase()
-        : "";
-    if (
-      responseRaw !== "accepted" &&
-      responseRaw !== "rejected" &&
-      responseRaw !== "none"
-    ) {
-      throw new HttpsError(
-        "invalid-argument",
-        "response must be 'accepted', 'rejected', or 'none'",
-      );
-    }
-    const newStatus = responseRaw === "none" ? null : responseRaw;
-
-    const userSnap = await db.collection("users").doc(uid).get();
-    const userData = userSnap.exists ? userSnap.data() || {} : {};
-    if (!userSnap.exists || userData.role !== "donor") {
-      throw new HttpsError(
-        "permission-denied",
-        "Only donors can respond to blood requests.",
-      );
-    }
-
-    const requestRef = db.collection("requests").doc(requestId);
-    const responseRef = requestRef.collection("donorResponses").doc(uid);
-    const userRef = db.collection("users").doc(uid);
-
-    await db.runTransaction(async (t) => {
-      if (newStatus === "accepted") {
-        const uSnap = await t.get(userRef);
-        const uData = uSnap.exists ? uSnap.data() || {} : {};
-        assertDonorMayAcceptNewRequest(uData);
-      }
-
-      const reqSnap = await t.get(requestRef);
-      if (!reqSnap.exists) {
-        throw new HttpsError("not-found", "Request not found.");
-      }
-      const requestData = reqSnap.data() || {};
-      if (requestData.isCompleted === true) {
+exports.setDonorRequestResponse = onCall(
+  publicCallableOpts,
+  async (request) => {
+    try {
+      const uid = requireAuth(request);
+      const data = request.data || {};
+      const requestId = nonEmptyString(data.requestId, "requestId");
+      const responseRaw =
+        typeof data.response === "string"
+          ? data.response.trim().toLowerCase()
+          : "";
+      if (
+        responseRaw !== "accepted" &&
+        responseRaw !== "rejected" &&
+        responseRaw !== "none"
+      ) {
         throw new HttpsError(
-          "failed-precondition",
-          "This request is already completed and no longer accepts responses.",
+          "invalid-argument",
+          "response must be 'accepted', 'rejected', or 'none'",
+        );
+      }
+      const newStatus = responseRaw === "none" ? null : responseRaw;
+
+      const userSnap = await db.collection("users").doc(uid).get();
+      const userData = userSnap.exists ? userSnap.data() || {} : {};
+      if (!userSnap.exists || userData.role !== "donor") {
+        throw new HttpsError(
+          "permission-denied",
+          "Only donors can respond to blood requests.",
         );
       }
 
-      const respSnap = await t.get(responseRef);
-      const oldStatus = respSnap.exists ? (respSnap.data() || {}).status : null;
-      if (oldStatus !== "accepted" && oldStatus !== "rejected") {
-        // ignore unknown prior values
-      }
+      const requestRef = db.collection("requests").doc(requestId);
+      const responseRef = requestRef.collection("donorResponses").doc(uid);
+      const userRef = db.collection("users").doc(uid);
 
-      if (oldStatus === newStatus) {
-        return;
-      }
+      await db.runTransaction(async (t) => {
+        if (newStatus === "accepted") {
+          const uSnap = await t.get(userRef);
+          const uData = uSnap.exists ? uSnap.data() || {} : {};
+          assertDonorMayAcceptNewRequest(uData);
+        }
 
-      const rd = reqSnap.data() || {};
-      let accepted =
-        typeof rd.acceptedCount === "number" ? rd.acceptedCount : 0;
-      let rejected =
-        typeof rd.rejectedCount === "number" ? rd.rejectedCount : 0;
+        const reqSnap = await t.get(requestRef);
+        if (!reqSnap.exists) {
+          throw new HttpsError("not-found", "Request not found.");
+        }
+        const requestData = reqSnap.data() || {};
+        if (requestData.isCompleted === true) {
+          throw new HttpsError(
+            "failed-precondition",
+            "This request is already completed and no longer accepts responses.",
+          );
+        }
 
-      if (oldStatus === "accepted") {
-        accepted = Math.max(0, accepted - 1);
-      } else if (oldStatus === "rejected") {
-        rejected = Math.max(0, rejected - 1);
-      }
+        const respSnap = await t.get(responseRef);
+        const oldStatus = respSnap.exists
+          ? (respSnap.data() || {}).status
+          : null;
+        if (oldStatus !== "accepted" && oldStatus !== "rejected") {
+          // ignore unknown prior values
+        }
 
-      if (newStatus === "accepted") {
-        accepted += 1;
-      } else if (newStatus === "rejected") {
-        rejected += 1;
-      }
+        if (oldStatus === newStatus) {
+          return;
+        }
 
-      t.update(requestRef, {
-        acceptedCount: accepted,
-        rejectedCount: rejected,
+        const rd = reqSnap.data() || {};
+        let accepted =
+          typeof rd.acceptedCount === "number" ? rd.acceptedCount : 0;
+        let rejected =
+          typeof rd.rejectedCount === "number" ? rd.rejectedCount : 0;
+
+        if (oldStatus === "accepted") {
+          accepted = Math.max(0, accepted - 1);
+        } else if (oldStatus === "rejected") {
+          rejected = Math.max(0, rejected - 1);
+        }
+
+        if (newStatus === "accepted") {
+          accepted += 1;
+        } else if (newStatus === "rejected") {
+          rejected += 1;
+        }
+
+        t.update(requestRef, {
+          acceptedCount: accepted,
+          rejectedCount: rejected,
+        });
+
+        if (newStatus == null) {
+          t.delete(responseRef);
+        } else {
+          t.set(
+            responseRef,
+            {
+              status: newStatus,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
+
+        // Keep request IDs on the donor profile so getDonationHistory can load
+        // donorResponses without collection-group queries (avoids index / empty history).
+        if (oldStatus === "accepted" && newStatus !== "accepted") {
+          t.set(
+            userRef,
+            {
+              donorAcceptedRequestIds:
+                admin.firestore.FieldValue.arrayRemove(requestId),
+            },
+            { merge: true },
+          );
+        } else if (newStatus === "accepted" && oldStatus !== "accepted") {
+          t.set(
+            userRef,
+            {
+              donorAcceptedRequestIds:
+                admin.firestore.FieldValue.arrayUnion(requestId),
+            },
+            { merge: true },
+          );
+        }
       });
 
-      if (newStatus == null) {
-        t.delete(responseRef);
-      } else {
-        t.set(
-          responseRef,
-          {
-            status: newStatus,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true },
-        );
-      }
-
-      // Keep request IDs on the donor profile so getDonationHistory can load
-      // donorResponses without collection-group queries (avoids index / empty history).
-      if (oldStatus === "accepted" && newStatus !== "accepted") {
-        t.set(
-          userRef,
-          {
-            donorAcceptedRequestIds:
-              admin.firestore.FieldValue.arrayRemove(requestId),
-          },
-          { merge: true },
-        );
-      } else if (newStatus === "accepted" && oldStatus !== "accepted") {
-        t.set(
-          userRef,
-          {
-            donorAcceptedRequestIds:
-              admin.firestore.FieldValue.arrayUnion(requestId),
-          },
-          { merge: true },
-        );
-      }
-    });
-
-    return { ok: true, status: newStatus ?? "none" };
-  } catch (err) {
-    console.error("[setDonorRequestResponse] ERROR:", err);
-    throw toHttpsError(err, "Failed to save response.");
-  }
-});
+      return { ok: true, status: newStatus ?? "none" };
+    } catch (err) {
+      console.error("[setDonorRequestResponse] ERROR:", err);
+      throw toHttpsError(err, "Failed to save response.");
+    }
+  },
+);
 
 /**
  * markRequestCompleted - hospitals only, must own the request.
@@ -1057,53 +1070,56 @@ exports.updateRequestUnits = onCall(publicCallableOpts, async (request) => {
  * getRequestDonorResponses — hospital only; donors who accepted / rejected
  * (name, email, phoneNumber, pipeline fields).
  */
-exports.getRequestDonorResponses = onCall(publicCallableOpts, async (request) => {
-  try {
-    const uid = requireAuth(request);
-    const data = request.data || {};
-    const requestId = nonEmptyString(data.requestId, "requestId");
+exports.getRequestDonorResponses = onCall(
+  publicCallableOpts,
+  async (request) => {
+    try {
+      const uid = requireAuth(request);
+      const data = request.data || {};
+      const requestId = nonEmptyString(data.requestId, "requestId");
 
-    const userSnap = await db.collection("users").doc(uid).get();
-    if (!userSnap.exists || userSnap.data().role !== "hospital") {
-      throw new HttpsError(
-        "permission-denied",
-        "Only hospitals can view donor response lists.",
-      );
-    }
-
-    const requestRef = db.collection("requests").doc(requestId);
-    const requestSnap = await requestRef.get();
-    if (!requestSnap.exists) {
-      throw new HttpsError("not-found", "Request not found.");
-    }
-    if (requestSnap.data().bloodBankId !== uid) {
-      throw new HttpsError(
-        "permission-denied",
-        "You can only view responses for your own requests.",
-      );
-    }
-
-    const responsesSnap = await requestRef.collection("donorResponses").get();
-    const accepted = [];
-    const rejected = [];
-
-    for (const doc of responsesSnap.docs) {
-      const donorId = doc.id;
-      const st = (doc.data() || {}).status;
-      const entry = await buildDonorManagementEntry(donorId, doc.data());
-      if (st === "accepted") {
-        accepted.push(entry);
-      } else if (st === "rejected") {
-        rejected.push(entry);
+      const userSnap = await db.collection("users").doc(uid).get();
+      if (!userSnap.exists || userSnap.data().role !== "hospital") {
+        throw new HttpsError(
+          "permission-denied",
+          "Only hospitals can view donor response lists.",
+        );
       }
-    }
 
-    return { ok: true, accepted, rejected };
-  } catch (err) {
-    console.error("[getRequestDonorResponses] ERROR:", err);
-    throw toHttpsError(err, "Failed to load donor responses.");
-  }
-});
+      const requestRef = db.collection("requests").doc(requestId);
+      const requestSnap = await requestRef.get();
+      if (!requestSnap.exists) {
+        throw new HttpsError("not-found", "Request not found.");
+      }
+      if (requestSnap.data().bloodBankId !== uid) {
+        throw new HttpsError(
+          "permission-denied",
+          "You can only view responses for your own requests.",
+        );
+      }
+
+      const responsesSnap = await requestRef.collection("donorResponses").get();
+      const accepted = [];
+      const rejected = [];
+
+      for (const doc of responsesSnap.docs) {
+        const donorId = doc.id;
+        const st = (doc.data() || {}).status;
+        const entry = await buildDonorManagementEntry(donorId, doc.data());
+        if (st === "accepted") {
+          accepted.push(entry);
+        } else if (st === "rejected") {
+          rejected.push(entry);
+        }
+      }
+
+      return { ok: true, accepted, rejected };
+    } catch (err) {
+      console.error("[getRequestDonorResponses] ERROR:", err);
+      throw toHttpsError(err, "Failed to load donor responses.");
+    }
+  },
+);
 
 /**
  * deleteRequest - delete a blood request (hospitals only, must own the request).

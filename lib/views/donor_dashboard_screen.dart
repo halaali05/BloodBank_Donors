@@ -18,6 +18,7 @@ import '../widgets/dashboard/donor_header.dart';
 import '../widgets/dashboard/donor_request_card.dart';
 import '../widgets/common/donor_cooldown_blocked_message.dart';
 import '../utils/donor_eligibility.dart';
+import '../utils/blood_compatibility.dart';
 import 'donor_map_screen.dart';
 
 /// Main dashboard screen for donors
@@ -113,8 +114,23 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
     try {
       final requests = await _controller.fetchRequests();
       if (mounted) {
+        // Filter requests based on donor's blood type compatibility.
+        // If bloodType is not set yet, show all requests (no filtering).
+        final userBloodType = (_userProfile?['bloodType'] ?? '')
+            .toString()
+            .trim();
+        final filtered = userBloodType.isEmpty
+            ? requests
+            : requests
+                  .where(
+                    (r) => BloodCompatibility.canDonate(
+                      userBloodType,
+                      r.bloodType,
+                    ),
+                  )
+                  .toList();
         setState(() {
-          _requests = requests;
+          _requests = filtered;
           _isLoading = false;
         });
       }
@@ -393,7 +409,8 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
                                 request: request,
                                 isSubmittingResponse:
                                     _respondingRequestId == request.id,
-                                acceptBlockedByCooldown: _donationCooldownActive,
+                                acceptBlockedByCooldown:
+                                    _donationCooldownActive,
                                 onDonate: () =>
                                     _submitDonorResponse(request, 'accepted'),
                                 onUndoDonate: () =>
@@ -455,13 +472,9 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
   /// Builds header with donor name and statistics
   /// Uses Cloud Functions to get user profile data (polling every 30 seconds)
   Widget _buildHeader(User? user) {
-    final activeRequests =
-        _requests.where((r) => !r.isCompleted).toList();
+    final activeRequests = _requests.where((r) => !r.isCompleted).toList();
 
-    final activeUnits = activeRequests.fold(
-      0,
-      (sum, r) => sum + r.units,
-    );
+    final activeUnits = activeRequests.fold(0, (sum, r) => sum + r.units);
 
     final donorName = _controller.extractDonorName(
       _userProfile,
@@ -475,4 +488,3 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
     );
   }
 }
-

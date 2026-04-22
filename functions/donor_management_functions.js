@@ -281,6 +281,7 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       notes,
       reportFileUrl,
       canDonateAgainAt,
+      confirmedBloodType,
     } = request.data || {};
 
     if (!requestId || typeof requestId !== "string") {
@@ -344,7 +345,9 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
 
     const donorResponseData = donorResponseSnap.data() || {};
     const donorUserSnap = await db.collection("users").doc(donorId).get();
-    const donorUserData = donorUserSnap.exists ? donorUserSnap.data() || {} : {};
+    const donorUserData = donorUserSnap.exists
+      ? donorUserSnap.data() || {}
+      : {};
     const genderRaw = String(donorUserData.gender || "")
       .trim()
       .toLowerCase();
@@ -389,7 +392,9 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       appointmentAt: appointmentAtForReport,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
-
+    if (confirmedBloodType) {
+      reportData.confirmedBloodType = confirmedBloodType;
+    }
     const reportRef = db.collection("medicalReports").doc();
     const batch = db.batch();
 

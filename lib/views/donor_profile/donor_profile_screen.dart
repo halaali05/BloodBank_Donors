@@ -427,6 +427,45 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                                   fontSize: 18,
                                 ),
                               ),
+                              const SizedBox(height: 4),
+                              // Blood type badge (shown once hospital confirms it)
+                              Builder(
+                                builder: (_) {
+                                  final bt = (_userData?['bloodType'] ?? '')
+                                      .toString()
+                                      .trim();
+                                  if (bt.isEmpty)
+                                    return const SizedBox.shrink();
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 4),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.2,
+                                        ),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.4,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '🩸 $bt',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
                               const SizedBox(height: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -510,6 +549,12 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                             onPickAvatar: _pickAndUploadAvatar,
                             onNameChanged: () => setState(() {}),
                             onSave: _save,
+                            bloodType: () {
+                              final bt = (_userData?['bloodType'] ?? '')
+                                  .toString()
+                                  .trim();
+                              return bt.isEmpty ? null : bt;
+                            }(),
                           ),
                         ),
                       );
