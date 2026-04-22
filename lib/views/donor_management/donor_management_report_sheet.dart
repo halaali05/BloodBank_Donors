@@ -16,7 +16,9 @@ class DonorManagementReportSheet extends StatefulWidget {
     String? reason,
     String? notes,
     String? reportFileUrl,
-  ) onSubmit;
+    String? confirmedBloodType,
+  )
+  onSubmit;
 
   const DonorManagementReportSheet({
     super.key,
@@ -29,11 +31,13 @@ class DonorManagementReportSheet extends StatefulWidget {
       _DonorManagementReportSheetState();
 }
 
-class _DonorManagementReportSheetState extends State<DonorManagementReportSheet> {
+class _DonorManagementReportSheetState
+    extends State<DonorManagementReportSheet> {
   DonorProcessStatus _outcome = DonorProcessStatus.donated;
   final _reasonCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   bool _showValidationErrors = false;
+  String? _confirmedBloodType;
 
   String? _pickedFileName;
   String? _uploadedFileUrl;
@@ -182,6 +186,7 @@ class _DonorManagementReportSheetState extends State<DonorManagementReportSheet>
       isRestricted ? reason : null,
       _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       _uploadedFileUrl,
+      _confirmedBloodType ?? widget.donor.bloodType,
     );
   }
 
@@ -189,7 +194,9 @@ class _DonorManagementReportSheetState extends State<DonorManagementReportSheet>
   Widget build(BuildContext context) {
     final isRestricted = _outcome == DonorProcessStatus.restricted;
     final hasReasonError =
-        isRestricted && _showValidationErrors && _reasonCtrl.text.trim().isEmpty;
+        isRestricted &&
+        _showValidationErrors &&
+        _reasonCtrl.text.trim().isEmpty;
     final hasFileError = _showValidationErrors && _uploadedFileUrl == null;
 
     return Container(
@@ -267,6 +274,49 @@ class _DonorManagementReportSheetState extends State<DonorManagementReportSheet>
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Confirmed Blood Type *',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: _confirmedBloodType ?? widget.donor.bloodType,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: AppTheme.softBg,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.black12),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.black12),
+                ),
+                prefixIcon: const Icon(
+                  Icons.bloodtype_rounded,
+                  color: AppTheme.deepRed,
+                  size: 20,
+                ),
+              ),
+              hint: const Text('Select blood type'),
+              items: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+                  .map(
+                    (t) => DropdownMenuItem(
+                      value: t,
+                      child: Text(
+                        t,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (v) => setState(() => _confirmedBloodType = v),
             ),
             const SizedBox(height: 16),
             const Text(

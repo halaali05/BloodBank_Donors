@@ -13,6 +13,9 @@ class DonorResponseEntry {
   /// `appointmentAt` from Firestore as epoch ms (when set).
   final int? appointmentAtMillis;
 
+  /// The donor's blood type (e.g. 'A+', 'O-'). May be null/empty if unknown.
+  final String? bloodType;
+
   const DonorResponseEntry({
     required this.donorId,
     required this.fullName,
@@ -20,6 +23,7 @@ class DonorResponseEntry {
     this.phoneNumber = '',
     this.processStatus,
     this.appointmentAtMillis,
+    this.bloodType,
   });
 
   factory DonorResponseEntry.fromMap(Map<String, dynamic> m) {
@@ -54,6 +58,13 @@ class DonorResponseEntry {
         ? null
         : psRaw.toString().trim();
 
+    final btRaw = m['bloodType'];
+    final String? bloodType = btRaw == null
+        ? null
+        : btRaw.toString().trim().isEmpty
+        ? null
+        : btRaw.toString().trim();
+
     return DonorResponseEntry(
       donorId: donorId,
       fullName: fullName,
@@ -61,6 +72,7 @@ class DonorResponseEntry {
       phoneNumber: phoneNumber,
       processStatus: processStatus,
       appointmentAtMillis: appointmentAtMillis,
+      bloodType: bloodType,
     );
   }
 }

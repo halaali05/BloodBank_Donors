@@ -52,6 +52,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
               appointmentAt: d.appointmentAtMillis != null
                   ? DateTime.fromMillisecondsSinceEpoch(d.appointmentAtMillis!)
                   : null,
+              bloodType: d.bloodType,
             ),
           )
           .toList();
@@ -97,8 +98,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
     final acceptedCount = _donors
         .where((d) => d.status != DonorProcessStatus.restricted)
         .length;
-    final restrictedCount =
-        _byStatus([DonorProcessStatus.restricted]).length;
+    final restrictedCount = _byStatus([DonorProcessStatus.restricted]).length;
 
     return Scaffold(
       backgroundColor: AppTheme.softBg,
@@ -133,8 +133,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                 ),
                 DonorManagementTabBar(
                   controller: _tabController,
-                  pendingCount:
-                      _byStatus([DonorProcessStatus.accepted]).length,
+                  pendingCount: _byStatus([DonorProcessStatus.accepted]).length,
                   scheduledCount: _byStatus([
                     DonorProcessStatus.scheduled,
                     DonorProcessStatus.tested,
@@ -225,49 +224,55 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
       backgroundColor: Colors.transparent,
       builder: (_) => DonorManagementReportSheet(
         donor: donor,
-        onSubmit: (status, reason, notes, reportFileUrl) async {
-          Navigator.pop(context);
+        onSubmit:
+            (status, reason, notes, reportFileUrl, confirmedBloodType) async {
+              Navigator.pop(context);
 
-          setState(() {
-            final idx = _donors.indexWhere((d) => d.donorId == donor.donorId);
-            if (idx != -1) _donors[idx] = donor.copyWith(status: status);
-          });
+              setState(() {
+                final idx = _donors.indexWhere(
+                  (d) => d.donorId == donor.donorId,
+                );
+                if (idx != -1) _donors[idx] = donor.copyWith(status: status);
+              });
 
-          try {
-            await _cloudFunctions.saveMedicalReport(
-              requestId: widget.request.id,
-              donorId: donor.donorId,
-              status: donorProcessStatusToString(status),
-              restrictionReason: reason,
-              notes: notes,
-              reportFileUrl: reportFileUrl,
-            );
-            if (!mounted) return;
-            await _loadDonors(showSpinner: false);
-            if (!mounted) return;
-            if (_tabController.length > 2) {
-              _tabController.animateTo(2);
-            }
-            final msg = status == DonorProcessStatus.donated
-                ? '🩸 ${donor.fullName} donation recorded!'
-                : '⚠️ ${donor.fullName} marked as restricted';
-            _showSnack(
-              msg,
-              status == DonorProcessStatus.donated
-                  ? Colors.green[700]!
-                  : Colors.orange[700]!,
-            );
-          } catch (e) {
-            setState(() {
-              final idx = _donors.indexWhere((d) => d.donorId == donor.donorId);
-              if (idx != -1) _donors[idx] = donor;
-            });
-            _showSnack(
-              e.toString().replaceFirst('Exception: ', ''),
-              Colors.red,
-            );
-          }
-        },
+              try {
+                await _cloudFunctions.saveMedicalReport(
+                  requestId: widget.request.id,
+                  donorId: donor.donorId,
+                  status: donorProcessStatusToString(status),
+                  restrictionReason: reason,
+                  notes: notes,
+                  reportFileUrl: reportFileUrl,
+                  confirmedBloodType: confirmedBloodType,
+                );
+                if (!mounted) return;
+                await _loadDonors(showSpinner: false);
+                if (!mounted) return;
+                if (_tabController.length > 2) {
+                  _tabController.animateTo(2);
+                }
+                final msg = status == DonorProcessStatus.donated
+                    ? '🩸 ${donor.fullName} donation recorded!'
+                    : '⚠️ ${donor.fullName} marked as restricted';
+                _showSnack(
+                  msg,
+                  status == DonorProcessStatus.donated
+                      ? Colors.green[700]!
+                      : Colors.orange[700]!,
+                );
+              } catch (e) {
+                setState(() {
+                  final idx = _donors.indexWhere(
+                    (d) => d.donorId == donor.donorId,
+                  );
+                  if (idx != -1) _donors[idx] = donor;
+                });
+                _showSnack(
+                  e.toString().replaceFirst('Exception: ', ''),
+                  Colors.red,
+                );
+              }
+            },
       ),
     );
   }

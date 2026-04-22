@@ -15,6 +15,9 @@ class DonorProfileAccountPage extends StatefulWidget {
   final VoidCallback onNameChanged;
   final Future<void> Function() onSave;
 
+  /// The donor's confirmed blood type (e.g. 'A+', 'O-'). Null if not yet set.
+  final String? bloodType;
+
   const DonorProfileAccountPage({
     super.key,
     required this.formKey,
@@ -28,10 +31,12 @@ class DonorProfileAccountPage extends StatefulWidget {
     required this.onPickAvatar,
     required this.onNameChanged,
     required this.onSave,
+    this.bloodType,
   });
 
   @override
-  State<DonorProfileAccountPage> createState() => _DonorProfileAccountPageState();
+  State<DonorProfileAccountPage> createState() =>
+      _DonorProfileAccountPageState();
 }
 
 class _DonorProfileAccountPageState extends State<DonorProfileAccountPage> {
@@ -108,8 +113,9 @@ class _DonorProfileAccountPageState extends State<DonorProfileAccountPage> {
                         children: [
                           CircleAvatar(
                             radius: 28,
-                            backgroundColor:
-                                AppTheme.deepRed.withValues(alpha: 0.12),
+                            backgroundColor: AppTheme.deepRed.withValues(
+                              alpha: 0.12,
+                            ),
                             child: ClipOval(
                               child:
                                   (widget.photoUrl != null &&
@@ -167,14 +173,47 @@ class _DonorProfileAccountPageState extends State<DonorProfileAccountPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            widget.nameController.text.isEmpty
-                                ? 'Donor'
-                                : widget.nameController.text,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 16,
-                            ),
+                          // Name + blood type badge on same row
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  widget.nameController.text.isEmpty
+                                      ? 'Donor'
+                                      : widget.nameController.text,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                              if (widget.bloodType != null &&
+                                  widget.bloodType!.isNotEmpty) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 9,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.shade50,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: Colors.red.shade200,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '🩸 ${widget.bloodType}',
+                                    style: TextStyle(
+                                      color: Colors.red.shade700,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                           const SizedBox(height: 4),
                           Row(
@@ -275,6 +314,14 @@ class _DonorProfileAccountPageState extends State<DonorProfileAccountPage> {
                 validator: (v) =>
                     (v ?? '').trim().length < 2 ? 'Name is too short' : null,
               ),
+              if (widget.bloodType != null && widget.bloodType!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _ReadOnlyAccountField(
+                  icon: Icons.bloodtype_rounded,
+                  label: 'Blood Type',
+                  value: widget.bloodType!,
+                ),
+              ],
               if (widget.genderLabel != null &&
                   widget.genderLabel!.isNotEmpty) ...[
                 const SizedBox(height: 12),

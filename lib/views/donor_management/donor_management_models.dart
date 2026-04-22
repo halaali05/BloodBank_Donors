@@ -9,6 +9,9 @@ class DonorPipelineRow {
   final DonorProcessStatus status;
   final DateTime? appointmentAt;
 
+  /// The donor's blood type (e.g. 'A+', 'O-'). May be null/empty if unknown.
+  final String? bloodType;
+
   const DonorPipelineRow({
     required this.donorId,
     required this.fullName,
@@ -16,18 +19,20 @@ class DonorPipelineRow {
     this.phoneNumber = '',
     required this.status,
     this.appointmentAt,
+    this.bloodType,
   });
 
   DonorPipelineRow copyWith({
     DonorProcessStatus? status,
     DateTime? appointmentAt,
-  }) =>
-      DonorPipelineRow(
-        donorId: donorId,
-        fullName: fullName,
-        email: email,
-        phoneNumber: phoneNumber,
-        status: status ?? this.status,
-        appointmentAt: appointmentAt ?? this.appointmentAt,
-      );
+    String? bloodType,
+  }) => DonorPipelineRow(
+    donorId: donorId,
+    fullName: fullName,
+    email: email,
+    phoneNumber: phoneNumber,
+    status: status ?? this.status,
+    appointmentAt: appointmentAt ?? this.appointmentAt,
+    bloodType: bloodType ?? this.bloodType,
+  );
 }
