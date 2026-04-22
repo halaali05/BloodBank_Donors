@@ -204,7 +204,7 @@ class _DonorProfileAccountPageState extends State<DonorProfileAccountPage> {
                                     ),
                                   ),
                                   child: Text(
-                                    '🩸 ${widget.bloodType}',
+                                    widget.bloodType!,
                                     style: TextStyle(
                                       color: Colors.red.shade700,
                                       fontWeight: FontWeight.w800,
@@ -314,14 +314,15 @@ class _DonorProfileAccountPageState extends State<DonorProfileAccountPage> {
                 validator: (v) =>
                     (v ?? '').trim().length < 2 ? 'Name is too short' : null,
               ),
-              if (widget.bloodType != null && widget.bloodType!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _ReadOnlyAccountField(
-                  icon: Icons.bloodtype_rounded,
-                  label: 'Blood Type',
-                  value: widget.bloodType!,
-                ),
-              ],
+              const SizedBox(height: 12),
+              _ReadOnlyAccountField(
+                icon: Icons.bloodtype_rounded,
+                label: 'Blood Type',
+                value: (widget.bloodType?.trim().isNotEmpty ?? false)
+                    ? widget.bloodType!.trim()
+                    : 'Not confirmed yet — appears after a blood bank uploads your donation report.',
+                valueMuted: !(widget.bloodType?.trim().isNotEmpty ?? false),
+              ),
               if (widget.genderLabel != null &&
                   widget.genderLabel!.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -352,11 +353,13 @@ class _ReadOnlyAccountField extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  final bool valueMuted;
 
   const _ReadOnlyAccountField({
     required this.icon,
     required this.label,
     required this.value,
+    this.valueMuted = false,
   });
 
   @override
@@ -389,10 +392,11 @@ class _ReadOnlyAccountField extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   value,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black87,
+                  style: TextStyle(
+                    fontSize: valueMuted ? 13 : 15,
+                    fontWeight: valueMuted ? FontWeight.w600 : FontWeight.w800,
+                    color: valueMuted ? Colors.black54 : Colors.black87,
+                    height: valueMuted ? 1.35 : null,
                   ),
                 ),
               ],

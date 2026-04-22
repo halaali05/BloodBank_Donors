@@ -9,6 +9,10 @@ const {
   parseDonorGender,
 } = require("./utils");
 const { publicCallableOpts } = require("../callable_config");
+const {
+  scheduleRef,
+  mergeUserWithScheduleSnap,
+} = require("../donation_schedule");
 
 const db = admin.firestore();
 
@@ -157,7 +161,8 @@ exports.getUserData = onCall(publicCallableOpts, async (request) => {
       throw new HttpsError("not-found", "User profile not found.");
     }
 
-    const d = snap.data() || {};
+    const schedSnap = await scheduleRef(db, targetUid).get();
+    const d = mergeUserWithScheduleSnap(snap.data() || {}, schedSnap);
     const toMillis = (v) => {
       if (v == null) return null;
       if (typeof v.toMillis === "function") return v.toMillis();

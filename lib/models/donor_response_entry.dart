@@ -16,6 +16,15 @@ class DonorResponseEntry {
   /// The donor's blood type (e.g. 'A+', 'O-'). May be null/empty if unknown.
   final String? bloodType;
 
+  /// Donor asked to reschedule (shown in blood bank pending tab until a new slot is set).
+  final String? rescheduleReason;
+
+  /// Donor's preferred new appointment instant (epoch ms).
+  final int? reschedulePreferredAtMillis;
+
+  /// When the reschedule request was submitted (epoch ms).
+  final int? rescheduleRequestedAtMillis;
+
   const DonorResponseEntry({
     required this.donorId,
     required this.fullName,
@@ -24,6 +33,9 @@ class DonorResponseEntry {
     this.processStatus,
     this.appointmentAtMillis,
     this.bloodType,
+    this.rescheduleReason,
+    this.reschedulePreferredAtMillis,
+    this.rescheduleRequestedAtMillis,
   });
 
   factory DonorResponseEntry.fromMap(Map<String, dynamic> m) {
@@ -37,19 +49,25 @@ class DonorResponseEntry {
       return '';
     }
 
+    int? readMillis(dynamic v) {
+      if (v == null) return null;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      if (v is String) {
+        final s = v.trim();
+        if (s.isEmpty) return null;
+        return int.tryParse(s);
+      }
+      return null;
+    }
+
     final donorId = pick(['donorId', 'userId', 'uid']);
     var fullName = pick(['fullName', 'name', 'displayName']);
     final email = pick(['email']);
     final phoneNumber = pick(['phoneNumber', 'phone']);
     if (fullName.isEmpty) fullName = 'Donor';
 
-    int? appointmentAtMillis;
-    final apt = m['appointmentAtMillis'];
-    if (apt is int) {
-      appointmentAtMillis = apt;
-    } else if (apt is num) {
-      appointmentAtMillis = apt.toInt();
-    }
+    int? appointmentAtMillis = readMillis(m['appointmentAtMillis']);
 
     final psRaw = m['processStatus'];
     final String? processStatus = psRaw == null
@@ -65,6 +83,19 @@ class DonorResponseEntry {
         ? null
         : btRaw.toString().trim();
 
+    final int? reschedulePreferredAtMillis =
+        readMillis(m['reschedulePreferredAtMillis']);
+
+    final int? rescheduleRequestedAtMillis =
+        readMillis(m['rescheduleRequestedAtMillis']);
+
+    final rrRaw = m['rescheduleReason'];
+    final String? rescheduleReason = rrRaw == null
+        ? null
+        : rrRaw.toString().trim().isEmpty
+        ? null
+        : rrRaw.toString().trim();
+
     return DonorResponseEntry(
       donorId: donorId,
       fullName: fullName,
@@ -73,6 +104,9 @@ class DonorResponseEntry {
       processStatus: processStatus,
       appointmentAtMillis: appointmentAtMillis,
       bloodType: bloodType,
+      rescheduleReason: rescheduleReason,
+      reschedulePreferredAtMillis: reschedulePreferredAtMillis,
+      rescheduleRequestedAtMillis: rescheduleRequestedAtMillis,
     );
   }
 }

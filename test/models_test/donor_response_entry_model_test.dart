@@ -119,5 +119,29 @@ void main() {
       expect(result.processStatus, null);
     });
 
+    test('parses reschedule fields', () {
+      final result = DonorResponseEntry.fromMap({
+        'donorId': 'd1',
+        'rescheduleReason': '  Work trip  ',
+        'reschedulePreferredAtMillis': 1700000000000,
+        'rescheduleRequestedAtMillis': 1700000001000.0,
+      });
+
+      expect(result.rescheduleReason, 'Work trip');
+      expect(result.reschedulePreferredAtMillis, 1700000000000);
+      expect(result.rescheduleRequestedAtMillis, 1700000001000);
+    });
+
+    test('parses reschedule millis from string JSON', () {
+      final result = DonorResponseEntry.fromMap({
+        'donorId': 'd1',
+        'rescheduleRequestedAtMillis': '1700000002000',
+        'reschedulePreferredAtMillis': '1700000003000',
+      });
+
+      expect(result.rescheduleRequestedAtMillis, 1700000002000);
+      expect(result.reschedulePreferredAtMillis, 1700000003000);
+    });
+
   });
 }

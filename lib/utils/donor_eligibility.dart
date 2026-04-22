@@ -1,5 +1,6 @@
 /// Donor post-donation rules — keep aligned with [functions/src/requests.js]
-/// (`donorDonationCooldownEndMs` and gender-based days).
+/// (`donorDonationCooldownEndMs` and gender-based days). Source fields are
+/// merged into [getUserData] from Firestore `donorDonationSchedule/{uid}`.
 class DonorEligibility {
   DonorEligibility._();
 

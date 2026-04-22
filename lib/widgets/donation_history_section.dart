@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/donor_medical_report.dart';
+import '../services/cloud_functions_service.dart';
 import '../theme/app_theme.dart';
+import '../views/donor_management/donor_management_appointment.dart';
 
 /// Displays the donor's full donation history on their profile.
 /// Each card shows a step-by-step journey timeline only.
@@ -8,10 +10,15 @@ class DonationHistorySection extends StatelessWidget {
   final List<DonorMedicalReport> reports;
   final bool isLoading;
 
-  const DonationHistorySection({
+  /// When set (donor profile), scheduled donors can send a reschedule request
+  /// and this runs after a successful submit (e.g. reload history).
+  final Future<void> Function()? onRescheduleSubmitted;
+
+  DonationHistorySection({
     super.key,
     required this.reports,
     this.isLoading = false,
+    this.onRescheduleSubmitted,
   });
 
   @override
@@ -100,7 +107,12 @@ class DonationHistorySection extends StatelessWidget {
         else if (reports.isEmpty)
           _EmptyHistoryCard()
         else
-          ...reports.map((r) => _JourneyCard(report: r)),
+          ...reports.map(
+            (r) => _JourneyCard(
+              report: r,
+              onRescheduleSubmitted: onRescheduleSubmitted,
+            ),
+          ),
       ],
     );
   }
@@ -232,9 +244,261 @@ class _EmptyHistoryCard extends StatelessWidget {
   );
 }
 
+/// Bottom sheet for reschedule: owns [TextEditingController] so it is not
+/// disposed while the modal route is still visible (avoids submit crashes).
+class _RescheduleAppointmentSheet extends StatefulWidget {
+  const _RescheduleAppointmentSheet({
+    required this.report,
+    required this.parentContext,
+    required this.onRescheduleSubmitted,
+  });
+
+  final DonorMedicalReport report;
+  final BuildContext parentContext;
+  final Future<void> Function() onRescheduleSubmitted;
+
+  @override
+  State<_RescheduleAppointmentSheet> createState() =>
+      _RescheduleAppointmentSheetState();
+}
+
+class _RescheduleAppointmentSheetState extends State<_RescheduleAppointmentSheet> {
+  late final TextEditingController _reason;
+  DateTime? _preferred;
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _reason = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  static String _formatDateTimeLabel(DateTime dt) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year} · $h:$m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 14),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: AppTheme.cardShadow,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Request a new appointment',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 17,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'The blood bank will see your reason and preferred time in Pending.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.black.withValues(alpha: 0.45),
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _reason,
+                  decoration: InputDecoration(
+                    labelText: 'Reason',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  maxLines: 3,
+                  textCapitalization: TextCapitalization.sentences,
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _submitting
+                      ? null
+                      : () async {
+                          final dt =
+                              await pickDonorAppointmentDateTime(context);
+                          if (dt != null) setState(() => _preferred = dt);
+                        },
+                  icon: const Icon(Icons.calendar_month_rounded),
+                  label: Text(
+                    _preferred == null
+                        ? 'Choose best date & time'
+                        : _formatDateTimeLabel(_preferred!),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.deepRed,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: _submitting ? null : _onSubmit,
+                  child: _submitting
+                      ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Submit',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _onSubmit() async {
+    final reason = _reason.text.trim();
+    if (reason.length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a reason (at least 3 characters).'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (_preferred == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please choose your preferred date and time.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final requestId = widget.report.effectiveRequestId;
+    if (requestId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Missing request reference. Try reopening Donation History.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _submitting = true);
+    try {
+      await CloudFunctionsService().requestAppointmentReschedule(
+        requestId: requestId,
+        reason: reason,
+        preferredAppointmentAtMillis: _preferred!.millisecondsSinceEpoch,
+      );
+      if (!mounted) return;
+
+      // Snapshot before [maybePop] — this [State] may be disposed immediately after.
+      final parent = widget.parentContext;
+
+      // Wait until the modal route (and this State + [TextEditingController])
+      // are fully disposed before scheduling parent reloads — otherwise a
+      // post-frame [setState] on this State races with dispose and causes
+      // "controller used after dispose" / wrong build scope on a 2nd submit.
+      await Navigator.of(context).maybePop();
+      if (parent.mounted) {
+        ScaffoldMessenger.of(parent).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Your reschedule request was sent to the blood bank.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      final reload = widget.onRescheduleSubmitted;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!parent.mounted) return;
+        try {
+          await reload();
+        } catch (e, st) {
+          debugPrint('Reschedule reload failed: $e\n$st');
+          if (!parent.mounted) return;
+          ScaffoldMessenger.maybeOf(parent)?.showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Request saved. Pull to refresh if the list does not update.',
+              ),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+}
+
 class _JourneyCard extends StatefulWidget {
   final DonorMedicalReport report;
-  const _JourneyCard({required this.report});
+  final Future<void> Function()? onRescheduleSubmitted;
+
+  const _JourneyCard({
+    required this.report,
+    this.onRescheduleSubmitted,
+  });
 
   @override
   State<_JourneyCard> createState() => _JourneyCardState();
@@ -242,6 +506,39 @@ class _JourneyCard extends StatefulWidget {
 
 class _JourneyCardState extends State<_JourneyCard> {
   bool _expanded = true;
+
+  bool get _offerReschedule {
+    if (widget.onRescheduleSubmitted == null ||
+        widget.report.effectiveRequestId.isEmpty) {
+      return false;
+    }
+    final apt = widget.report.appointmentAt;
+    if (apt == null) return false;
+    final s = widget.report.status;
+    if (s == DonorProcessStatus.tested ||
+        s == DonorProcessStatus.donated ||
+        s == DonorProcessStatus.restricted) {
+      return false;
+    }
+    // Match Cloud Function: donor may still be `accepted` in Firestore while the
+    // app shows an appointment (same as BloodRequest merge / legacy rows).
+    return s == DonorProcessStatus.scheduled ||
+        s == DonorProcessStatus.accepted;
+  }
+
+  Future<void> _openRescheduleSheet() async {
+    if (!_offerReschedule) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _RescheduleAppointmentSheet(
+        report: widget.report,
+        parentContext: context,
+        onRescheduleSubmitted: widget.onRescheduleSubmitted!,
+      ),
+    );
+  }
 
   static const _statusOrder = {
     DonorProcessStatus.accepted: 0,
@@ -479,7 +776,35 @@ class _JourneyCardState extends State<_JourneyCard> {
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
               child: Column(
                 children: [
-                  ..._steps.map((step) => _TimelineStepRow(step: step)),
+                  for (var i = 0; i < _steps.length; i++) ...[
+                    _TimelineStepRow(step: _steps[i]),
+                    if (i == 1 && _offerReschedule)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 44, bottom: 4),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppTheme.deepRed,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            onPressed: _openRescheduleSheet,
+                            icon: const Icon(
+                              Icons.event_repeat_rounded,
+                              size: 18,
+                            ),
+                            label: const Text(
+                              'Reschedule',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                   if (isRestricted &&
                       widget.report.canDonateAgainAt != null) ...[
                     const SizedBox(height: 8),

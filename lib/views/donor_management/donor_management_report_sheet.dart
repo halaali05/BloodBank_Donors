@@ -15,8 +15,8 @@ class DonorManagementReportSheet extends StatefulWidget {
     DonorProcessStatus status,
     String? reason,
     String? notes,
-    String? reportFileUrl,
-    String? confirmedBloodType,
+    String reportFileUrl,
+    String confirmedBloodType,
   )
   onSubmit;
 
@@ -33,11 +33,23 @@ class DonorManagementReportSheet extends StatefulWidget {
 
 class _DonorManagementReportSheetState
     extends State<DonorManagementReportSheet> {
+  static const List<String> _bloodTypes = [
+    'A+',
+    'A-',
+    'B+',
+    'B-',
+    'AB+',
+    'AB-',
+    'O+',
+    'O-',
+  ];
+
   DonorProcessStatus _outcome = DonorProcessStatus.donated;
   final _reasonCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   bool _showValidationErrors = false;
-  String? _confirmedBloodType;
+  /// Explicit selection required before submit (do not default from pipeline).
+  String? _selectedBloodType;
 
   String? _pickedFileName;
   String? _uploadedFileUrl;
@@ -169,24 +181,35 @@ class _DonorManagementReportSheetState
     final reason = _reasonCtrl.text.trim();
     final hasReasonError = isRestricted && reason.isEmpty;
     final hasFileError = _uploadedFileUrl == null;
+    final hasBloodError =
+        _selectedBloodType == null ||
+        !_bloodTypes.contains(_selectedBloodType);
 
-    if (hasReasonError || hasFileError) {
+    if (hasReasonError || hasFileError || hasBloodError) {
       setState(() => _showValidationErrors = true);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please fill all required fields marked with *'),
+        SnackBar(
+          content: Text(
+            hasBloodError
+                ? 'Select the donor’s confirmed blood type from the list.'
+                : 'Please fill all required fields marked with *',
+          ),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
+    final fileUrl = _uploadedFileUrl;
+    final blood = _selectedBloodType;
+    if (fileUrl == null || blood == null) return;
+
     widget.onSubmit(
       _outcome,
       isRestricted ? reason : null,
       _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-      _uploadedFileUrl,
-      _confirmedBloodType ?? widget.donor.bloodType,
+      fileUrl,
+      blood,
     );
   }
 
@@ -198,6 +221,10 @@ class _DonorManagementReportSheetState
         _showValidationErrors &&
         _reasonCtrl.text.trim().isEmpty;
     final hasFileError = _showValidationErrors && _uploadedFileUrl == null;
+    final hasBloodError =
+        _showValidationErrors &&
+        (_selectedBloodType == null ||
+            !_bloodTypes.contains(_selectedBloodType));
 
     return Container(
       decoration: const BoxDecoration(
@@ -233,6 +260,29 @@ class _DonorManagementReportSheetState
             Text(
               widget.donor.email,
               style: const TextStyle(color: Colors.black45, fontSize: 13),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(
+                  Icons.bloodtype_rounded,
+                  size: 15,
+                  color: AppTheme.deepRed.withValues(alpha: 0.85),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  (widget.donor.bloodType?.trim().isNotEmpty ?? false)
+                      ? widget.donor.bloodType!.trim()
+                      : 'Blood type not on file',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: (widget.donor.bloodType?.trim().isNotEmpty ?? false)
+                        ? Colors.black87
+                        : Colors.black45,
+                  ),
+                ),
+              ],
             ),
             if (widget.donor.phoneNumber.isNotEmpty) ...[
               const SizedBox(height: 4),
@@ -281,8 +331,10 @@ class _DonorManagementReportSheetState
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
             ),
             const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              value: _confirmedBloodType ?? widget.donor.bloodType,
+            DropdownButtonFormField<String?>(
+              // Controlled selection (not Form initial-only).
+              // ignore: deprecated_member_use
+              value: _selectedBloodType,
               decoration: InputDecoration(
                 filled: true,
                 fillColor: AppTheme.softBg,
@@ -292,11 +344,17 @@ class _DonorManagementReportSheetState
                 ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.black12),
+                  borderSide: BorderSide(
+                    color: hasBloodError ? Colors.red : Colors.black12,
+                    width: hasBloodError ? 1.4 : 1,
+                  ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.black12),
+                  borderSide: BorderSide(
+                    color: hasBloodError ? Colors.red : Colors.black12,
+                    width: hasBloodError ? 1.4 : 1,
+                  ),
                 ),
                 prefixIcon: const Icon(
                   Icons.bloodtype_rounded,
@@ -304,19 +362,40 @@ class _DonorManagementReportSheetState
                   size: 20,
                 ),
               ),
-              hint: const Text('Select blood type'),
-              items: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
-                  .map(
-                    (t) => DropdownMenuItem(
-                      value: t,
-                      child: Text(
-                        t,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
+              hint: const Text('Select blood type *'),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text(
+                    '— Select blood type —',
+                    style: TextStyle(
+                      color: Colors.black45,
+                      fontWeight: FontWeight.w600,
                     ),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() => _confirmedBloodType = v),
+                  ),
+                ),
+                ..._bloodTypes.map(
+                  (t) => DropdownMenuItem<String?>(
+                    value: t,
+                    child: Text(
+                      t,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+              ],
+              onChanged: (v) => setState(() => _selectedBloodType = v),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              hasBloodError
+                  ? 'Required — choose the lab-confirmed blood type'
+                  : 'Required — must match the medical report',
+              style: TextStyle(
+                color: hasBloodError ? Colors.red : Colors.black45,
+                fontSize: 11,
+                fontWeight: hasBloodError ? FontWeight.w600 : FontWeight.normal,
+              ),
             ),
             const SizedBox(height: 16),
             const Text(

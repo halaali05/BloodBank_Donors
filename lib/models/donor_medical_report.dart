@@ -107,6 +107,34 @@ class DonorMedicalReport {
     this.appointmentAt, // NEW
   });
 
+  /// Request id for API calls: trims [requestId] and, if empty, parses
+  /// `active_<requestId>_<donorUid>` style synthetic document ids.
+  String get effectiveRequestId {
+    final r = requestId.trim();
+    if (r.isNotEmpty) return r;
+    if (id.startsWith('active_')) {
+      final body = id.substring('active_'.length);
+      final i = body.lastIndexOf('_');
+      if (i > 0) return body.substring(0, i);
+    }
+    return '';
+  }
+
+  static String _requestIdFromMap(Map<String, dynamic> data, String docId) {
+    for (final key in ['requestId', 'requestID', 'bloodRequestId']) {
+      final v = data[key];
+      if (v == null) continue;
+      final s = v.toString().trim();
+      if (s.isNotEmpty) return s;
+    }
+    if (docId.startsWith('active_')) {
+      final body = docId.substring('active_'.length);
+      final i = body.lastIndexOf('_');
+      if (i > 0) return body.substring(0, i);
+    }
+    return '';
+  }
+
   /// Builds a journey row from dashboard request data (same source as "posts").
   factory DonorMedicalReport.fromActiveBloodRequest(
     BloodRequest req,
@@ -132,7 +160,7 @@ class DonorMedicalReport {
   factory DonorMedicalReport.fromMap(Map<String, dynamic> data, String id) {
     return DonorMedicalReport(
       id: id,
-      requestId: data['requestId']?.toString() ?? '',
+      requestId: _requestIdFromMap(data, id),
       bloodBankId: data['bloodBankId']?.toString() ?? '',
       bloodBankName: data['bloodBankName']?.toString() ?? '',
       bloodType: data['bloodType']?.toString() ?? '',

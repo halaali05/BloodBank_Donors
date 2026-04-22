@@ -8,12 +8,16 @@ class DonorManagementTabBar extends StatelessWidget {
   final int scheduledCount;
   final int doneCount;
 
+  /// When > 0, Pending tab shows an extra hint that someone asked to reschedule.
+  final int pendingRescheduleCount;
+
   const DonorManagementTabBar({
     super.key,
     required this.controller,
     required this.pendingCount,
     required this.scheduledCount,
     required this.doneCount,
+    this.pendingRescheduleCount = 0,
   });
 
   @override
@@ -36,7 +40,11 @@ class DonorManagementTabBar extends StatelessWidget {
         unselectedLabelColor: Colors.black45,
         labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
         tabs: [
-          _TabLabel('Pending', pendingCount),
+          _TabLabel(
+            'Pending',
+            pendingCount,
+            rescheduleRequests: pendingRescheduleCount,
+          ),
           _TabLabel('Scheduled', scheduledCount),
           _TabLabel('Done', doneCount),
         ],
@@ -48,8 +56,14 @@ class DonorManagementTabBar extends StatelessWidget {
 class _TabLabel extends StatelessWidget {
   final String label;
   final int count;
+  /// Pending tab only: number of donors waiting with a reschedule request.
+  final int rescheduleRequests;
 
-  const _TabLabel(this.label, this.count);
+  const _TabLabel(
+    this.label,
+    this.count, {
+    this.rescheduleRequests = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +81,28 @@ class _TabLabel extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text('$count', style: const TextStyle(fontSize: 10)),
+            ),
+          ],
+          if (rescheduleRequests > 0) ...[
+            const SizedBox(width: 4),
+            Tooltip(
+              message:
+                  '$rescheduleRequests donor(s) asked to reschedule — check Pending list',
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.deepOrange,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'R·$rescheduleRequests',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
             ),
           ],
         ],

@@ -1,6 +1,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { publicCallableOpts } = require("./callable_config");
+const { scheduleRef } = require("./donation_schedule");
 
 const db = admin.firestore();
 
@@ -21,7 +22,9 @@ async function requireRole(uid, expectedRole) {
     throw new HttpsError("not-found", "User not found");
   }
   const userData = userSnap.data() || {};
-  if (userData.role !== expectedRole) {
+  const role = String(userData.role || "").trim().toLowerCase();
+  const want = String(expectedRole || "").trim().toLowerCase();
+  if (role !== want) {
     throw new HttpsError(
       "permission-denied",
       `Only ${expectedRole}s can perform this action`,
@@ -38,6 +41,27 @@ async function getRequest(requestId) {
   const raw = reqSnap.data();
   const d = raw && typeof raw === "object" ? raw : {};
   return { id: reqSnap.id, ...d };
+}
+
+const STANDARD_BLOOD_TYPES = new Set([
+  "A+",
+  "A-",
+  "B+",
+  "B-",
+  "AB+",
+  "AB-",
+  "O+",
+  "O-",
+]);
+
+function normalizeStandardBloodType(s) {
+  if (s == null) return null;
+  const t = String(s)
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  if (!t) return null;
+  return STANDARD_BLOOD_TYPES.has(t) ? t : null;
 }
 
 function serializeMedicalReportDoc(doc) {
@@ -68,6 +92,14 @@ function serializeMedicalReportDoc(doc) {
 function parseAppointmentInstant(appointmentAt) {
   if (appointmentAt == null) return null;
 
+  if (
+    typeof appointmentAt === "object" &&
+    typeof appointmentAt.toMillis === "function"
+  ) {
+    const d = appointmentAt.toDate();
+    return d instanceof Date && !isNaN(d.getTime()) ? d : null;
+  }
+
   if (typeof appointmentAt === "number" && Number.isFinite(appointmentAt)) {
     const d = new Date(appointmentAt);
     return isNaN(d.getTime()) ? null : d;
@@ -88,6 +120,28 @@ function parseAppointmentInstant(appointmentAt) {
     return isNaN(d.getTime()) ? null : d;
   }
 
+  return null;
+}
+
+/** Epoch ms for donorResponses.appointmentAt if set (any supported Firestore shape). */
+function donorResponseAppointmentMillis(d) {
+  if (!d || typeof d !== "object") return null;
+  const apt = d.appointmentAt;
+  if (apt == null) return null;
+  if (typeof apt.toMillis === "function") return apt.toMillis();
+  if (apt instanceof Date) return apt.getTime();
+  if (typeof apt === "number" && Number.isFinite(apt)) return apt;
+  if (typeof apt === "string") {
+    const p = Date.parse(apt);
+    return isNaN(p) ? null : p;
+  }
+  if (
+    typeof apt === "object" &&
+    typeof apt._seconds === "number" &&
+    Number.isFinite(apt._seconds)
+  ) {
+    return apt._seconds * 1000 + Math.floor((apt._nanoseconds || 0) / 1e6);
+  }
   return null;
 }
 
@@ -178,6 +232,9 @@ exports.scheduleDonorAppointment = onCall(
         scheduledAt: admin.firestore.FieldValue.serverTimestamp(),
         scheduledBy: callerUid,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        rescheduleReason: admin.firestore.FieldValue.delete(),
+        reschedulePreferredAt: admin.firestore.FieldValue.delete(),
+        rescheduleRequestedAt: admin.firestore.FieldValue.delete(),
       });
 
       // Ensures donation history can load this request without collection-group queries
@@ -266,6 +323,112 @@ exports.scheduleDonorAppointment = onCall(
 );
 
 // ---------------------------------------------------------------------------
+// 1b. requestAppointmentReschedule (donor — back to pending + prefs for bank)
+// ---------------------------------------------------------------------------
+exports.requestAppointmentReschedule = onCall(
+  publicCallableOpts,
+  async (request) => {
+    try {
+      const callerUid = requireAuth(request);
+      await requireRole(callerUid, "donor");
+
+      const data = request.data || {};
+      let { requestId, reason, preferredAppointmentAt } = data;
+
+      if (typeof requestId === "number" && Number.isFinite(requestId)) {
+        requestId = String(requestId);
+      }
+      if (!requestId || typeof requestId !== "string") {
+        throw new HttpsError("invalid-argument", "requestId is required");
+      }
+
+      const reasonStr =
+        typeof reason === "string" ? reason.trim() : String(reason || "").trim();
+      if (reasonStr.length < 3) {
+        throw new HttpsError(
+          "invalid-argument",
+          "Please enter a reason (at least 3 characters).",
+        );
+      }
+
+      const preferredDate = parseAppointmentInstant(preferredAppointmentAt);
+      if (!preferredDate) {
+        throw new HttpsError(
+          "invalid-argument",
+          "preferredAppointmentAt must be epoch milliseconds or a valid date string",
+        );
+      }
+
+      if (preferredDate.getTime() < Date.now() - 120000) {
+        throw new HttpsError(
+          "invalid-argument",
+          "Preferred date and time must be in the future",
+        );
+      }
+
+      const donorResponseRef = db
+        .collection("requests")
+        .doc(requestId)
+        .collection("donorResponses")
+        .doc(callerUid);
+
+      const donorResponseSnap = await donorResponseRef.get();
+      if (!donorResponseSnap.exists) {
+        throw new HttpsError(
+          "not-found",
+          "You have not responded to this request",
+        );
+      }
+
+      const d = donorResponseSnap.data() || {};
+      const inviteStatus = String(d.status || "").toLowerCase();
+      if (inviteStatus !== "accepted") {
+        throw new HttpsError(
+          "failed-precondition",
+          "Only accepted donors can request a reschedule",
+        );
+      }
+
+      const pipeline = String(d.processStatus || "").toLowerCase();
+      const terminal = new Set(["tested", "donated", "restricted"]);
+      if (terminal.has(pipeline)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Cannot reschedule at this stage of your donation",
+        );
+      }
+      const hasBankAppointment = donorResponseAppointmentMillis(d) != null;
+      if (!hasBankAppointment) {
+        throw new HttpsError(
+          "failed-precondition",
+          "You can only reschedule after an appointment has been scheduled for you",
+        );
+      }
+
+      await donorResponseRef.update({
+        processStatus: "accepted",
+        appointmentAt: admin.firestore.FieldValue.delete(),
+        scheduledAt: admin.firestore.FieldValue.delete(),
+        scheduledBy: admin.firestore.FieldValue.delete(),
+        rescheduleReason: reasonStr,
+        reschedulePreferredAt: admin.firestore.Timestamp.fromDate(preferredDate),
+        rescheduleRequestedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return { success: true, message: "Reschedule request sent" };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[requestAppointmentReschedule] unhandled:", e);
+      throw new HttpsError(
+        "internal",
+        "Could not send reschedule request. Please try again.",
+      );
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
 // 2. saveMedicalReport
 // ---------------------------------------------------------------------------
 exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
@@ -309,6 +472,23 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       throw new HttpsError(
         "invalid-argument",
         "restrictionReason is required when status is restricted",
+      );
+    }
+
+    const fileTrim =
+      typeof reportFileUrl === "string" ? reportFileUrl.trim() : "";
+    if (!fileTrim) {
+      throw new HttpsError(
+        "invalid-argument",
+        "reportFileUrl is required — upload the medical report before saving.",
+      );
+    }
+
+    const confirmedNorm = normalizeStandardBloodType(confirmedBloodType);
+    if (!confirmedNorm) {
+      throw new HttpsError(
+        "invalid-argument",
+        "confirmedBloodType is required and must be one of: A+, A-, B+, B-, AB+, AB-, O+, O-.",
       );
     }
 
@@ -378,23 +558,18 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       donorId,
       bloodBankId: callerUid,
       bloodBankName: req.bloodBankName || "",
-      bloodType: req.bloodType || "",
+      bloodType: confirmedNorm,
+      confirmedBloodType: confirmedNorm,
       isUrgent: !!req.isUrgent,
       status: normalizedStatus,
       restrictionReason:
         normalizedStatus === "restricted" ? restrictionReason.trim() : null,
       notes: notes && String(notes).trim() ? String(notes).trim() : null,
-      reportFileUrl:
-        typeof reportFileUrl === "string" && reportFileUrl.trim()
-          ? reportFileUrl.trim()
-          : null,
+      reportFileUrl: fileTrim,
       canDonateAgainAt: reportCanDonateTs,
       appointmentAt: appointmentAtForReport,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
-    if (confirmedBloodType) {
-      reportData.confirmedBloodType = confirmedBloodType;
-    }
     const reportRef = db.collection("medicalReports").doc();
     const batch = db.batch();
 
@@ -409,36 +584,51 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
 
     const donorRef = db.collection("users").doc(donorId);
     const requestRef = db.collection("requests").doc(requestId);
+    const schedRef = scheduleRef(db, donorId);
+
+    const scheduleUpdate = {
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
 
     if (normalizedStatus === "restricted" && canDonateAgainDate) {
-      batch.set(
-        donorRef,
-        {
-          restrictedUntil:
-            admin.firestore.Timestamp.fromDate(canDonateAgainDate),
-          restrictionReason: restrictionReason ? restrictionReason.trim() : "",
-        },
-        { merge: true },
+      scheduleUpdate.restrictedUntil = admin.firestore.Timestamp.fromDate(
+        canDonateAgainDate,
       );
-    } else if (normalizedStatus === "donated" && postDonationEligibleDate) {
+      scheduleUpdate.restrictionReason = restrictionReason
+        ? restrictionReason.trim()
+        : "";
+    }
+
+    if (normalizedStatus === "donated" && postDonationEligibleDate) {
       const nextElig = admin.firestore.Timestamp.fromDate(
         postDonationEligibleDate,
       );
-      const donorDonatedUpdate = {
-        restrictedUntil: admin.firestore.FieldValue.delete(),
-        restrictionReason: admin.firestore.FieldValue.delete(),
-        lastDonatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        nextDonationEligibleAt: nextElig,
-      };
-      if (donorUserSnap.exists) {
-        batch.update(donorRef, donorDonatedUpdate);
-      } else {
-        batch.set(donorRef, donorDonatedUpdate, { merge: true });
-      }
+      scheduleUpdate.restrictedUntil = admin.firestore.FieldValue.delete();
+      scheduleUpdate.restrictionReason = admin.firestore.FieldValue.delete();
+      scheduleUpdate.lastDonatedAt =
+        admin.firestore.FieldValue.serverTimestamp();
+      scheduleUpdate.nextDonationEligibleAt = nextElig;
       batch.update(requestRef, {
         isCompleted: true,
         completedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
+    }
+
+    batch.set(schedRef, scheduleUpdate, { merge: true });
+
+    const userUpdate = {
+      bloodType: confirmedNorm,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastDonatedAt: admin.firestore.FieldValue.delete(),
+      nextDonationEligibleAt: admin.firestore.FieldValue.delete(),
+      restrictedUntil: admin.firestore.FieldValue.delete(),
+      restrictionReason: admin.firestore.FieldValue.delete(),
+    };
+
+    if (donorUserSnap.exists) {
+      batch.update(donorRef, userUpdate);
+    } else {
+      batch.set(donorRef, userUpdate, { merge: true });
     }
 
     await batch.commit();
@@ -456,9 +646,7 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
 
         const body =
           normalizedStatus === "donated"
-            ? `${req.bloodBankName || "The blood bank"} confirmed your ${
-                req.bloodType || ""
-              } donation. Your report is now available.`
+            ? `${req.bloodBankName || "The blood bank"} confirmed your ${confirmedNorm} donation. Your report is now available.`
             : `${req.bloodBankName || "The blood bank"} uploaded your donation report. Check your profile.`;
 
         // ✅ احفظ الإشعار داخل التطبيق
@@ -814,6 +1002,11 @@ exports.listBloodBankPastDonors = onCall(
           let phoneNumber = "";
           const p = ud.phoneNumber;
           if (typeof p === "string" && p.trim()) phoneNumber = p.trim();
+          const bloodTypeRaw = ud.bloodType;
+          const bloodType =
+            typeof bloodTypeRaw === "string" && bloodTypeRaw.trim()
+              ? bloodTypeRaw.trim()
+              : "";
           const agg = byDonor.get(donorId);
           const rows = (agg.rows || []).slice();
           rows.sort((a, b) => b.ms - a.ms);
@@ -831,6 +1024,7 @@ exports.listBloodBankPastDonors = onCall(
             fullName: ud.fullName || ud.name || "Donor",
             email: typeof ud.email === "string" ? ud.email : "",
             phoneNumber,
+            bloodType,
             donationCount: rows.length,
             lastDonatedAtMs: lastMs || null,
             messageRequestId,

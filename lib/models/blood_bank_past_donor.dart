@@ -4,6 +4,10 @@ class BloodBankPastDonorSummary {
   final String fullName;
   final String email;
   final String phoneNumber;
+
+  /// From `users/{donorId}.bloodType` when set (e.g. after a lab-confirmed report).
+  final String bloodType;
+
   final int donationCount;
   final int? lastDonatedAtMs;
 
@@ -15,6 +19,7 @@ class BloodBankPastDonorSummary {
     required this.fullName,
     required this.email,
     required this.phoneNumber,
+    this.bloodType = '',
     required this.donationCount,
     this.lastDonatedAtMs,
     this.messageRequestId,
@@ -35,11 +40,13 @@ class BloodBankPastDonorSummary {
         : (countRaw is num ? countRaw.toInt() : 0);
 
     final msgRid = m['messageRequestId']?.toString().trim();
+    final bt = m['bloodType']?.toString().trim() ?? '';
     return BloodBankPastDonorSummary(
       donorId: m['donorId']?.toString() ?? '',
       fullName: m['fullName']?.toString() ?? 'Donor',
       email: m['email']?.toString() ?? '',
       phoneNumber: m['phoneNumber']?.toString() ?? '',
+      bloodType: bt,
       donationCount: count,
       lastDonatedAtMs: lastMs,
       messageRequestId: (msgRid != null && msgRid.isNotEmpty) ? msgRid : null,

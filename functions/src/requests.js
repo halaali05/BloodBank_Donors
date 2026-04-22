@@ -3,6 +3,10 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { requireAuth, nonEmptyString, toHttpsError } = require("./utils");
 const { publicCallableOpts } = require("../callable_config");
+const {
+  scheduleRef,
+  mergeUserWithScheduleSnap,
+} = require("../donation_schedule");
 
 const db = admin.firestore();
 
@@ -43,6 +47,36 @@ function millisFromFirestoreValue(v) {
     return v._seconds * 1000 + Math.floor((v._nanoseconds || 0) / 1e6);
   }
   return null;
+}
+
+/**
+ * Best-effort phone string from a Firestore map (users/* or donorResponses/*).
+ * Handles numeric storage and alternate field names.
+ */
+function pickPhoneFromObject(o) {
+  if (!o || typeof o !== "object") return "";
+  const keys = [
+    "phoneNumber",
+    "phone",
+    "mobile",
+    "phoneNo",
+    "msisdn",
+    "cellPhone",
+  ];
+  for (const k of keys) {
+    const c = o[k];
+    if (c == null) continue;
+    let s;
+    if (typeof c === "string") {
+      s = c.trim();
+    } else if (typeof c === "number" && Number.isFinite(c)) {
+      s = String(c).trim();
+    } else {
+      s = String(c).trim();
+    }
+    if (s && s !== "undefined" && s !== "null") return s;
+  }
+  return "";
 }
 
 /**
@@ -88,9 +122,10 @@ function assertDonorMayAcceptNewRequest(userData) {
 }
 
 /**
- * After medical reports are removed, align users/{donorId} lastDonatedAt /
- * nextDonationEligibleAt with the newest remaining "donated" report, or clear
- * those fields when the donor has no donated reports left.
+ * After medical reports are removed, align donorDonationSchedule/{donorId}
+ * lastDonatedAt / nextDonationEligibleAt with the newest remaining "donated"
+ * report, or clear those fields when the donor has no donated reports left.
+ * Also strips legacy copies from users/{donorId}.
  */
 /**
  * Removes this request's id from users/{donorId}.donorAcceptedRequestIds
@@ -164,7 +199,16 @@ async function reconcileDonorDonationProfileFromReports(donorId) {
     }
 
     const donorRef = db.collection("users").doc(donorId);
+    const schedRef = scheduleRef(db, donorId);
     if (!latestDonated) {
+      await schedRef.set(
+        {
+          lastDonatedAt: admin.firestore.FieldValue.delete(),
+          nextDonationEligibleAt: admin.firestore.FieldValue.delete(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
       await donorRef.set(
         {
           lastDonatedAt: admin.firestore.FieldValue.delete(),
@@ -175,7 +219,9 @@ async function reconcileDonorDonationProfileFromReports(donorId) {
       return;
     }
 
-    const patch = {};
+    const patch = {
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
     const createdAt = latestDonated.createdAt;
     if (createdAt && typeof createdAt.toMillis === "function") {
       patch.lastDonatedAt = createdAt;
@@ -186,7 +232,14 @@ async function reconcileDonorDonationProfileFromReports(donorId) {
     } else {
       patch.nextDonationEligibleAt = admin.firestore.FieldValue.delete();
     }
-    await donorRef.set(patch, { merge: true });
+    await schedRef.set(patch, { merge: true });
+    await donorRef.set(
+      {
+        lastDonatedAt: admin.firestore.FieldValue.delete(),
+        nextDonationEligibleAt: admin.firestore.FieldValue.delete(),
+      },
+      { merge: true },
+    );
   } catch (e) {
     console.warn(
       `[reconcileDonorDonationProfileFromReports] donor=${donorId}:`,
@@ -413,10 +466,7 @@ async function buildDonorResponseEntry(donorId) {
     (typeof ud.name === "string" && ud.name.trim()) ||
     "";
   let email = typeof ud.email === "string" ? ud.email.trim() : "";
-  let phoneNumber =
-    typeof ud.phoneNumber === "string" && ud.phoneNumber.trim()
-      ? ud.phoneNumber.trim()
-      : "";
+  let phoneNumber = pickPhoneFromObject(ud);
   if (!email || !fullName || !phoneNumber) {
     try {
       const authUser = await admin.auth().getUser(donorId);
@@ -442,7 +492,11 @@ async function buildDonorResponseEntry(donorId) {
     }
   }
   if (!fullName) fullName = "Donor";
-  return { donorId, fullName, email, phoneNumber };
+  const bloodType =
+    typeof ud.bloodType === "string" && ud.bloodType.trim()
+      ? ud.bloodType.trim()
+      : null;
+  return { donorId, fullName, email, phoneNumber, bloodType };
 }
 
 /**
@@ -451,15 +505,57 @@ async function buildDonorResponseEntry(donorId) {
 async function buildDonorManagementEntry(donorId, responseRow) {
   const base = await buildDonorResponseEntry(donorId);
   const row = responseRow || {};
+  const rowPhone = pickPhoneFromObject(row);
+  const phoneNumber =
+    (base.phoneNumber && String(base.phoneNumber).trim()) || rowPhone || "";
+
   let appointmentAtMillis = null;
   const apt = row.appointmentAt;
   if (apt && typeof apt.toMillis === "function") {
     appointmentAtMillis = apt.toMillis();
   }
+
+  const toMillis = (ts) => {
+    if (!ts) return null;
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (ts instanceof Date) return ts.getTime();
+    if (typeof ts === "number" && Number.isFinite(ts)) return ts;
+    if (typeof ts === "string") {
+      const s = ts.trim();
+      if (!s) return null;
+      if (/^\d+$/.test(s)) {
+        const n = Number(s);
+        return Number.isFinite(n) ? n : null;
+      }
+      const p = Date.parse(s);
+      return isNaN(p) ? null : p;
+    }
+    if (
+      typeof ts === "object" &&
+      typeof ts._seconds === "number" &&
+      Number.isFinite(ts._seconds)
+    ) {
+      return ts._seconds * 1000 + Math.floor((ts._nanoseconds || 0) / 1e6);
+    }
+    return null;
+  };
+
+  const reschedulePreferredAtMillis = toMillis(row.reschedulePreferredAt);
+  const rescheduleRequestedAtMillis = toMillis(row.rescheduleRequestedAt);
+
+  const rescheduleReason =
+    typeof row.rescheduleReason === "string" && row.rescheduleReason.trim()
+      ? row.rescheduleReason.trim()
+      : null;
+
   return {
     ...base,
+    phoneNumber,
     processStatus: row.processStatus ?? null,
     appointmentAtMillis,
+    rescheduleReason,
+    reschedulePreferredAtMillis,
+    rescheduleRequestedAtMillis,
   };
 }
 
@@ -615,9 +711,7 @@ exports.getDonors = onCall(publicCallableOpts, async (request) => {
 
     const donors = donorsSnapshot.docs.map((doc) => {
       const donorData = doc.data();
-      const phoneRaw = donorData.phoneNumber;
-      const phoneNumber =
-        typeof phoneRaw === "string" && phoneRaw.trim() ? phoneRaw.trim() : "";
+      const phoneNumber = pickPhoneFromObject(donorData);
       return {
         id: doc.id,
         fullName: donorData.fullName || donorData.name || "Donor",
@@ -865,11 +959,16 @@ exports.setDonorRequestResponse = onCall(
       const requestRef = db.collection("requests").doc(requestId);
       const responseRef = requestRef.collection("donorResponses").doc(uid);
       const userRef = db.collection("users").doc(uid);
+      const schedRef = scheduleRef(db, uid);
 
       await db.runTransaction(async (t) => {
+        const uSnap = await t.get(userRef);
+        const sSnap = await t.get(schedRef);
+        const uData = mergeUserWithScheduleSnap(
+          uSnap.exists ? uSnap.data() || {} : {},
+          sSnap,
+        );
         if (newStatus === "accepted") {
-          const uSnap = await t.get(userRef);
-          const uData = uSnap.exists ? uSnap.data() || {} : {};
           assertDonorMayAcceptNewRequest(uData);
         }
 
@@ -923,14 +1022,28 @@ exports.setDonorRequestResponse = onCall(
         if (newStatus == null) {
           t.delete(responseRef);
         } else {
-          t.set(
-            responseRef,
-            {
-              status: newStatus,
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            },
-            { merge: true },
-          );
+          const respPayload = {
+            status: newStatus,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          };
+          if (newStatus === "accepted") {
+            const fn =
+              (typeof uData.fullName === "string" && uData.fullName.trim()) ||
+              (typeof uData.name === "string" && uData.name.trim()) ||
+              "";
+            const em =
+              typeof uData.email === "string" ? uData.email.trim() : "";
+            const ph = pickPhoneFromObject(uData);
+            const bt =
+              typeof uData.bloodType === "string" && uData.bloodType.trim()
+                ? uData.bloodType.trim()
+                : "";
+            if (fn) respPayload.fullName = fn;
+            if (em) respPayload.email = em;
+            if (ph) respPayload.phoneNumber = ph;
+            if (bt) respPayload.bloodType = bt;
+          }
+          t.set(responseRef, respPayload, { merge: true });
         }
 
         // Keep request IDs on the donor profile so getDonationHistory can load
@@ -1254,10 +1367,113 @@ function donorMatchesHospitalLocation(donorData, hospitalLocationRaw) {
   return false;
 }
 
+const STANDARD_BLOOD_TYPES = new Set([
+  "A+",
+  "A-",
+  "B+",
+  "B-",
+  "AB+",
+  "AB-",
+  "O+",
+  "O-",
+]);
+
+function normalizeBloodTypeForMatch(s) {
+  if (s == null) return "";
+  return String(s)
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+}
+
+/** First non-empty blood-type string on the donor user doc (legacy keys included). */
+function donorProfileBloodTypeRaw(donorData) {
+  if (!donorData || typeof donorData !== "object") return "";
+  const keys = [
+    "bloodType",
+    "BloodType",
+    "blood_group",
+    "bloodGroup",
+    "abo",
+  ];
+  for (const k of keys) {
+    const v = donorData[k];
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s) return s;
+  }
+  return "";
+}
+
+/** True when the donor explicitly has no usable type (still gets all request alerts). */
+function isDonorBloodMarkedUnknown(raw) {
+  const t = normalizeBloodTypeForMatch(raw);
+  if (!t) return true;
+  return (
+    t === "UNKNOWN" ||
+    t === "N/A" ||
+    t === "NA" ||
+    t === "?" ||
+    t === "NOTSET" ||
+    t === "UNSET" ||
+    t === "NONE"
+  );
+}
+
+/**
+ * Maps profile/request strings to one of STANDARD_BLOOD_TYPES, or null if absent
+ * or not confidently parseable (e.g. single letter "B" without Rh).
+ */
+function canonicalStandardBloodType(raw) {
+  if (raw == null) return null;
+  let s = String(raw).trim();
+  if (!s) return null;
+  s = s.toUpperCase().replace(/\s+/g, "");
+  s = s.replace(/\uFF0B/g, "+").replace(/\uFF0D/g, "-");
+  s = s.replace(/POSITIVE/g, "+").replace(/NEGATIVE/g, "-");
+  s = s.replace(/POS$/g, "+").replace(/NEG$/g, "-");
+  if (STANDARD_BLOOD_TYPES.has(s)) return s;
+
+  const m = s.match(/^(A|B|AB|O)(\+|\-)$/);
+  if (m) {
+    const key = m[1] + m[2];
+    if (STANDARD_BLOOD_TYPES.has(key)) return key;
+  }
+  return null;
+}
+
+/**
+ * True if the donor should get a push/in-app notification for this request:
+ * - Donor has no blood type on file (empty / missing): notify (unknown).
+ * - Donor has text that is not a standard ABO type: do NOT notify for typed requests
+ *   (avoids treating "B" or junk as "unknown" and spamming everyone).
+ * - Otherwise: notify only when donor type matches request type.
+ * If the request blood type is not a standard value, all donors are notified (legacy safety).
+ */
+function donorMatchesRequestBloodType(donorData, requestBloodTypeRaw) {
+  const donorRaw = donorProfileBloodTypeRaw(donorData);
+  const reqCanon = canonicalStandardBloodType(requestBloodTypeRaw);
+
+  if (!donorRaw || isDonorBloodMarkedUnknown(donorRaw)) {
+    return true;
+  }
+
+  const donorCanon = canonicalStandardBloodType(donorRaw);
+  if (!donorCanon) {
+    return false;
+  }
+
+  if (!reqCanon) {
+    return true;
+  }
+
+  return donorCanon === reqCanon;
+}
+
 /**
  * Creates in-app notification docs, request messages, and FCM pushes for donors.
- * Called directly from addRequest (reliable). Filters by governorate; if no one
- * matches but donors exist, falls back to all donors so notifications are not silent.
+ * Called directly from addRequest (reliable). Filters by governorate (with fallback)
+ * and by blood type (unknown blood type on profile still receives notifications).
  */
 async function notifyDonorsForNewRequest(requestId, data) {
   if (!data || !requestId) {
@@ -1305,6 +1521,15 @@ async function notifyDonorsForNewRequest(requestId, data) {
     );
     eligibleDonors = allDonorsSnapshot.docs;
   }
+
+  const eligibleBeforeBlood = eligibleDonors.length;
+  eligibleDonors = eligibleDonors.filter((doc) =>
+    donorMatchesRequestBloodType(doc.data(), bloodType),
+  );
+  console.log(
+    `[notifyDonorsForNewRequest] Blood-type filter: ${eligibleDonors.length} donors ` +
+      `(before filter: ${eligibleBeforeBlood}, requestBlood=${bloodType})`,
+  );
 
   console.log(
     `[notifyDonorsForNewRequest] Total donors: ${allDonorsSnapshot.size}, ` +

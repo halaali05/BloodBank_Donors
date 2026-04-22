@@ -19,6 +19,12 @@ service cloud.firestore {
       allow write: if false; // only Admin SDK (Cloud Functions)
     }
 
+    // Cooldown / restriction after donations (written by Cloud Functions only).
+    match /donorDonationSchedule/{donorId} {
+      allow read: if isAuthenticated() && request.auth.uid == donorId;
+      allow write: if false;
+    }
+
     match /pending_profiles/{userId} {
       allow read: if isAuthenticated() && request.auth.uid == userId;
       allow write: if false; // only Admin SDK

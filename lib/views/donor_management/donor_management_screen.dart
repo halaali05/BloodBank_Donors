@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/blood_request_model.dart';
@@ -29,16 +31,32 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
 
   List<DonorPipelineRow> _donors = [];
   bool _isLoading = true;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadDonors(showSpinner: true);
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadDonors(showSpinner: false);
+      });
+    });
+  }
+
+  void _scheduleSetState(VoidCallback fn) {
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(fn);
+    });
   }
 
   Future<void> _loadDonors({bool showSpinner = true}) async {
-    if (showSpinner && mounted) setState(() => _isLoading = true);
+    if (showSpinner && mounted) {
+      _scheduleSetState(() => _isLoading = true);
+    }
 
     List<DonorPipelineRow> fromEntries(List<DonorResponseEntry> entries) {
       return entries
@@ -53,6 +71,17 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                   ? DateTime.fromMillisecondsSinceEpoch(d.appointmentAtMillis!)
                   : null,
               bloodType: d.bloodType,
+              rescheduleReason: d.rescheduleReason,
+              reschedulePreferredAt: d.reschedulePreferredAtMillis != null
+                  ? DateTime.fromMillisecondsSinceEpoch(
+                      d.reschedulePreferredAtMillis!,
+                    )
+                  : null,
+              rescheduleRequestedAt: d.rescheduleRequestedAtMillis != null
+                  ? DateTime.fromMillisecondsSinceEpoch(
+                      d.rescheduleRequestedAtMillis!,
+                    )
+                  : null,
             ),
           )
           .toList();
@@ -69,7 +98,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
           return DonorResponseEntry.fromMap(m);
         }).toList();
         if (!mounted) return;
-        setState(() {
+        _scheduleSetState(() {
           _donors = fromEntries(entries);
           _isLoading = false;
         });
@@ -78,7 +107,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
     } catch (_) {}
 
     if (!mounted) return;
-    setState(() {
+    _scheduleSetState(() {
       _donors = fromEntries(widget.request.acceptedDonors);
       _isLoading = false;
     });
@@ -86,6 +115,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -99,6 +129,9 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
         .where((d) => d.status != DonorProcessStatus.restricted)
         .length;
     final restrictedCount = _byStatus([DonorProcessStatus.restricted]).length;
+    final pendingRescheduleCount = _donors
+        .where((d) => d.hasPendingRescheduleRequest)
+        .length;
 
     return Scaffold(
       backgroundColor: AppTheme.softBg,
@@ -142,6 +175,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                     DonorProcessStatus.donated,
                     DonorProcessStatus.restricted,
                   ]).length,
+                  pendingRescheduleCount: pendingRescheduleCount,
                 ),
                 Expanded(
                   child: TabBarView(
@@ -188,7 +222,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
     final idx = _donors.indexWhere((d) => d.donorId == donor.donorId);
     if (idx == -1) return;
 
-    setState(() {
+    _scheduleSetState(() {
       _donors[idx] = donor.copyWith(
         status: DonorProcessStatus.scheduled,
         appointmentAt: picked,
@@ -209,7 +243,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
         Colors.blue[700]!,
       );
     } catch (e) {
-      setState(() {
+      _scheduleSetState(() {
         final i = _donors.indexWhere((d) => d.donorId == donor.donorId);
         if (i != -1) _donors[i] = donor;
       });
@@ -228,7 +262,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
             (status, reason, notes, reportFileUrl, confirmedBloodType) async {
               Navigator.pop(context);
 
-              setState(() {
+              _scheduleSetState(() {
                 final idx = _donors.indexWhere(
                   (d) => d.donorId == donor.donorId,
                 );
@@ -261,7 +295,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                       : Colors.orange[700]!,
                 );
               } catch (e) {
-                setState(() {
+                _scheduleSetState(() {
                   final idx = _donors.indexWhere(
                     (d) => d.donorId == donor.donorId,
                   );

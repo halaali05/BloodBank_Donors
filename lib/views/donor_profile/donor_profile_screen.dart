@@ -55,6 +55,13 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
 
   String get uid => FirebaseAuth.instance.currentUser!.uid;
 
+  void _scheduleSetState(VoidCallback fn) {
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(fn);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -67,10 +74,12 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
     });
 
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
         _loadUserProfile();
         _loadDonationHistory();
-      }
+      });
     });
   }
 
@@ -84,51 +93,55 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
   Future<void> _loadUserProfile() async {
     if (!mounted) return;
 
-    setState(() {
+    _scheduleSetState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
       final userData = await _controller.fetchUserProfile();
-      if (mounted) {
-        setState(() {
-          _userData = userData;
-          _isLoading = false;
-          _initOnce(userData);
-        });
-      }
+      if (!mounted) return;
+      _scheduleSetState(() {
+        _userData = userData;
+        _isLoading = false;
+        _initOnce(userData);
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString().replaceFirst('Exception: ', '');
-          _isLoading = false;
-        });
-      }
+      if (!mounted) return;
+      _scheduleSetState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<List<DonorMedicalReport>> _reloadDonationHistoryList() async {
+    if (!mounted) return _donationHistory;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return _donationHistory;
+
+    await user.getIdToken();
+
+    _scheduleSetState(() => _historyLoading = true);
+    try {
+      final history = await _controller.fetchDonationHistory();
+      if (!mounted) return _donationHistory;
+      _scheduleSetState(() {
+        _donationHistory = history;
+        _historyLoading = false;
+      });
+      return history;
+    } catch (e) {
+      debugPrint('loadDonationHistory: $e');
+      if (!mounted) return _donationHistory;
+      _scheduleSetState(() => _historyLoading = false);
+      return _donationHistory;
     }
   }
 
   Future<void> _loadDonationHistory() async {
-    if (!mounted) return;
-
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    await user.getIdToken();
-
-    setState(() => _historyLoading = true);
-    try {
-      final history = await _controller.fetchDonationHistory();
-      if (mounted) {
-        setState(() {
-          _donationHistory = history;
-          _historyLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('loadDonationHistory: $e');
-      if (mounted) setState(() => _historyLoading = false);
-    }
+    await _reloadDonationHistoryList();
   }
 
   String? _genderLabelFromData() {
@@ -434,8 +447,23 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                                   final bt = (_userData?['bloodType'] ?? '')
                                       .toString()
                                       .trim();
-                                  if (bt.isEmpty)
-                                    return const SizedBox.shrink();
+                                  if (bt.isEmpty) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 4,
+                                      ),
+                                      child: Text(
+                                        'Blood type: not confirmed',
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.78,
+                                          ),
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    );
+                                  }
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 4),
                                     child: Container(
@@ -455,7 +483,7 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                                         ),
                                       ),
                                       child: Text(
-                                        '🩸 $bt',
+                                        bt,
                                         style: const TextStyle(
                                           color: Colors.white,
                                           fontWeight: FontWeight.w800,
@@ -565,14 +593,20 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                     title: 'Donation History',
                     icon: Icons.history_rounded,
                     onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => DonorProfileDonationHistoryPage(
-                            reports: _donationHistory,
-                            isLoading: _historyLoading,
-                          ),
-                        ),
-                      );
+                      Navigator.of(context)
+                          .push(
+                            MaterialPageRoute(
+                              builder: (_) => DonorProfileDonationHistoryPage(
+                                initialReports: _donationHistory,
+                                initialLoading: _historyLoading,
+                                reloadReports: () =>
+                                    _controller.fetchDonationHistory(),
+                              ),
+                            ),
+                          )
+                          .then((_) {
+                            if (mounted) _loadDonationHistory();
+                          });
                     },
                   ),
                   DonorProfileMenuTile(

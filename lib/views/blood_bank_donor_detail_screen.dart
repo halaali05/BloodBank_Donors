@@ -157,6 +157,12 @@ class _BloodBankDonorDetailScreenState extends State<BloodBankDonorDetailScreen>
                         label: 'Email',
                         value: s.email.isEmpty ? '—' : s.email,
                       ),
+                      const SizedBox(height: 10),
+                      _ContactRow(
+                        icon: Icons.bloodtype_rounded,
+                        label: 'Blood type',
+                        value: s.bloodType.isEmpty ? 'Not set' : s.bloodType,
+                      ),
                     ],
                   ),
                 ),

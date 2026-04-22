@@ -4,6 +4,125 @@ import '../../models/donor_medical_report.dart';
 import '../../theme/app_theme.dart';
 import 'donor_management_models.dart';
 
+void _showRescheduleRequestDialog(
+  BuildContext context,
+  DonorPipelineRow donor,
+) {
+  final pref = donor.reschedulePreferredAt;
+  final reason = donor.rescheduleReason?.trim().isNotEmpty == true
+      ? donor.rescheduleReason!.trim()
+      : '—';
+
+  showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text(
+        'Reschedule request',
+        style: TextStyle(fontWeight: FontWeight.w900),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              donor.fullName,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(
+                  Icons.bloodtype_rounded,
+                  size: 14,
+                  color: AppTheme.deepRed.withValues(alpha: 0.85),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _donorBloodTypeLabel(donor),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Reason',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+                color: Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 6),
+            SelectableText(reason),
+            const SizedBox(height: 16),
+            const Text(
+              'Preferred date & time',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+                color: Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              pref != null ? _formatDialogDateTime(pref) : '—',
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
+}
+
+String _donorBloodTypeLabel(DonorPipelineRow donor) {
+  final t = donor.bloodType?.trim() ?? '';
+  return t.isEmpty ? 'Not set' : t;
+}
+
+String _rescheduleReasonPreview(DonorPipelineRow donor) {
+  final r = donor.rescheduleReason?.trim();
+  if (r == null || r.isEmpty) {
+    return 'Reschedule requested';
+  }
+  return r;
+}
+
+String _formatDialogDateTime(DateTime dt) {
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+  final min = dt.minute.toString().padLeft(2, '0');
+  final ampm = dt.hour < 12 ? 'AM' : 'PM';
+  return '${dt.day} ${months[dt.month - 1]} ${dt.year} · $hour:$min $ampm';
+}
+
 class DonorManagementDonorList extends StatelessWidget {
   final List<DonorPipelineRow> donors;
   final String emptyLabel;
@@ -74,6 +193,14 @@ class DonorManagementDonorTile extends StatelessWidget {
     final statusColor = _statusColor(donor.status);
     final statusLabel = _statusLabel(donor.status);
     final statusIcon = _statusIcon(donor.status);
+    final isPendingTabRow = donor.status == DonorProcessStatus.accepted;
+    final pendingReschedule = donor.hasPendingRescheduleRequest;
+    final borderColor = isPendingTabRow
+        ? (pendingReschedule
+              ? Colors.deepOrange
+              : const Color(0xFF1976D2))
+        : statusColor.withValues(alpha: 0.25);
+    final borderWidth = isPendingTabRow ? (pendingReschedule ? 3.0 : 2.5) : 1.0;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -81,31 +208,74 @@ class DonorManagementDonorTile extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: AppTheme.cardShadow,
-        border: Border.all(color: statusColor.withValues(alpha: 0.25)),
+        border: Border.all(color: borderColor, width: borderWidth),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: statusColor.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  donor.fullName.isNotEmpty
-                      ? donor.fullName[0].toUpperCase()
-                      : '?',
-                  style: TextStyle(
-                    color: statusColor,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      donor.fullName.isNotEmpty
+                          ? donor.fullName[0].toUpperCase()
+                          : '?',
+                      style: TextStyle(
+                        color: statusColor,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                if (isPendingTabRow && pendingReschedule)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: Colors.deepOrange,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.12),
+                            blurRadius: 3,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.event_repeat_rounded,
+                        size: 11,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                if (isPendingTabRow && !pendingReschedule)
+                  Positioned(
+                    right: -3,
+                    top: -3,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1976D2),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -123,6 +293,27 @@ class DonorManagementDonorTile extends StatelessWidget {
                   Text(
                     donor.email,
                     style: const TextStyle(color: Colors.black45, fontSize: 12),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.bloodtype_rounded,
+                        size: 12,
+                        color: AppTheme.deepRed.withValues(alpha: 0.75),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _donorBloodTypeLabel(donor),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: (donor.bloodType?.trim().isNotEmpty ?? false)
+                              ? Colors.black87
+                              : Colors.black38,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                   if (donor.phoneNumber.isNotEmpty) ...[
                     const SizedBox(height: 4),
@@ -193,6 +384,116 @@ class DonorManagementDonorTile extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (isPendingTabRow && !pendingReschedule) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1976D2).withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: const Color(0xFF1976D2).withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.schedule_rounded,
+                            size: 15,
+                            color: Colors.blue.shade800,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Awaiting first appointment',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.blue.shade900,
+                              letterSpacing: 0.15,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (isPendingTabRow && pendingReschedule) ...[
+                    const SizedBox(height: 8),
+                    Tooltip(
+                      message: _rescheduleReasonPreview(donor),
+                      waitDuration: const Duration(milliseconds: 400),
+                      child: InkWell(
+                        onTap: () =>
+                            _showRescheduleRequestDialog(context, donor),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.deepOrange.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.deepOrange.withValues(alpha: 0.38),
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.edit_calendar_rounded,
+                                size: 16,
+                                color: Colors.deepOrange.shade800,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _rescheduleReasonPreview(donor),
+                                      maxLines: 4,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        height: 1.3,
+                                        color: Colors.deepOrange.shade900,
+                                      ),
+                                    ),
+                                    if (donor.reschedulePreferredAt !=
+                                        null) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Preferred: ${_formatDialogDateTime(donor.reschedulePreferredAt!)}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.deepOrange.shade800,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                Icons.chevron_right_rounded,
+                                size: 20,
+                                color: Colors.deepOrange.shade700,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

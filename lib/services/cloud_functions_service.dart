@@ -629,7 +629,8 @@ class CloudFunctionsService {
   /// - [status]: 'donated' or 'restricted'
   /// - [restrictionReason]: Required if status == 'restricted'
   /// - [notes]: Optional notes
-  /// - [reportFileUrl]: Optional uploaded file URL
+  /// - [reportFileUrl]: Required — uploaded file URL from Storage
+  /// - [confirmedBloodType]: Required — one of A+, A-, B+, B-, AB+, AB-, O+, O-
   /// - [canDonateAgainAt]: ISO date string, optional
   Future<Map<String, dynamic>> saveMedicalReport({
     required String requestId,
@@ -637,9 +638,9 @@ class CloudFunctionsService {
     required String status,
     String? restrictionReason,
     String? notes,
-    String? reportFileUrl,
+    required String reportFileUrl,
     String? canDonateAgainAt,
-    String? confirmedBloodType,
+    required String confirmedBloodType,
   }) async {
     try {
       final callable = _functions.httpsCallable('saveMedicalReport');
@@ -649,10 +650,9 @@ class CloudFunctionsService {
         'status': status,
         if (restrictionReason != null) 'restrictionReason': restrictionReason,
         if (notes != null) 'notes': notes,
-        if (reportFileUrl != null) 'reportFileUrl': reportFileUrl,
+        'reportFileUrl': reportFileUrl,
         if (canDonateAgainAt != null) 'canDonateAgainAt': canDonateAgainAt,
-        if (confirmedBloodType != null)
-          'confirmedBloodType': confirmedBloodType,
+        'confirmedBloodType': confirmedBloodType,
       });
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {
@@ -681,6 +681,28 @@ class CloudFunctionsService {
         'requestId': requestId,
         'donorId': donorId,
         'appointmentAt': appointmentAtMillis,
+      });
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
+
+  /// Donor: asks the blood bank to pick a new slot; returns donor to pending
+  /// with [rescheduleReason] and [preferredAppointmentAtMillis] for the bank UI.
+  Future<Map<String, dynamic>> requestAppointmentReschedule({
+    required String requestId,
+    required String reason,
+    required int preferredAppointmentAtMillis,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('requestAppointmentReschedule');
+      final result = await callable.call({
+        'requestId': requestId,
+        'reason': reason,
+        'preferredAppointmentAt': preferredAppointmentAtMillis,
       });
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {

@@ -11,6 +11,7 @@ void main() {
         'fullName': 'Ali',
         'email': 'a@test.com',
         'phoneNumber': '079',
+        'bloodType': 'O+',
         'donationCount': 3,
         'lastDonatedAtMs': 123456,
         'messageRequestId': 'r1',
@@ -22,6 +23,7 @@ void main() {
       expect(result.fullName, 'Ali');
       expect(result.email, 'a@test.com');
       expect(result.phoneNumber, '079');
+      expect(result.bloodType, 'O+');
       expect(result.donationCount, 3);
       expect(result.lastDonatedAtMs, 123456);
       expect(result.messageRequestId, 'r1');
@@ -97,6 +99,14 @@ void main() {
       expect(result.donorId, '');
       expect(result.email, '');
       expect(result.phoneNumber, '');
+      expect(result.bloodType, '');
+    });
+
+    test('parses bloodType', () {
+      final result = BloodBankPastDonorSummary.fromMap({
+        'bloodType': '  AB-  ',
+      });
+      expect(result.bloodType, 'AB-');
     });
 
   });

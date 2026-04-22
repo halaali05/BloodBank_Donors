@@ -163,7 +163,11 @@ class _BloodBankPastDonorsScreenState extends State<BloodBankPastDonorsScreen> {
                                     ),
                                   ),
                                   subtitle: Text(
-                                    '${d.donationCount} donation${d.donationCount == 1 ? '' : 's'} · Last ${_formatDateMs(d.lastDonatedAtMs)}',
+                                    [
+                                      if (d.bloodType.isNotEmpty) d.bloodType,
+                                      '${d.donationCount} donation${d.donationCount == 1 ? '' : 's'}',
+                                      'Last ${_formatDateMs(d.lastDonatedAtMs)}',
+                                    ].join(' · '),
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                   ),
