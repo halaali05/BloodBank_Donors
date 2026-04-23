@@ -1384,22 +1384,13 @@ const STANDARD_BLOOD_TYPES = new Set([
 
 function normalizeBloodTypeForMatch(s) {
   if (s == null) return "";
-  return String(s)
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "");
+  return String(s).trim().toUpperCase().replace(/\s+/g, "");
 }
 
 /** First non-empty blood-type string on the donor user doc (legacy keys included). */
 function donorProfileBloodTypeRaw(donorData) {
   if (!donorData || typeof donorData !== "object") return "";
-  const keys = [
-    "bloodType",
-    "BloodType",
-    "blood_group",
-    "bloodGroup",
-    "abo",
-  ];
+  const keys = ["bloodType", "BloodType", "blood_group", "bloodGroup", "abo"];
   for (const k of keys) {
     const v = donorData[k];
     if (v == null) continue;
@@ -1453,6 +1444,37 @@ function canonicalStandardBloodType(raw) {
  * - Otherwise: notify only when donor type matches request type.
  * If the request blood type is not a standard value, all donors are notified (legacy safety).
  */
+/**
+ * Returns the list of blood types that [donorType] can donate TO.
+ * Based on standard blood donation compatibility rules.
+ */
+function compatibleRequestBloodTypes(donorType) {
+  switch (donorType) {
+    case "O-":
+      return ["O-", "O+", "A-", "A+", "B-", "B+", "AB-", "AB+"];
+    case "O+":
+      return ["O+", "A+", "B+", "AB+"];
+    case "A-":
+      return ["A-", "A+", "AB-", "AB+"];
+    case "A+":
+      return ["A+", "AB+"];
+    case "B-":
+      return ["B-", "B+", "AB-", "AB+"];
+    case "B+":
+      return ["B+", "AB+"];
+    case "AB-":
+      return ["AB-", "AB+"];
+    case "AB+":
+      return ["AB+"];
+    default:
+      return null;
+  }
+}
+
+/**
+ * True if the donor should get a push/in-app notification for this request.
+ * Uses medical blood type compatibility (not exact match).
+ */
 function donorMatchesRequestBloodType(donorData, requestBloodTypeRaw) {
   const donorRaw = donorProfileBloodTypeRaw(donorData);
   const reqCanon = canonicalStandardBloodType(requestBloodTypeRaw);
@@ -1470,7 +1492,11 @@ function donorMatchesRequestBloodType(donorData, requestBloodTypeRaw) {
     return true;
   }
 
-  return donorCanon === reqCanon;
+  // Check medical compatibility: can this donor donate to the request blood type?
+  const compatible = compatibleRequestBloodTypes(donorCanon);
+  if (!compatible) return true;
+
+  return compatible.includes(reqCanon);
 }
 
 /**

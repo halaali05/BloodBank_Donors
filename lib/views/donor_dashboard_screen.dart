@@ -212,18 +212,63 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
   DateTime? _donationCooldownEndsAt() =>
       DonorEligibility.cooldownEndsAt(_userProfile);
 
+  /// Returns the list of blood types this donor is compatible to donate to.
+  /// If blood type is unknown (not confirmed yet), returns null → show all.
+  List<String>? _compatibleBloodTypes(String? donorBloodType) {
+    switch (donorBloodType?.trim()) {
+      case 'O-':
+        return ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'];
+      case 'O+':
+        return ['O+', 'A+', 'B+', 'AB+'];
+      case 'A-':
+        return ['A-', 'A+', 'AB-', 'AB+'];
+      case 'A+':
+        return ['A+', 'AB+'];
+      case 'B-':
+        return ['B-', 'B+', 'AB-', 'AB+'];
+      case 'B+':
+        return ['B+', 'AB+'];
+      case 'AB-':
+        return ['AB-', 'AB+'];
+      case 'AB+':
+        return ['AB+'];
+      default:
+        // Blood type not confirmed yet → show all requests
+        return null;
+    }
+  }
+
+  /// Filters requests by donor's confirmed blood type compatibility.
+  /// If blood type is unknown, returns all requests unfiltered.
+  List<BloodRequest> _applyBloodTypeFilter(List<BloodRequest> requests) {
+    final donorBloodType = (_userProfile?['bloodType'] ?? '').toString().trim();
+    final compatible = _compatibleBloodTypes(
+      donorBloodType.isEmpty ? null : donorBloodType,
+    );
+    if (compatible == null) return requests;
+    return requests
+        .where((r) => compatible.contains(r.bloodType.trim()))
+        .toList();
+  }
+
   List<BloodRequest> get _displayRequests {
     switch (_selectedFilter) {
       case DonorRequestFilter.all:
-        return _requests;
+        return _applyBloodTypeFilter(_requests);
       case DonorRequestFilter.completed:
-        return _requests.where((r) => r.isCompleted).toList();
+        return _applyBloodTypeFilter(
+          _requests.where((r) => r.isCompleted).toList(),
+        );
       case DonorRequestFilter.urgent:
-        return _requests.where((r) => !r.isCompleted && r.isUrgent).toList();
+        return _applyBloodTypeFilter(
+          _requests.where((r) => !r.isCompleted && r.isUrgent).toList(),
+        );
       case DonorRequestFilter.normal:
-        return _requests.where((r) => !r.isCompleted && !r.isUrgent).toList();
+        return _applyBloodTypeFilter(
+          _requests.where((r) => !r.isCompleted && !r.isUrgent).toList(),
+        );
       case DonorRequestFilter.nearest:
-        return _nearestRequestsOnly(_requests);
+        return _applyBloodTypeFilter(_nearestRequestsOnly(_requests));
     }
   }
 
@@ -571,36 +616,50 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
                             children: [
                               _RequestFilterChip(
                                 label: 'All',
-                                selected: _selectedFilter == DonorRequestFilter.all,
-                                onTap: () => _setRequestFilter(DonorRequestFilter.all),
+                                selected:
+                                    _selectedFilter == DonorRequestFilter.all,
+                                onTap: () =>
+                                    _setRequestFilter(DonorRequestFilter.all),
                               ),
                               const SizedBox(width: 8),
                               _RequestFilterChip(
                                 label: 'Nearest',
-                                selected: _selectedFilter == DonorRequestFilter.nearest,
-                                onTap: () =>
-                                    _setRequestFilter(DonorRequestFilter.nearest),
+                                selected:
+                                    _selectedFilter ==
+                                    DonorRequestFilter.nearest,
+                                onTap: () => _setRequestFilter(
+                                  DonorRequestFilter.nearest,
+                                ),
                               ),
                               const SizedBox(width: 8),
                               _RequestFilterChip(
                                 label: 'Completed',
-                                selected: _selectedFilter == DonorRequestFilter.completed,
-                                onTap: () =>
-                                    _setRequestFilter(DonorRequestFilter.completed),
+                                selected:
+                                    _selectedFilter ==
+                                    DonorRequestFilter.completed,
+                                onTap: () => _setRequestFilter(
+                                  DonorRequestFilter.completed,
+                                ),
                               ),
                               const SizedBox(width: 8),
                               _RequestFilterChip(
                                 label: 'Urgent',
-                                selected: _selectedFilter == DonorRequestFilter.urgent,
-                                onTap: () =>
-                                    _setRequestFilter(DonorRequestFilter.urgent),
+                                selected:
+                                    _selectedFilter ==
+                                    DonorRequestFilter.urgent,
+                                onTap: () => _setRequestFilter(
+                                  DonorRequestFilter.urgent,
+                                ),
                               ),
                               const SizedBox(width: 8),
                               _RequestFilterChip(
                                 label: 'Normal',
-                                selected: _selectedFilter == DonorRequestFilter.normal,
-                                onTap: () =>
-                                    _setRequestFilter(DonorRequestFilter.normal),
+                                selected:
+                                    _selectedFilter ==
+                                    DonorRequestFilter.normal,
+                                onTap: () => _setRequestFilter(
+                                  DonorRequestFilter.normal,
+                                ),
                               ),
                             ],
                           ),
@@ -637,7 +696,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
 
           // ── Tab 2: Map view ───────────────────────────────────────────────
           DonorMapScreen(
-            requests: _requests,
+            requests: _applyBloodTypeFilter(_requests),
             donorGovernorate: _userProfile?['location'] as String?,
             respondingRequestId: _respondingRequestId,
             nextDonationEligibleAt: _donationCooldownEndsAt(),

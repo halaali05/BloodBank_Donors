@@ -149,15 +149,17 @@ class FCMService {
       if (token == null || token.isEmpty) {
         // Fallback: wait for token-refresh event once.
         try {
-          token = await messaging.onTokenRefresh
-              .first
-              .timeout(const Duration(seconds: 8));
+          token = await messaging.onTokenRefresh.first.timeout(
+            const Duration(seconds: 8),
+          );
         } catch (_) {}
       }
 
       if (token != null && token.isNotEmpty) {
         await CloudFunctionsService().updateFcmToken(fcmToken: token);
-        final profile = await CloudFunctionsService().getUserData(uid: user.uid);
+        final profile = await CloudFunctionsService().getUserData(
+          uid: user.uid,
+        );
         final savedToken = (profile['fcmToken'] ?? '').toString().trim();
         if (savedToken.isEmpty) {
           _lastSyncError =
@@ -212,7 +214,8 @@ class FCMService {
     final user = FirebaseAuth.instance.currentUser;
     String permission = 'unknown';
     try {
-      final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      final settings = await FirebaseMessaging.instance
+          .getNotificationSettings();
       permission = settings.authorizationStatus.name;
     } catch (e) {
       permission = 'error: ${e.toString()}';
@@ -232,7 +235,9 @@ class FCMService {
     String serverTokenPreview = '';
     try {
       if (user != null) {
-        final profile = await CloudFunctionsService().getUserData(uid: user.uid);
+        final profile = await CloudFunctionsService().getUserData(
+          uid: user.uid,
+        );
         final t = (profile['fcmToken'] ?? '').toString().trim();
         if (t.isNotEmpty) {
           serverTokenPreview = t.length > 24 ? '${t.substring(0, 24)}...' : t;
@@ -251,11 +256,104 @@ class FCMService {
     };
   }
 
-  void _onForegroundMessage(RemoteMessage message) {
+  /// Returns the blood types a donor with [donorBloodType] can donate to.
+  /// Returns null if blood type is unknown → allow all notifications.
+  List<String>? _compatibleBloodTypes(String? donorBloodType) {
+    switch (donorBloodType?.trim()) {
+      case 'O-':
+        return ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'];
+      case 'O+':
+        return ['O+', 'A+', 'B+', 'AB+'];
+      case 'A-':
+        return ['A-', 'A+', 'AB-', 'AB+'];
+      case 'A+':
+        return ['A+', 'AB+'];
+      case 'B-':
+        return ['B-', 'B+', 'AB-', 'AB+'];
+      case 'B+':
+        return ['B+', 'AB+'];
+      case 'AB-':
+        return ['AB-', 'AB+'];
+      case 'AB+':
+        return ['AB+'];
+      default:
+        return null;
+    }
+  }
+
+  Future<void> _onForegroundMessage(RemoteMessage message) async {
     final String requestId = message.data['requestId']?.toString() ?? '';
     final String type = message.data['type']?.toString() ?? 'request';
     final bool isUrgent =
         (message.data['isUrgent']?.toString().toLowerCase() ?? '') == 'true';
+
+    // --- Blood type filter (only for blood request notifications) ---
+    if (type == 'request') {
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          final authService = AuthService();
+          final userData = await authService.getUserData(user.uid);
+          final donorBloodType = userData?.bloodType?.trim() ?? '';
+
+          debugPrint(
+            'FCM filter: donorBloodType=$donorBloodType, requestId=$requestId',
+          );
+
+          if (donorBloodType.isNotEmpty) {
+            final compatible = _compatibleBloodTypes(donorBloodType);
+            if (compatible != null) {
+              // Try to get bloodType from notification data first
+              String notifBloodType =
+                  message.data['bloodType']?.toString().trim() ?? '';
+
+              debugPrint(
+                'FCM filter: notifBloodType from data=$notifBloodType',
+              );
+
+              // If not in notification data, fetch from the request itself
+              if (notifBloodType.isEmpty && requestId.isNotEmpty) {
+                try {
+                  final result = await CloudFunctionsService().getRequests(
+                    limit: 100,
+                  );
+                  final requests = result['requests'] as List<dynamic>? ?? [];
+                  for (final r in requests) {
+                    final map = r as Map<String, dynamic>;
+                    if (map['id']?.toString() == requestId) {
+                      notifBloodType =
+                          map['bloodType']?.toString().trim() ?? '';
+                      break;
+                    }
+                  }
+                  debugPrint(
+                    'FCM filter: notifBloodType from request=$notifBloodType',
+                  );
+                } catch (e) {
+                  debugPrint('FCM filter: failed to fetch request: $e');
+                }
+              }
+
+              debugPrint(
+                'FCM filter: compatible=$compatible, notifBloodType=$notifBloodType',
+              );
+
+              // If we have a blood type and it's not compatible → block
+              // If bloodType is still empty → fail safe: show the notification
+              if (notifBloodType.isNotEmpty &&
+                  !compatible.contains(notifBloodType)) {
+                debugPrint('FCM filter: BLOCKED notification (not compatible)');
+                return;
+              }
+              debugPrint('FCM filter: ALLOWED notification');
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('FCM filter: error, showing notification anyway: $e');
+      }
+    }
+    // ----------------------------------------------------------------
 
     final String title =
         message.data['title']?.toString() ??

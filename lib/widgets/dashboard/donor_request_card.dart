@@ -176,7 +176,10 @@ class DonorRequestCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                if (request.details.trim().isNotEmpty) ...[
+                if (request.details.trim().isNotEmpty &&
+                    !request.details.trim().toLowerCase().startsWith(
+                      'auto-generated',
+                    )) ...[
                   const SizedBox(height: 8),
                   Text(
                     request.details.trim(),
@@ -280,7 +283,9 @@ class DonorRequestCard extends StatelessWidget {
                           size: 16,
                         ),
                         label: Text(
-                          isDonating ? 'Selected: I can donate' : 'I can donate',
+                          isDonating
+                              ? 'Selected: I can donate'
+                              : 'I can donate',
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -306,9 +311,7 @@ class DonorRequestCard extends StatelessWidget {
                             vertical: 8,
                           ),
                         ),
-                        minimumSize: WidgetStateProperty.all(
-                          const Size(0, 36),
-                        ),
+                        minimumSize: WidgetStateProperty.all(const Size(0, 36)),
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         visualDensity: VisualDensity.compact,
                       ),
@@ -335,12 +338,11 @@ class DonorRequestCard extends StatelessWidget {
 
 /// Non-interactive pill matching compact Accept/Reject size; shows final choice.
 
-
-
 // show appointment time if donor has accepted and appointment is scheduled, otherwise show "Accepted" or "Rejected" status based on myResponse field in BloodRequest.
 class ResponseStatusPill extends StatelessWidget {
   final String status; // 'accepted', 'rejected', or 'pending'
-  final DateTime? appointmentAt; // optional appointment time to show when accepted
+  final DateTime?
+  appointmentAt; // optional appointment time to show when accepted
 
   const ResponseStatusPill({
     super.key,
@@ -412,7 +414,7 @@ class ResponseStatusPill extends StatelessWidget {
       'Sep',
       'Oct',
       'Nov',
-      'Dec'
+      'Dec',
     ];
     return months[month];
   }
@@ -422,5 +424,5 @@ class ResponseStatusPill extends StatelessWidget {
     final minute = date.minute.toString().padLeft(2, '0');
     final ampm = date.hour >= 12 ? 'PM' : 'AM';
     return '$hour:$minute $ampm';
-  } }
-  
+  }
+}

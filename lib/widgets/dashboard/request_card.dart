@@ -40,102 +40,114 @@ class RequestCard extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
 
-         // 🔴 border إذا urgent
-          border: isUrgent? Border.all(color: const Color.fromARGB(255, 194, 87, 79), width: 1.5) : null,
+          // 🔴 border إذا urgent
+          border: isUrgent
+              ? Border.all(
+                  color: const Color.fromARGB(255, 194, 87, 79),
+                  width: 1.5,
+                )
+              : null,
 
-        boxShadow: [
-        BoxShadow(
-        color: isUrgent? const Color.fromARGB(255, 189, 79, 71).withValues(alpha: 0.5): Colors.black12,
-        blurRadius: isUrgent ? 12 : 6,
-        offset: const Offset(0, 3),
-      ),
-  ],
-),
+          boxShadow: [
+            BoxShadow(
+              color: isUrgent
+                  ? const Color.fromARGB(
+                      255,
+                      189,
+                      79,
+                      71,
+                    ).withValues(alpha: 0.5)
+                  : Colors.black12,
+              blurRadius: isUrgent ? 12 : 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-           Row(
-  children: [
-    // Blood type badge
-    Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: isUrgent
-            ? Colors.red.withValues(alpha: 0.15)
-            : AppTheme.deepRed.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        request.bloodType,
-        style: const TextStyle(
-          fontWeight: FontWeight.w900,
-          fontSize: 16,
-          color: AppTheme.deepRed,
-        ),
-      ),
-    ),
+            Row(
+              children: [
+                // Blood type badge
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isUrgent
+                        ? Colors.red.withValues(alpha: 0.15)
+                        : AppTheme.deepRed.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    request.bloodType,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                      color: AppTheme.deepRed,
+                    ),
+                  ),
+                ),
 
-    const SizedBox(width: 12),
+                const SizedBox(width: 12),
 
-    // 🔢 Units
-    Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '${request.units}',
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const Text(
-          'units needed',
-          style: TextStyle(
-            fontSize: 11,
-            color: Colors.black54,
-          ),
-        ),
-      ],
-    ),
+                // 🔢 Units
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${request.units}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const Text(
+                      'units needed',
+                      style: TextStyle(fontSize: 11, color: Colors.black54),
+                    ),
+                  ],
+                ),
 
-    const Spacer(),
+                const Spacer(),
 
-    if (isUrgent) ...[
-      const UrgentBadge(),
-      const SizedBox(width: 6),
-    ],
-    if (onOpenAllDonors != null)
-      IconButton(
-        tooltip: 'All registered donors',
-        icon: const Icon(
-          Icons.groups_2_outlined,
-          color: AppTheme.deepRed,
-          size: 20,
-        ),
-        onPressed: onOpenAllDonors,
-      ),
-    if (onEdit != null)
-      IconButton(
-        tooltip: 'Edit units',
-        icon: const Icon(
-          Icons.edit_outlined,
-          color: AppTheme.deepRed,
-          size: 20,
-        ),
-        onPressed: onEdit,
-      ),
-    if (canDelete && onDelete != null)
-      IconButton(
-        tooltip: 'Delete',
-        icon: const Icon(
-          Icons.delete_outline,
-          color: Colors.red,
-          size: 20,
-        ),
-        onPressed: onDelete,
-      ),
-  ],
-),
+                if (isUrgent) ...[
+                  const UrgentBadge(),
+                  const SizedBox(width: 6),
+                ],
+                if (onOpenAllDonors != null)
+                  IconButton(
+                    tooltip: 'All registered donors',
+                    icon: const Icon(
+                      Icons.groups_2_outlined,
+                      color: AppTheme.deepRed,
+                      size: 20,
+                    ),
+                    onPressed: onOpenAllDonors,
+                  ),
+                if (onEdit != null)
+                  IconButton(
+                    tooltip: 'Edit units',
+                    icon: const Icon(
+                      Icons.edit_outlined,
+                      color: AppTheme.deepRed,
+                      size: 20,
+                    ),
+                    onPressed: onEdit,
+                  ),
+                if (canDelete && onDelete != null)
+                  IconButton(
+                    tooltip: 'Delete',
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.red,
+                      size: 20,
+                    ),
+                    onPressed: onDelete,
+                  ),
+              ],
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -153,7 +165,10 @@ class RequestCard extends StatelessWidget {
                 ),
               ],
             ),
-            if (request.details.trim().isNotEmpty) ...[
+            if (request.details.trim().isNotEmpty &&
+                !request.details.trim().toLowerCase().startsWith(
+                  'auto-generated',
+                )) ...[
               const SizedBox(height: 8),
               Text(
                 request.details.trim(),
