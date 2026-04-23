@@ -60,3 +60,5 @@ exports.getDonationHistory = donorMgmt.getDonationHistory;
 exports.listBloodBankPastDonors = donorMgmt.listBloodBankPastDonors;
 exports.getBloodBankDonorMedicalHistory =
   donorMgmt.getBloodBankDonorMedicalHistory;
+exports.cleanupMissedScheduledAppointments =
+  donorMgmt.cleanupMissedScheduledAppointments;

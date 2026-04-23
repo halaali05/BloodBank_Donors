@@ -193,6 +193,9 @@ class DonorManagementDonorTile extends StatelessWidget {
     final statusColor = _statusColor(donor.status);
     final statusLabel = _statusLabel(donor.status);
     final statusIcon = _statusIcon(donor.status);
+    final appointmentBadgeLabel = _appointmentBadgeLabel(donor);
+    final appointmentBadgeColor = _appointmentBadgeColor(donor);
+    final appointmentBadgeIcon = _appointmentBadgeIcon(donor);
     final isPendingTabRow = donor.status == DonorProcessStatus.accepted;
     final pendingReschedule = donor.hasPendingRescheduleRequest;
     final borderColor = isPendingTabRow
@@ -359,6 +362,38 @@ class DonorManagementDonorTile extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 6),
+                  if (appointmentBadgeLabel != null) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: appointmentBadgeColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            appointmentBadgeIcon,
+                            size: 11,
+                            color: appointmentBadgeColor,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            appointmentBadgeLabel,
+                            style: TextStyle(
+                              color: appointmentBadgeColor,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
@@ -560,6 +595,30 @@ class DonorManagementDonorTile extends StatelessWidget {
       case DonorProcessStatus.restricted:
         return 'Restricted ⚠';
     }
+  }
+
+  String? _appointmentBadgeLabel(DonorPipelineRow donor) {
+    final a = (donor.appointmentStatus ?? '').toLowerCase();
+    if (a == 'completed') return '🟢 Completed';
+    if (a == 'missed') return '🔴 Missed';
+    if (a == 'scheduled' || donor.status == DonorProcessStatus.scheduled) {
+      return '🟡 Scheduled';
+    }
+    return null;
+  }
+
+  Color _appointmentBadgeColor(DonorPipelineRow donor) {
+    final a = (donor.appointmentStatus ?? '').toLowerCase();
+    if (a == 'completed') return Colors.green;
+    if (a == 'missed') return Colors.red;
+    return Colors.orange;
+  }
+
+  IconData _appointmentBadgeIcon(DonorPipelineRow donor) {
+    final a = (donor.appointmentStatus ?? '').toLowerCase();
+    if (a == 'completed') return Icons.check_circle_rounded;
+    if (a == 'missed') return Icons.cancel_rounded;
+    return Icons.schedule_rounded;
   }
 
   IconData _statusIcon(DonorProcessStatus s) {

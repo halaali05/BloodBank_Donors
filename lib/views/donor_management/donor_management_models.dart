@@ -7,6 +7,7 @@ class DonorPipelineRow {
   final String email;
   final String phoneNumber;
   final DonorProcessStatus status;
+  final String? appointmentStatus;
   final DateTime? appointmentAt;
 
   /// The donor's blood type (e.g. 'A+', 'O-'). May be null/empty if unknown.
@@ -22,6 +23,7 @@ class DonorPipelineRow {
     required this.email,
     this.phoneNumber = '',
     required this.status,
+    this.appointmentStatus,
     this.appointmentAt,
     this.bloodType,
     this.rescheduleReason,
@@ -41,6 +43,7 @@ class DonorPipelineRow {
 
   DonorPipelineRow copyWith({
     DonorProcessStatus? status,
+    String? appointmentStatus,
     DateTime? appointmentAt,
     String? bloodType,
     String? rescheduleReason,
@@ -52,6 +55,7 @@ class DonorPipelineRow {
     email: email,
     phoneNumber: phoneNumber,
     status: status ?? this.status,
+    appointmentStatus: appointmentStatus ?? this.appointmentStatus,
     appointmentAt: appointmentAt ?? this.appointmentAt,
     bloodType: bloodType ?? this.bloodType,
     rescheduleReason: rescheduleReason ?? this.rescheduleReason,

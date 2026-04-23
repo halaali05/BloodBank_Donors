@@ -36,7 +36,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadDonors(showSpinner: true);
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
@@ -67,6 +67,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
               email: d.email,
               phoneNumber: d.phoneNumber,
               status: parseDonorProcessStatus(d.processStatus),
+              appointmentStatus: d.appointmentStatus,
               appointmentAt: d.appointmentAtMillis != null
                   ? DateTime.fromMillisecondsSinceEpoch(d.appointmentAtMillis!)
                   : null,
@@ -123,15 +124,30 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
   List<DonorPipelineRow> _byStatus(List<DonorProcessStatus> statuses) =>
       _donors.where((d) => statuses.contains(d.status)).toList();
 
+  List<DonorPipelineRow> _availableAccepted() => _donors
+      .where(
+        (d) =>
+            d.status == DonorProcessStatus.accepted &&
+            (d.appointmentStatus ?? '') != 'missed' &&
+            (d.appointmentStatus ?? '') != 'completed',
+      )
+      .toList();
+
+  List<DonorPipelineRow> _scheduledOnly() =>
+      _donors.where((d) => d.status == DonorProcessStatus.scheduled).toList();
+
+  List<DonorPipelineRow> _completedOnly() =>
+      _donors.where((d) => (d.appointmentStatus ?? '') == 'completed').toList();
+
+  List<DonorPipelineRow> _missedOnly() =>
+      _donors.where((d) => (d.appointmentStatus ?? '') == 'missed').toList();
+
   @override
   Widget build(BuildContext context) {
     final acceptedCount = _donors
         .where((d) => d.status != DonorProcessStatus.restricted)
         .length;
     final restrictedCount = _byStatus([DonorProcessStatus.restricted]).length;
-    final pendingRescheduleCount = _donors
-        .where((d) => d.hasPendingRescheduleRequest)
-        .length;
 
     return Scaffold(
       backgroundColor: AppTheme.softBg,
@@ -166,34 +182,25 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                 ),
                 DonorManagementTabBar(
                   controller: _tabController,
-                  pendingCount: _byStatus([DonorProcessStatus.accepted]).length,
-                  scheduledCount: _byStatus([
-                    DonorProcessStatus.scheduled,
-                    DonorProcessStatus.tested,
-                  ]).length,
-                  doneCount: _byStatus([
-                    DonorProcessStatus.donated,
-                    DonorProcessStatus.restricted,
-                  ]).length,
-                  pendingRescheduleCount: pendingRescheduleCount,
+                  availableCount: _availableAccepted().length,
+                  scheduledCount: _scheduledOnly().length,
+                  completedCount: _completedOnly().length,
+                  missedCount: _missedOnly().length,
                 ),
                 Expanded(
                   child: TabBarView(
                     controller: _tabController,
                     children: [
                       DonorManagementDonorList(
-                        donors: _byStatus([DonorProcessStatus.accepted]),
-                        emptyLabel: 'No pending donors',
+                        donors: _availableAccepted(),
+                        emptyLabel: 'No available donors',
                         onAction: _onSchedule,
                         actionLabel: 'Schedule',
                         actionIcon: Icons.calendar_today_rounded,
                         actionColor: const Color(0xFF1565C0),
                       ),
                       DonorManagementDonorList(
-                        donors: _byStatus([
-                          DonorProcessStatus.scheduled,
-                          DonorProcessStatus.tested,
-                        ]),
+                        donors: _scheduledOnly(),
                         emptyLabel: 'No scheduled donors',
                         onAction: _onUploadReport,
                         actionLabel: 'Upload Report',
@@ -201,11 +208,12 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                         actionColor: const Color(0xFF6A1B9A),
                       ),
                       DonorManagementDonorList(
-                        donors: _byStatus([
-                          DonorProcessStatus.donated,
-                          DonorProcessStatus.restricted,
-                        ]),
+                        donors: _completedOnly(),
                         emptyLabel: 'No completed donors yet',
+                      ),
+                      DonorManagementDonorList(
+                        donors: _missedOnly(),
+                        emptyLabel: 'No missed donors',
                       ),
                     ],
                   ),
@@ -225,6 +233,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
     _scheduleSetState(() {
       _donors[idx] = donor.copyWith(
         status: DonorProcessStatus.scheduled,
+        appointmentStatus: 'scheduled',
         appointmentAt: picked,
       );
     });
@@ -266,7 +275,12 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                 final idx = _donors.indexWhere(
                   (d) => d.donorId == donor.donorId,
                 );
-                if (idx != -1) _donors[idx] = donor.copyWith(status: status);
+                if (idx != -1) {
+                  _donors[idx] = donor.copyWith(
+                    status: status,
+                    appointmentStatus: 'completed',
+                  );
+                }
               });
 
               try {

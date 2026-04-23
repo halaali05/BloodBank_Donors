@@ -1,4 +1,5 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const { publicCallableOpts } = require("./callable_config");
 const { scheduleRef } = require("./donation_schedule");
@@ -229,6 +230,7 @@ exports.scheduleDonorAppointment = onCall(
 
       await donorResponseRef.update({
         processStatus: "scheduled",
+        appointmentStatus: "scheduled",
         appointmentAt: admin.firestore.Timestamp.fromDate(appointmentDate),
         scheduledAt: admin.firestore.FieldValue.serverTimestamp(),
         scheduledBy: callerUid,
@@ -578,6 +580,7 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
 
     batch.update(donorResponseRef, {
       processStatus: normalizedStatus,
+      appointmentStatus: "completed",
       reportId: reportRef.id,
       completedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1119,6 +1122,80 @@ exports.getBloodBankDonorMedicalHistory = onCall(
         "internal",
         "Failed to fetch donor medical history.",
       );
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// 7. cleanupMissedScheduledAppointments (daily)
+// ---------------------------------------------------------------------------
+// If donor stayed in "scheduled" for more than 7 days past appointment time,
+// remove from the scheduled list by moving processStatus back to "accepted".
+exports.cleanupMissedScheduledAppointments = onSchedule(
+  {
+    schedule: "0 */6 * * *", // every 6 hours
+    timeZone: "Asia/Amman",
+    region: "us-central1",
+  },
+  async () => {
+    const cutoffMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const cutoffTs = admin.firestore.Timestamp.fromMillis(cutoffMs);
+
+    try {
+      const requestsSnap = await db.collection("requests").get();
+      let checked = 0;
+      let markedMissed = 0;
+
+      for (const reqDoc of requestsSnap.docs) {
+        const scheduledSnap = await reqDoc.ref
+          .collection("donorResponses")
+          .where("processStatus", "==", "scheduled")
+          .get();
+
+        if (scheduledSnap.empty) continue;
+
+        let batch = db.batch();
+        let inBatch = 0;
+
+        for (const donorDoc of scheduledSnap.docs) {
+          checked += 1;
+          const row = donorDoc.data() || {};
+          const apt = row.appointmentAt;
+          if (!apt || typeof apt.toMillis !== "function") continue;
+          if (apt.toMillis() > cutoffMs) continue;
+
+          batch.update(donorDoc.ref, {
+            processStatus: "accepted",
+            appointmentStatus: "missed",
+            appointmentAt: admin.firestore.FieldValue.delete(),
+            scheduledAt: admin.firestore.FieldValue.delete(),
+            scheduledBy: admin.firestore.FieldValue.delete(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            missedAt: admin.firestore.FieldValue.serverTimestamp(),
+            missedAfterCutoff: cutoffTs,
+          });
+          inBatch += 1;
+          markedMissed += 1;
+
+          if (inBatch >= 400) {
+            await batch.commit();
+            batch = db.batch();
+            inBatch = 0;
+          }
+        }
+
+        if (inBatch > 0) {
+          await batch.commit();
+        }
+      }
+
+      console.log(
+        `[cleanupMissedScheduledAppointments] checked=${checked}, markedMissed=${markedMissed}`,
+      );
+      return null;
+    } catch (e) {
+      console.error("[cleanupMissedScheduledAppointments] ERROR:", e);
+      return null;
     }
   },
 );

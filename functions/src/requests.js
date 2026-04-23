@@ -552,6 +552,10 @@ async function buildDonorManagementEntry(donorId, responseRow) {
     ...base,
     phoneNumber,
     processStatus: row.processStatus ?? null,
+    appointmentStatus:
+      typeof row.appointmentStatus === "string" && row.appointmentStatus.trim()
+        ? row.appointmentStatus.trim().toLowerCase()
+        : null,
     appointmentAtMillis,
     rescheduleReason,
     reschedulePreferredAtMillis,

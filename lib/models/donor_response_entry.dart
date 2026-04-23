@@ -12,6 +12,9 @@ class DonorResponseEntry {
 
   /// `appointmentAt` from Firestore as epoch ms (when set).
   final int? appointmentAtMillis;
+  
+  /// Appointment status from backend automation: scheduled, completed, missed.
+  final String? appointmentStatus;
 
   /// The donor's blood type (e.g. 'A+', 'O-'). May be null/empty if unknown.
   final String? bloodType;
@@ -31,6 +34,7 @@ class DonorResponseEntry {
     required this.email,
     this.phoneNumber = '',
     this.processStatus,
+    this.appointmentStatus,
     this.appointmentAtMillis,
     this.bloodType,
     this.rescheduleReason,
@@ -76,6 +80,13 @@ class DonorResponseEntry {
         ? null
         : psRaw.toString().trim();
 
+    final apptStatusRaw = m['appointmentStatus'];
+    final String? appointmentStatus = apptStatusRaw == null
+        ? null
+        : apptStatusRaw.toString().trim().isEmpty
+        ? null
+        : apptStatusRaw.toString().trim().toLowerCase();
+
     final btRaw = m['bloodType'];
     final String? bloodType = btRaw == null
         ? null
@@ -102,6 +113,7 @@ class DonorResponseEntry {
       email: email,
       phoneNumber: phoneNumber,
       processStatus: processStatus,
+      appointmentStatus: appointmentStatus,
       appointmentAtMillis: appointmentAtMillis,
       bloodType: bloodType,
       rescheduleReason: rescheduleReason,
