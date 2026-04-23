@@ -2,6 +2,7 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { publicCallableOpts } = require("./callable_config");
 const { scheduleRef } = require("./donation_schedule");
+const { createAndBroadcastFollowUpRequest } = require("./src/requests");
 
 const db = admin.firestore();
 
@@ -633,6 +634,38 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
 
     await batch.commit();
 
+    let generatedRequestId = null;
+    if (normalizedStatus === "donated") {
+      try {
+        const autoPost = await createAndBroadcastFollowUpRequest({
+          bloodBankId: callerUid,
+          bloodBankName: req.bloodBankName || "",
+          bloodType: confirmedNorm,
+          units: 1,
+          isUrgent: !!req.isUrgent,
+          hospitalLocation: req.hospitalLocation || "",
+          hospitalLatitude:
+            typeof req.hospitalLatitude === "number"
+              ? req.hospitalLatitude
+              : null,
+          hospitalLongitude:
+            typeof req.hospitalLongitude === "number"
+              ? req.hospitalLongitude
+              : null,
+          details:
+            "Auto-generated after confirmed donation and medical report upload.",
+          sourceRequestId: requestId,
+          sourceReportId: reportRef.id,
+        });
+        generatedRequestId = autoPost.requestId || null;
+      } catch (autoPostErr) {
+        console.error(
+          "[saveMedicalReport] Failed to generate follow-up request:",
+          autoPostErr,
+        );
+      }
+    }
+
     try {
       const donorSnap = await db.collection("users").doc(donorId).get();
       if (donorSnap.exists) {
@@ -689,7 +722,11 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       );
     }
 
-    return { success: true, reportId: reportRef.id };
+    return {
+      success: true,
+      reportId: reportRef.id,
+      generatedRequestId,
+    };
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error("[saveMedicalReport] unhandled:", e);

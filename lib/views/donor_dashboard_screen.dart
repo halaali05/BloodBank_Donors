@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'chat_screen.dart';
@@ -18,8 +19,9 @@ import '../widgets/dashboard/donor_header.dart';
 import '../widgets/dashboard/donor_request_card.dart';
 import '../widgets/common/donor_cooldown_blocked_message.dart';
 import '../utils/donor_eligibility.dart';
-import '../utils/blood_compatibility.dart';
 import 'donor_map_screen.dart';
+
+enum DonorRequestFilter { all, nearest, completed, urgent, normal }
 
 /// Main dashboard screen for donors
 ///
@@ -54,6 +56,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
   bool _isLoading = true;
   String? _error;
   String? _respondingRequestId;
+  DonorRequestFilter _selectedFilter = DonorRequestFilter.all;
 
   @override
   void initState() {
@@ -114,23 +117,8 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
     try {
       final requests = await _controller.fetchRequests();
       if (mounted) {
-        // Filter requests based on donor's blood type compatibility.
-        // If bloodType is not set yet, show all requests (no filtering).
-        final userBloodType = (_userProfile?['bloodType'] ?? '')
-            .toString()
-            .trim();
-        final filtered = userBloodType.isEmpty
-            ? requests
-            : requests
-                  .where(
-                    (r) => BloodCompatibility.canDonate(
-                      userBloodType,
-                      r.bloodType,
-                    ),
-                  )
-                  .toList();
         setState(() {
-          _requests = filtered;
+          _requests = requests;
           _isLoading = false;
         });
       }
@@ -223,6 +211,189 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
 
   DateTime? _donationCooldownEndsAt() =>
       DonorEligibility.cooldownEndsAt(_userProfile);
+
+  List<BloodRequest> get _displayRequests {
+    switch (_selectedFilter) {
+      case DonorRequestFilter.all:
+        return _requests;
+      case DonorRequestFilter.completed:
+        return _requests.where((r) => r.isCompleted).toList();
+      case DonorRequestFilter.urgent:
+        return _requests.where((r) => !r.isCompleted && r.isUrgent).toList();
+      case DonorRequestFilter.normal:
+        return _requests.where((r) => !r.isCompleted && !r.isUrgent).toList();
+      case DonorRequestFilter.nearest:
+        return _nearestRequestsOnly(_requests);
+    }
+  }
+
+  String _normalizeLocationLabel(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\u2018\u2019]'), "'")
+        .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  ({double lat, double lng})? _coordsFromLocationLabel(String rawLocation) {
+    final location = rawLocation.trim();
+    if (location.isEmpty) return null;
+
+    final directLat = AppTheme.getLatitude(location);
+    final directLng = AppTheme.getLongitude(location);
+    if (directLat != null && directLng != null) {
+      return (lat: directLat, lng: directLng);
+    }
+
+    final normalized = _normalizeLocationLabel(location);
+    for (final entry in AppTheme.governorateCoordinates.entries) {
+      final key = _normalizeLocationLabel(entry.key);
+      if (normalized == key ||
+          normalized.contains(key) ||
+          key.contains(normalized)) {
+        final lat = entry.value['lat'];
+        final lng = entry.value['lng'];
+        if (lat != null && lng != null) {
+          return (lat: lat, lng: lng);
+        }
+      }
+    }
+    return null;
+  }
+
+  ({double lat, double lng})? _resolveDonorCoordinates() {
+    final lat = _userProfile?['latitude'];
+    final lng = _userProfile?['longitude'];
+    final latNum = lat is num ? lat.toDouble() : null;
+    final lngNum = lng is num ? lng.toDouble() : null;
+    if (latNum != null && lngNum != null) {
+      return (lat: latNum, lng: lngNum);
+    }
+
+    final governorate = (_userProfile?['location'] ?? '').toString().trim();
+    if (governorate.isEmpty) return null;
+    return _coordsFromLocationLabel(governorate);
+  }
+
+  ({double lat, double lng})? _resolveRequestCoordinates(BloodRequest request) {
+    final lat = request.hospitalLatitude;
+    final lng = request.hospitalLongitude;
+    if (lat != null && lng != null) {
+      return (lat: lat, lng: lng);
+    }
+
+    final location = request.hospitalLocation.trim();
+    if (location.isEmpty) return null;
+    return _coordsFromLocationLabel(location);
+  }
+
+  double _distanceKm(
+    double fromLat,
+    double fromLng,
+    double toLat,
+    double toLng,
+  ) {
+    const earthRadiusKm = 6371.0;
+    final dLat = _degToRad(toLat - fromLat);
+    final dLng = _degToRad(toLng - fromLng);
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_degToRad(fromLat)) *
+            math.cos(_degToRad(toLat)) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadiusKm * c;
+  }
+
+  double _degToRad(double deg) => deg * (math.pi / 180);
+
+  List<BloodRequest> _nearestSortedRequests(List<BloodRequest> requests) {
+    final donorCoords = _resolveDonorCoordinates();
+    if (donorCoords == null) return const [];
+
+    final activeRequests = requests.where((r) => !r.isCompleted).toList();
+    final candidates = activeRequests;
+
+    final withDistance = <({BloodRequest request, double distance})>[];
+    for (final request in candidates) {
+      final reqCoords = _resolveRequestCoordinates(request);
+      if (reqCoords == null) continue;
+      final distance = _distanceKm(
+        donorCoords.lat,
+        donorCoords.lng,
+        reqCoords.lat,
+        reqCoords.lng,
+      );
+      withDistance.add((request: request, distance: distance));
+    }
+    withDistance.sort((a, b) => a.distance.compareTo(b.distance));
+    return withDistance.map((e) => e.request).toList();
+  }
+
+  List<BloodRequest> _nearestRequestsOnly(List<BloodRequest> requests) {
+    final sorted = _nearestSortedRequests(requests);
+    if (sorted.isEmpty) return const [];
+
+    final donorCoords = _resolveDonorCoordinates();
+    if (donorCoords == null) return const [];
+
+    double? minDistance;
+    final distances = <String, double>{};
+    for (final request in sorted) {
+      final coords = _resolveRequestCoordinates(request);
+      if (coords == null) continue;
+      final d = _distanceKm(
+        donorCoords.lat,
+        donorCoords.lng,
+        coords.lat,
+        coords.lng,
+      );
+      distances[request.id] = d;
+      minDistance = minDistance == null ? d : math.min(minDistance, d);
+    }
+    if (minDistance == null) return const [];
+
+    // Keep only requests around the nearest zone.
+    const nearestBandKm = 10.0;
+    return sorted.where((r) {
+      final d = distances[r.id];
+      if (d == null) return false;
+      return d <= minDistance! + nearestBandKm;
+    }).toList();
+  }
+
+  void _setRequestFilter(DonorRequestFilter filter) {
+    if (_selectedFilter == filter) return;
+    if (filter == DonorRequestFilter.nearest &&
+        _nearestRequestsOnly(_requests).isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not determine nearest request. Check your profile location.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    setState(() => _selectedFilter = filter);
+  }
+
+  String _filterLabel(DonorRequestFilter filter) {
+    switch (filter) {
+      case DonorRequestFilter.all:
+        return 'All';
+      case DonorRequestFilter.nearest:
+        return 'Nearest';
+      case DonorRequestFilter.completed:
+        return 'Completed';
+      case DonorRequestFilter.urgent:
+        return 'Urgent Requests';
+      case DonorRequestFilter.normal:
+        return 'Normal';
+    }
+  }
 
   Future<void> _submitDonorResponse(BloodRequest request, String status) async {
     if (_respondingRequestId != null) return;
@@ -389,20 +560,60 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
                         const SizedBox(height: 14),
                         SectionHeader(
                           title: 'Blood Requests',
-                          subtitle: _requests.isEmpty
-                              ? 'No requests yet'
-                              : 'Latest posts from blood banks',
+                          subtitle: _displayRequests.isEmpty
+                              ? 'No requests for ${_filterLabel(_selectedFilter)}'
+                              : '${_displayRequests.length} request(s) - ${_filterLabel(_selectedFilter)}',
                         ),
                         const SizedBox(height: 10),
-                        if (_requests.isEmpty)
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              _RequestFilterChip(
+                                label: 'All',
+                                selected: _selectedFilter == DonorRequestFilter.all,
+                                onTap: () => _setRequestFilter(DonorRequestFilter.all),
+                              ),
+                              const SizedBox(width: 8),
+                              _RequestFilterChip(
+                                label: 'Nearest',
+                                selected: _selectedFilter == DonorRequestFilter.nearest,
+                                onTap: () =>
+                                    _setRequestFilter(DonorRequestFilter.nearest),
+                              ),
+                              const SizedBox(width: 8),
+                              _RequestFilterChip(
+                                label: 'Completed',
+                                selected: _selectedFilter == DonorRequestFilter.completed,
+                                onTap: () =>
+                                    _setRequestFilter(DonorRequestFilter.completed),
+                              ),
+                              const SizedBox(width: 8),
+                              _RequestFilterChip(
+                                label: 'Urgent',
+                                selected: _selectedFilter == DonorRequestFilter.urgent,
+                                onTap: () =>
+                                    _setRequestFilter(DonorRequestFilter.urgent),
+                              ),
+                              const SizedBox(width: 8),
+                              _RequestFilterChip(
+                                label: 'Normal',
+                                selected: _selectedFilter == DonorRequestFilter.normal,
+                                onTap: () =>
+                                    _setRequestFilter(DonorRequestFilter.normal),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        if (_displayRequests.isEmpty)
                           const EmptyState(
                             icon: Icons.bloodtype_outlined,
-                            title: 'No blood requests yet',
-                            subtitle:
-                                'When a blood bank posts a request, it will appear here.',
+                            title: 'No requests found',
+                            subtitle: 'Try another filter.',
                           )
                         else
-                          ..._requests.map(
+                          ..._displayRequests.map(
                             (request) => Padding(
                               padding: const EdgeInsets.only(bottom: 12),
                               child: DonorRequestCard(
@@ -485,6 +696,44 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
       donorName: donorName,
       activeRequests: activeRequests.length,
       activeUnits: activeUnits,
+    );
+  }
+}
+
+class _RequestFilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _RequestFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.deepRed : Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? AppTheme.deepRed : const Color(0xFFD0D4F0),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : Colors.black87,
+          ),
+        ),
+      ),
     );
   }
 }

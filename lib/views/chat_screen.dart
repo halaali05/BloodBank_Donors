@@ -26,12 +26,16 @@ class ChatScreen extends StatefulWidget {
   /// Optional: If provided, filters messages to show only those for this specific donor
   /// Used when blood bank wants to chat with a specific donor
   final String? recipientId;
+  
+  /// When true, sends [initialMessage] automatically once on open.
+  final bool autoSendInitialMessage;
 
   const ChatScreen({
     super.key,
     required this.requestId,
     required this.initialMessage,
     this.recipientId,
+    this.autoSendInitialMessage = false,
   });
 
   @override
@@ -52,6 +56,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = true;
   bool _isSending = false;
   String? _error;
+  bool _didAutoSendInitialMessage = false;
 
   // Request and user info
   String? _requestOwnerId; // ID of the blood bank that created the request
@@ -59,6 +64,16 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialMessage.trim().isNotEmpty && widget.recipientId != null) {
+      _textController.text = widget.initialMessage.trim();
+      if (widget.autoSendInitialMessage) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _didAutoSendInitialMessage) return;
+          _didAutoSendInitialMessage = true;
+          _sendMessage();
+        });
+      }
+    }
     _initializeChat();
   }
 

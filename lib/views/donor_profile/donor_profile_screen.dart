@@ -160,6 +160,13 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
     return p.isEmpty ? null : p;
   }
 
+  String? _locationFromData() {
+    final m = _userData;
+    if (m == null) return null;
+    final location = (m['location'] ?? '').toString().trim();
+    return location.isEmpty ? null : location;
+  }
+
   void _initOnce(Map<String, dynamic> data) {
     if (_didInit) return;
     _didInit = true;
@@ -551,6 +558,44 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                                   ],
                                 ),
                               ),
+                              if (_locationFromData() != null) ...[
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.18),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.3),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.location_on_outlined,
+                                        size: 13,
+                                        color: Colors.white,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          _locationFromData()!,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -571,6 +616,7 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                             email: user.email ?? '',
                             genderLabel: _genderLabelFromData(),
                             phoneDisplay: _phoneFromData(),
+                            location: _locationFromData(),
                             photoUrl: _photoUrl,
                             avatarUploading: _avatarUploading,
                             initialIsEditing: _isEditing,

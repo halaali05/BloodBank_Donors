@@ -12,6 +12,7 @@ class RequestCard extends StatelessWidget {
   final VoidCallback? onTapAcceptances;
   final VoidCallback? onTapRejections;
   final VoidCallback? onMarkCompleted;
+  final VoidCallback? onOpenAllDonors;
 
   const RequestCard({
     super.key,
@@ -21,6 +22,7 @@ class RequestCard extends StatelessWidget {
     this.onTapAcceptances,
     this.onTapRejections,
     this.onMarkCompleted,
+    this.onOpenAllDonors,
   });
 
   @override
@@ -102,6 +104,16 @@ class RequestCard extends StatelessWidget {
       const UrgentBadge(),
       const SizedBox(width: 6),
     ],
+    if (onOpenAllDonors != null)
+      IconButton(
+        tooltip: 'All registered donors',
+        icon: const Icon(
+          Icons.groups_2_outlined,
+          color: AppTheme.deepRed,
+          size: 20,
+        ),
+        onPressed: onOpenAllDonors,
+      ),
     if (onEdit != null)
       IconButton(
         tooltip: 'Edit units',

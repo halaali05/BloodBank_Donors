@@ -8,6 +8,7 @@ class DonorProfileAccountPage extends StatefulWidget {
   final String email;
   final String? genderLabel;
   final String? phoneDisplay;
+  final String? location;
   final String? photoUrl;
   final bool avatarUploading;
   final VoidCallback onPickAvatar;
@@ -25,6 +26,7 @@ class DonorProfileAccountPage extends StatefulWidget {
     required this.email,
     this.genderLabel,
     this.phoneDisplay,
+    this.location,
     required this.photoUrl,
     required this.avatarUploading,
     required this.initialIsEditing,
@@ -339,6 +341,14 @@ class _DonorProfileAccountPageState extends State<DonorProfileAccountPage> {
                   icon: Icons.phone_android_outlined,
                   label: 'Mobile',
                   value: widget.phoneDisplay!,
+                ),
+              ],
+              if (widget.location != null && widget.location!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _ReadOnlyAccountField(
+                  icon: Icons.location_on_outlined,
+                  label: 'Location',
+                  value: widget.location!,
                 ),
               ],
             ],

@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'new_request_screen.dart';
 import 'login_screen.dart';
 import 'donor_management/donor_management_screen.dart';
+import 'request_donors_screen.dart';
 
 import 'stats_screen.dart';
 import 'blood_bank_past_donors_screen.dart';
@@ -390,6 +391,18 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                             final request = activeRequests[index];
                             return RequestCard(
                               request: request,
+                              onOpenAllDonors: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        RequestDonorsScreen(
+                                          requestId: request.id,
+                                          hospitalName: widget.bloodBankName,
+                                        ),
+                                  ),
+                                );
+                              },
                               onDelete: () =>
                                   _handleDeleteRequest(context, request),
                               onEdit: () => _handleEditUnits(context, request),
@@ -435,6 +448,18 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                             final request = completedRequests[index];
                             return RequestCard(
                               request: request,
+                              onOpenAllDonors: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        RequestDonorsScreen(
+                                          requestId: request.id,
+                                          hospitalName: widget.bloodBankName,
+                                        ),
+                                  ),
+                                );
+                              },
                               onDelete: () =>
                                   _handleDeleteRequest(context, request),
                               onEdit: () => _handleEditUnits(context, request),

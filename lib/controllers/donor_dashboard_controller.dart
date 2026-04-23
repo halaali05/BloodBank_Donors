@@ -148,6 +148,9 @@ class DonorDashboardController {
             userData.fullName ?? '', // Use fullName as name for compatibility
         'email': userData.email,
         'location': userData.location ?? '',
+        'latitude': userData.latitude,
+        'longitude': userData.longitude,
+        'bloodType': userData.bloodType ?? '',
         'gender': userData.gender,
         'nextDonationEligibleAt': userData.nextDonationEligibleAt,
         'lastDonatedAt': userData.lastDonatedAt,
