@@ -456,9 +456,7 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                                       .trim();
                                   if (bt.isEmpty) {
                                     return Padding(
-                                      padding: const EdgeInsets.only(
-                                        bottom: 4,
-                                      ),
+                                      padding: const EdgeInsets.only(bottom: 4),
                                       child: Text(
                                         'Blood type: not confirmed',
                                         style: TextStyle(
@@ -569,7 +567,9 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                                     color: Colors.white.withValues(alpha: 0.18),
                                     borderRadius: BorderRadius.circular(999),
                                     border: Border.all(
-                                      color: Colors.white.withValues(alpha: 0.3),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.3,
+                                      ),
                                     ),
                                   ),
                                   child: Row(

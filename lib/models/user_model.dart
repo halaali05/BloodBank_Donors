@@ -87,6 +87,9 @@ class User {
   /// Medical restriction end time (from restricted report), if any.
   final DateTime? restrictedUntil;
 
+  /// True when donor is permanently blocked from donating (medical).
+  final bool isPermanentlyBlocked;
+
   /// Donor mobile in E.164 (e.g. +962791234567).
   final String? phoneNumber;
 
@@ -110,6 +113,7 @@ class User {
     this.nextDonationEligibleAt,
     this.lastDonatedAt,
     this.restrictedUntil,
+    this.isPermanentlyBlocked = false,
     this.phoneNumber,
     this.createdAt,
   });
@@ -142,6 +146,7 @@ class User {
       nextDonationEligibleAt: _parseDate(data['nextDonationEligibleAt']),
       lastDonatedAt: _parseDate(data['lastDonatedAt']),
       restrictedUntil: _parseDate(data['restrictedUntil']),
+      isPermanentlyBlocked: data['isPermanentlyBlocked'] == true,
       phoneNumber: data['phoneNumber'] as String?,
       createdAt: _parseDate(data['createdAt']),
     );

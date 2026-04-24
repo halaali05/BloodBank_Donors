@@ -207,7 +207,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
   }
 
   bool get _donationCooldownActive =>
-      DonorEligibility.isCooldownActive(_userProfile);
+      DonorEligibility.isBlockedFromDonating(_userProfile);
 
   DateTime? _donationCooldownEndsAt() =>
       DonorEligibility.cooldownEndsAt(_userProfile);
@@ -453,24 +453,30 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
     if (status == 'accepted' &&
         _donationCooldownActive &&
         request.myResponse != 'accepted') {
+      final isPermanent = DonorEligibility.isPermanentlyBlocked(_userProfile);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
           backgroundColor: Colors.grey.shade900,
-          content: DonorCooldownBlockedMessage(
-            baseStyle: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              height: 1.35,
-            ),
-            linkStyle: TextStyle(
-              color: Colors.amber.shade100,
-              fontSize: 14,
-              height: 1.35,
-              fontWeight: FontWeight.w800,
-              decoration: TextDecoration.underline,
-            ),
-          ),
+          content: isPermanent
+              ? const Text(
+                  '🚫 You are permanently blocked from donating due to medical reasons.',
+                  style: TextStyle(color: Colors.white, fontSize: 14),
+                )
+              : DonorCooldownBlockedMessage(
+                  baseStyle: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    height: 1.35,
+                  ),
+                  linkStyle: TextStyle(
+                    color: Colors.amber.shade100,
+                    fontSize: 14,
+                    height: 1.35,
+                    fontWeight: FontWeight.w800,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
         ),
       );
       return;
@@ -681,6 +687,10 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
                                     _respondingRequestId == request.id,
                                 acceptBlockedByCooldown:
                                     _donationCooldownActive,
+                                permanentlyBlocked:
+                                    DonorEligibility.isPermanentlyBlocked(
+                                      _userProfile,
+                                    ),
                                 onDonate: () =>
                                     _submitDonorResponse(request, 'accepted'),
                                 onUndoDonate: () =>

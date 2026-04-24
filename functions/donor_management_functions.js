@@ -24,8 +24,12 @@ async function requireRole(uid, expectedRole) {
     throw new HttpsError("not-found", "User not found");
   }
   const userData = userSnap.data() || {};
-  const role = String(userData.role || "").trim().toLowerCase();
-  const want = String(expectedRole || "").trim().toLowerCase();
+  const role = String(userData.role || "")
+    .trim()
+    .toLowerCase();
+  const want = String(expectedRole || "")
+    .trim()
+    .toLowerCase();
   if (role !== want) {
     throw new HttpsError(
       "permission-denied",
@@ -58,10 +62,7 @@ const STANDARD_BLOOD_TYPES = new Set([
 
 function normalizeStandardBloodType(s) {
   if (s == null) return null;
-  const t = String(s)
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "");
+  const t = String(s).trim().toUpperCase().replace(/\s+/g, "");
   if (!t) return null;
   return STANDARD_BLOOD_TYPES.has(t) ? t : null;
 }
@@ -346,7 +347,9 @@ exports.requestAppointmentReschedule = onCall(
       }
 
       const reasonStr =
-        typeof reason === "string" ? reason.trim() : String(reason || "").trim();
+        typeof reason === "string"
+          ? reason.trim()
+          : String(reason || "").trim();
       if (reasonStr.length < 3) {
         throw new HttpsError(
           "invalid-argument",
@@ -414,7 +417,8 @@ exports.requestAppointmentReschedule = onCall(
         scheduledAt: admin.firestore.FieldValue.delete(),
         scheduledBy: admin.firestore.FieldValue.delete(),
         rescheduleReason: reasonStr,
-        reschedulePreferredAt: admin.firestore.Timestamp.fromDate(preferredDate),
+        reschedulePreferredAt:
+          admin.firestore.Timestamp.fromDate(preferredDate),
         rescheduleRequestedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -448,6 +452,7 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       reportFileUrl,
       canDonateAgainAt,
       confirmedBloodType,
+      isPermanentBlock,
     } = request.data || {};
 
     if (!requestId || typeof requestId !== "string") {
@@ -556,6 +561,9 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
           ? admin.firestore.Timestamp.fromDate(canDonateAgainDate)
           : null;
 
+    const isPermanentBlockBool =
+      normalizedStatus === "restricted" && isPermanentBlock === true;
+
     const reportData = {
       requestId,
       donorId,
@@ -565,6 +573,7 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       confirmedBloodType: confirmedNorm,
       isUrgent: !!req.isUrgent,
       status: normalizedStatus,
+      isPermanentBlock: isPermanentBlockBool,
       restrictionReason:
         normalizedStatus === "restricted" ? restrictionReason.trim() : null,
       notes: notes && String(notes).trim() ? String(notes).trim() : null,
@@ -594,13 +603,23 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    if (normalizedStatus === "restricted" && canDonateAgainDate) {
-      scheduleUpdate.restrictedUntil = admin.firestore.Timestamp.fromDate(
-        canDonateAgainDate,
-      );
-      scheduleUpdate.restrictionReason = restrictionReason
-        ? restrictionReason.trim()
-        : "";
+    if (normalizedStatus === "restricted") {
+      if (isPermanentBlockBool) {
+        // Permanent block — no expiry date, flag on schedule doc
+        scheduleUpdate.isPermanentlyBlocked = true;
+        scheduleUpdate.restrictionReason = restrictionReason
+          ? restrictionReason.trim()
+          : "";
+        scheduleUpdate.restrictedUntil = admin.firestore.FieldValue.delete();
+      } else if (canDonateAgainDate) {
+        scheduleUpdate.restrictedUntil =
+          admin.firestore.Timestamp.fromDate(canDonateAgainDate);
+        scheduleUpdate.restrictionReason = restrictionReason
+          ? restrictionReason.trim()
+          : "";
+        scheduleUpdate.isPermanentlyBlocked =
+          admin.firestore.FieldValue.delete();
+      }
     }
 
     if (normalizedStatus === "donated" && postDonationEligibleDate) {
@@ -627,6 +646,9 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       nextDonationEligibleAt: admin.firestore.FieldValue.delete(),
       restrictedUntil: admin.firestore.FieldValue.delete(),
       restrictionReason: admin.firestore.FieldValue.delete(),
+      isPermanentlyBlocked: isPermanentBlockBool
+        ? true
+        : admin.firestore.FieldValue.delete(),
     };
 
     if (donorUserSnap.exists) {

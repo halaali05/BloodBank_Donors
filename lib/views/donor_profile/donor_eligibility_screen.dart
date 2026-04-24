@@ -176,11 +176,7 @@ class _DonorEligibilityScreenState extends State<DonorEligibilityScreen> {
           '$ruleDays days (${gender == 'female' ? 'women' : 'men'})',
         ),
         if (active) ...[
-          _statRow(
-            'Days left :',
-            '$calDaysLeft',
-            valueColor: AppTheme.deepRed,
-          ),
+          _statRow('Days left :', '$calDaysLeft', valueColor: AppTheme.deepRed),
           const SizedBox(height: 16),
           Container(
             width: double.infinity,
@@ -188,7 +184,10 @@ class _DonorEligibilityScreenState extends State<DonorEligibilityScreen> {
             decoration: BoxDecoration(
               color: const Color.fromARGB(255, 255, 255, 255),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color.fromARGB(255, 103, 19, 6), width: 1.5),
+              border: Border.all(
+                color: const Color.fromARGB(255, 103, 19, 6),
+                width: 1.5,
+              ),
               boxShadow: AppTheme.cardShadow,
             ),
             child: Column(
@@ -207,7 +206,12 @@ class _DonorEligibilityScreenState extends State<DonorEligibilityScreen> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: const Color.fromARGB(255, 50, 2, 2).withValues(alpha: 0.45),
+                      color: const Color.fromARGB(
+                        255,
+                        50,
+                        2,
+                        2,
+                      ).withValues(alpha: 0.45),
                       width: 2,
                     ),
                   ),
@@ -224,7 +228,10 @@ class _DonorEligibilityScreenState extends State<DonorEligibilityScreen> {
                 const SizedBox(height: 10),
                 Text(
                   'Day $elapsedCalDays',
-                  style: TextStyle(fontSize: 12, color: const Color.fromARGB(255, 0, 0, 0)),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: const Color.fromARGB(255, 0, 0, 0),
+                  ),
                 ),
               ],
             ),
@@ -328,5 +335,4 @@ class _DonorEligibilityScreenState extends State<DonorEligibilityScreen> {
       ),
     );
   }
-
 }

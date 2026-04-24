@@ -8,7 +8,10 @@ import '../../theme/app_theme.dart';
 import '../../utils/platform_file_reader.dart';
 import 'donor_management_models.dart';
 
-/// Bottom sheet: upload medical report and mark donated vs restricted.
+/// Sub-type when outcome is rejected.
+enum RejectionSubType { permanentBlock, otherReasons }
+
+/// Bottom sheet: upload medical report and mark donated vs rejected.
 class DonorManagementReportSheet extends StatefulWidget {
   final DonorPipelineRow donor;
   final void Function(
@@ -17,6 +20,7 @@ class DonorManagementReportSheet extends StatefulWidget {
     String? notes,
     String reportFileUrl,
     String confirmedBloodType,
+    RejectionSubType? rejectionSubType,
   )
   onSubmit;
 
@@ -45,9 +49,11 @@ class _DonorManagementReportSheetState
   ];
 
   DonorProcessStatus _outcome = DonorProcessStatus.donated;
+  RejectionSubType? _rejectionSubType;
   final _reasonCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   bool _showValidationErrors = false;
+
   /// Explicit selection required before submit (do not default from pipeline).
   String? _selectedBloodType;
 
@@ -177,21 +183,23 @@ class _DonorManagementReportSheetState
   }
 
   void _submitReport() {
-    final isRestricted = _outcome == DonorProcessStatus.restricted;
+    final isRejected = _outcome == DonorProcessStatus.restricted;
     final reason = _reasonCtrl.text.trim();
-    final hasReasonError = isRestricted && reason.isEmpty;
+    final hasReasonError = isRejected && reason.isEmpty;
+    final hasSubTypeError = isRejected && _rejectionSubType == null;
     final hasFileError = _uploadedFileUrl == null;
     final hasBloodError =
-        _selectedBloodType == null ||
-        !_bloodTypes.contains(_selectedBloodType);
+        _selectedBloodType == null || !_bloodTypes.contains(_selectedBloodType);
 
-    if (hasReasonError || hasFileError || hasBloodError) {
+    if (hasReasonError || hasSubTypeError || hasFileError || hasBloodError) {
       setState(() => _showValidationErrors = true);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             hasBloodError
-                ? 'Select the donor’s confirmed blood type from the list.'
+                ? 'Select the confirmed blood type from the list.'
+                : hasSubTypeError
+                ? 'Please select a rejection type.'
                 : 'Please fill all required fields marked with *',
           ),
           backgroundColor: Colors.red,
@@ -206,20 +214,21 @@ class _DonorManagementReportSheetState
 
     widget.onSubmit(
       _outcome,
-      isRestricted ? reason : null,
+      isRejected ? reason : null,
       _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       fileUrl,
       blood,
+      isRejected ? _rejectionSubType : null,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final isRestricted = _outcome == DonorProcessStatus.restricted;
+    final isRejected = _outcome == DonorProcessStatus.restricted;
+    final hasSubTypeError =
+        isRejected && _showValidationErrors && _rejectionSubType == null;
     final hasReasonError =
-        isRestricted &&
-        _showValidationErrors &&
-        _reasonCtrl.text.trim().isEmpty;
+        isRejected && _showValidationErrors && _reasonCtrl.text.trim().isEmpty;
     final hasFileError = _showValidationErrors && _uploadedFileUrl == null;
     final hasBloodError =
         _showValidationErrors &&
@@ -308,16 +317,18 @@ class _DonorManagementReportSheetState
                     label: '✅  Donated',
                     selected: _outcome == DonorProcessStatus.donated,
                     color: Colors.green,
-                    onTap: () =>
-                        setState(() => _outcome = DonorProcessStatus.donated),
+                    onTap: () => setState(() {
+                      _outcome = DonorProcessStatus.donated;
+                      _rejectionSubType = null;
+                    }),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: DonorReportOutcomeChip(
-                    label: '⚠️  Restricted',
+                    label: '🚫  Rejected',
                     selected: _outcome == DonorProcessStatus.restricted,
-                    color: Colors.orange,
+                    color: Colors.red,
                     onTap: () => setState(
                       () => _outcome = DonorProcessStatus.restricted,
                     ),
@@ -325,6 +336,74 @@ class _DonorManagementReportSheetState
                 ),
               ],
             ),
+            // Sub-type selection shown only when Rejected is selected
+            if (isRejected) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: hasSubTypeError
+                      ? Colors.red.shade50
+                      : Colors.red.shade50.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: hasSubTypeError
+                        ? Colors.red.shade400
+                        : Colors.red.shade200,
+                    width: hasSubTypeError ? 1.4 : 1,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hasSubTypeError
+                          ? 'Select rejection type *'
+                          : 'Rejection Type *',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: hasSubTypeError
+                            ? Colors.red.shade700
+                            : Colors.red.shade900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _RejectionSubTypeChip(
+                            label: '🚫  Permanent Block',
+                            sublabel: 'Cannot donate ever',
+                            selected:
+                                _rejectionSubType ==
+                                RejectionSubType.permanentBlock,
+                            onTap: () => setState(
+                              () => _rejectionSubType =
+                                  RejectionSubType.permanentBlock,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _RejectionSubTypeChip(
+                            label: '⚠️  Other Reasons',
+                            sublabel: 'Temporary / other',
+                            selected:
+                                _rejectionSubType ==
+                                RejectionSubType.otherReasons,
+                            onTap: () => setState(
+                              () => _rejectionSubType =
+                                  RejectionSubType.otherReasons,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             const Text(
               'Confirmed Blood Type *',
@@ -517,7 +596,7 @@ class _DonorManagementReportSheetState
               ),
             ),
             const SizedBox(height: 14),
-            if (isRestricted) ...[
+            if (isRejected) ...[
               TextField(
                 controller: _reasonCtrl,
                 onChanged: (_) {
@@ -525,7 +604,7 @@ class _DonorManagementReportSheetState
                 },
                 decoration:
                     AppTheme.outlinedInputDecoration(
-                      label: 'Restriction Reason *',
+                      label: 'Rejection Reason *',
                       icon: Icons.warning_amber_rounded,
                     ).copyWith(
                       labelStyle: TextStyle(
@@ -571,8 +650,10 @@ class _DonorManagementReportSheetState
               height: 48,
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isRestricted
-                      ? Colors.orange[700]
+                  backgroundColor: isRejected
+                      ? (_rejectionSubType == RejectionSubType.permanentBlock
+                            ? Colors.red[800]
+                            : Colors.red[600])
                       : Colors.green[700],
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
@@ -581,12 +662,14 @@ class _DonorManagementReportSheetState
                   elevation: 0,
                 ),
                 icon: Icon(
-                  isRestricted
-                      ? Icons.block_rounded
-                      : Icons.check_circle_rounded,
+                  isRejected ? Icons.block_rounded : Icons.check_circle_rounded,
                 ),
                 label: Text(
-                  isRestricted ? 'Submit & Restrict Donor' : 'Confirm Donation',
+                  isRejected
+                      ? (_rejectionSubType == RejectionSubType.permanentBlock
+                            ? 'Submit & Permanently Block'
+                            : 'Submit & Reject Donor')
+                      : 'Confirm Donation',
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 onPressed: _isUploading ? null : _submitReport,
@@ -634,6 +717,60 @@ class DonorReportOutcomeChip extends StatelessWidget {
             fontWeight: FontWeight.w700,
             fontSize: 12,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RejectionSubTypeChip extends StatelessWidget {
+  final String label;
+  final String sublabel;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _RejectionSubTypeChip({
+    required this.label,
+    required this.sublabel,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? Colors.red.withValues(alpha: 0.12) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? Colors.red.shade600 : Colors.red.shade200,
+            width: selected ? 1.6 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: selected ? Colors.red.shade800 : Colors.red.shade400,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              sublabel,
+              style: TextStyle(
+                fontSize: 10,
+                color: selected ? Colors.red.shade700 : Colors.black38,
+              ),
+            ),
+          ],
         ),
       ),
     );

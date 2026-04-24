@@ -641,6 +641,7 @@ class CloudFunctionsService {
     required String reportFileUrl,
     String? canDonateAgainAt,
     required String confirmedBloodType,
+    bool isPermanentBlock = false,
   }) async {
     try {
       final callable = _functions.httpsCallable('saveMedicalReport');
@@ -653,6 +654,7 @@ class CloudFunctionsService {
         'reportFileUrl': reportFileUrl,
         if (canDonateAgainAt != null) 'canDonateAgainAt': canDonateAgainAt,
         'confirmedBloodType': confirmedBloodType,
+        'isPermanentBlock': isPermanentBlock,
       });
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {

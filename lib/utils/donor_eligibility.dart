@@ -50,6 +50,16 @@ class DonorEligibility {
     return end != null && DateTime.now().isBefore(end);
   }
 
+  /// True when donor is permanently blocked from donating.
+  static bool isPermanentlyBlocked(Map<String, dynamic>? profile) {
+    return profile?['isPermanentlyBlocked'] == true;
+  }
+
+  /// True when donor cannot accept new requests (cooldown OR permanent block).
+  static bool isBlockedFromDonating(Map<String, dynamic>? profile) {
+    return isPermanentlyBlocked(profile) || isCooldownActive(profile);
+  }
+
   /// Full calendar days from today (local midnight) to eligibility end date (local end date).
   static int calendarDaysRemaining(DateTime eligibilityEnd) {
     final now = DateTime.now();
@@ -68,11 +78,7 @@ class DonorEligibility {
     required DateTime startDate,
     required DateTime endInstant,
   }) {
-    final endDay = DateTime(
-      endInstant.year,
-      endInstant.month,
-      endInstant.day,
-    );
+    final endDay = DateTime(endInstant.year, endInstant.month, endInstant.day);
     final n = endDay.difference(startDate).inDays + 1;
     return n < 1 ? 1 : n;
   }

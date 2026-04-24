@@ -268,7 +268,14 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
       builder: (_) => DonorManagementReportSheet(
         donor: donor,
         onSubmit:
-            (status, reason, notes, reportFileUrl, confirmedBloodType) async {
+            (
+              status,
+              reason,
+              notes,
+              reportFileUrl,
+              confirmedBloodType,
+              rejectionSubType,
+            ) async {
               Navigator.pop(context);
 
               _scheduleSetState(() {
@@ -283,6 +290,10 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                 }
               });
 
+              final isPermanentBlock =
+                  status == DonorProcessStatus.restricted &&
+                  rejectionSubType == RejectionSubType.permanentBlock;
+
               try {
                 await _cloudFunctions.saveMedicalReport(
                   requestId: widget.request.id,
@@ -292,6 +303,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                   notes: notes,
                   reportFileUrl: reportFileUrl,
                   confirmedBloodType: confirmedBloodType,
+                  isPermanentBlock: isPermanentBlock,
                 );
                 if (!mounted) return;
                 await _loadDonors(showSpinner: false);
@@ -301,12 +313,14 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                 }
                 final msg = status == DonorProcessStatus.donated
                     ? '🩸 ${donor.fullName} donation recorded!'
-                    : '⚠️ ${donor.fullName} marked as restricted';
+                    : isPermanentBlock
+                    ? '🚫 ${donor.fullName} permanently blocked'
+                    : '❌ ${donor.fullName} rejected';
                 _showSnack(
                   msg,
                   status == DonorProcessStatus.donated
                       ? Colors.green[700]!
-                      : Colors.orange[700]!,
+                      : Colors.red[700]!,
                 );
               } catch (e) {
                 _scheduleSetState(() {

@@ -16,6 +16,9 @@ class DonorRequestCard extends StatelessWidget {
   /// When true, new "I can donate" taps are blocked (post-donation cooldown).
   final bool acceptBlockedByCooldown;
 
+  /// When true, donor is permanently blocked — button disabled and greyed out.
+  final bool permanentlyBlocked;
+
   const DonorRequestCard({
     super.key,
     required this.request,
@@ -24,6 +27,7 @@ class DonorRequestCard extends StatelessWidget {
     this.onUndoDonate,
     this.isSubmittingResponse = false,
     this.acceptBlockedByCooldown = false,
+    this.permanentlyBlocked = false,
   });
 
   @override
@@ -38,8 +42,10 @@ class DonorRequestCard extends StatelessWidget {
     final my = request.myResponse;
     final isDonating = my == 'accepted';
     final showResponseRow = onDonate != null;
-    final cooldownBlocksAccept =
-        acceptBlockedByCooldown && !isDonating && !isDonationFinal;
+    final blocksAccept =
+        (acceptBlockedByCooldown || permanentlyBlocked) &&
+        !isDonating &&
+        !isDonationFinal;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -190,7 +196,7 @@ class DonorRequestCard extends StatelessWidget {
                 ],
                 if (showResponseRow) ...[
                   const SizedBox(height: 10),
-                  if (cooldownBlocksAccept) ...[
+                  if (blocksAccept) ...[
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(
@@ -198,25 +204,41 @@ class DonorRequestCard extends StatelessWidget {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.blueGrey.shade50,
+                        color: permanentlyBlocked
+                            ? Colors.red.shade50
+                            : Colors.blueGrey.shade50,
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.blueGrey.shade200),
-                      ),
-                      child: DonorCooldownBlockedMessage(
-                        baseStyle: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.blueGrey.shade900,
-                          height: 1.3,
-                        ),
-                        linkStyle: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          height: 1.3,
-                          color: AppTheme.deepRed,
-                          decoration: TextDecoration.underline,
+                        border: Border.all(
+                          color: permanentlyBlocked
+                              ? Colors.red.shade200
+                              : Colors.blueGrey.shade200,
                         ),
                       ),
+                      child: permanentlyBlocked
+                          ? Text(
+                              '🚫 You are permanently blocked from donating due to medical reasons.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.red.shade800,
+                                height: 1.3,
+                              ),
+                            )
+                          : DonorCooldownBlockedMessage(
+                              baseStyle: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.blueGrey.shade900,
+                                height: 1.3,
+                              ),
+                              linkStyle: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                height: 1.3,
+                                color: AppTheme.deepRed,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
                     ),
                     const SizedBox(height: 8),
                   ],
@@ -273,7 +295,7 @@ class DonorRequestCard extends StatelessWidget {
                                 )
                               : BorderSide.none,
                         ),
-                        onPressed: isSubmittingResponse || cooldownBlocksAccept
+                        onPressed: isSubmittingResponse || blocksAccept
                             ? null
                             : (isDonating ? onUndoDonate : onDonate),
                         icon: Icon(

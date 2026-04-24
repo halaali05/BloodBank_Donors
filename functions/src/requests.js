@@ -105,6 +105,14 @@ function donorDonationCooldownEndMs(userData) {
 
 function assertDonorMayAcceptNewRequest(userData) {
   const now = Date.now();
+
+  if (userData.isPermanentlyBlocked === true) {
+    throw new HttpsError(
+      "failed-precondition",
+      "You are permanently blocked from donating due to medical reasons.",
+    );
+  }
+
   const coolEnd = donorDonationCooldownEndMs(userData);
   if (coolEnd != null && now < coolEnd) {
     throw new HttpsError(
