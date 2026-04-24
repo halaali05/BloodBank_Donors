@@ -483,9 +483,12 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       );
     }
 
+    const isOtherReasons =
+      normalizedStatus === "restricted" && isPermanentBlock !== true;
+
     const fileTrim =
       typeof reportFileUrl === "string" ? reportFileUrl.trim() : "";
-    if (!fileTrim) {
+    if (!fileTrim && !isOtherReasons) {
       throw new HttpsError(
         "invalid-argument",
         "reportFileUrl is required — upload the medical report before saving.",
@@ -493,7 +496,7 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
     }
 
     const confirmedNorm = normalizeStandardBloodType(confirmedBloodType);
-    if (!confirmedNorm) {
+    if (!confirmedNorm && !isOtherReasons) {
       throw new HttpsError(
         "invalid-argument",
         "confirmedBloodType is required and must be one of: A+, A-, B+, B-, AB+, AB-, O+, O-.",
@@ -640,7 +643,7 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
     batch.set(schedRef, scheduleUpdate, { merge: true });
 
     const userUpdate = {
-      bloodType: confirmedNorm,
+      ...(confirmedNorm ? { bloodType: confirmedNorm } : {}),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       lastDonatedAt: admin.firestore.FieldValue.delete(),
       nextDonationEligibleAt: admin.firestore.FieldValue.delete(),
@@ -705,7 +708,7 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
         const body =
           normalizedStatus === "donated"
             ? `${req.bloodBankName || "The blood bank"} confirmed your ${confirmedNorm} donation. Your report is now available.`
-            : `${req.bloodBankName || "The blood bank"} uploaded your donation report. Check your profile.`;
+            : `${req.bloodBankName || "The blood bank"} updated your donation status. Check your profile.`;
 
         // ✅ احفظ الإشعار داخل التطبيق
         const notifRef = db

@@ -184,12 +184,17 @@ class _DonorManagementReportSheetState
 
   void _submitReport() {
     final isRejected = _outcome == DonorProcessStatus.restricted;
+    final isOtherReasons =
+        isRejected && _rejectionSubType == RejectionSubType.otherReasons;
     final reason = _reasonCtrl.text.trim();
     final hasReasonError = isRejected && reason.isEmpty;
     final hasSubTypeError = isRejected && _rejectionSubType == null;
-    final hasFileError = _uploadedFileUrl == null;
+    // نوع الدم والتقرير إجباريين فقط للـ Donated والـ Permanent Block
+    final hasFileError = !isOtherReasons && _uploadedFileUrl == null;
     final hasBloodError =
-        _selectedBloodType == null || !_bloodTypes.contains(_selectedBloodType);
+        !isOtherReasons &&
+        (_selectedBloodType == null ||
+            !_bloodTypes.contains(_selectedBloodType));
 
     if (hasReasonError || hasSubTypeError || hasFileError || hasBloodError) {
       setState(() => _showValidationErrors = true);
@@ -208,9 +213,13 @@ class _DonorManagementReportSheetState
       return;
     }
 
-    final fileUrl = _uploadedFileUrl;
-    final blood = _selectedBloodType;
-    if (fileUrl == null || blood == null) return;
+    // للـ Other Reasons: نمرر null للـ fileUrl والـ blood لو ما اتحددوا
+    final fileUrl = isOtherReasons
+        ? (_uploadedFileUrl ?? '')
+        : _uploadedFileUrl!;
+    final blood = isOtherReasons
+        ? (_selectedBloodType ?? '')
+        : _selectedBloodType!;
 
     widget.onSubmit(
       _outcome,
@@ -225,12 +234,16 @@ class _DonorManagementReportSheetState
   @override
   Widget build(BuildContext context) {
     final isRejected = _outcome == DonorProcessStatus.restricted;
+    final isOtherReasons =
+        isRejected && _rejectionSubType == RejectionSubType.otherReasons;
     final hasSubTypeError =
         isRejected && _showValidationErrors && _rejectionSubType == null;
     final hasReasonError =
         isRejected && _showValidationErrors && _reasonCtrl.text.trim().isEmpty;
-    final hasFileError = _showValidationErrors && _uploadedFileUrl == null;
+    final hasFileError =
+        !isOtherReasons && _showValidationErrors && _uploadedFileUrl == null;
     final hasBloodError =
+        !isOtherReasons &&
         _showValidationErrors &&
         (_selectedBloodType == null ||
             !_bloodTypes.contains(_selectedBloodType));
@@ -405,9 +418,12 @@ class _DonorManagementReportSheetState
               ),
             ],
             const SizedBox(height: 16),
-            const Text(
-              'Confirmed Blood Type *',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            // ✅ FIX: removed `const` — isOtherReasons is a runtime variable
+            Text(
+              isOtherReasons
+                  ? 'Confirmed Blood Type (optional)'
+                  : 'Confirmed Blood Type *',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String?>(
@@ -468,8 +484,8 @@ class _DonorManagementReportSheetState
             const SizedBox(height: 4),
             Text(
               hasBloodError
-                  ? 'Required — choose the lab-confirmed blood type'
-                  : 'Required — must match the medical report',
+                  ? 'Choose the lab-confirmed blood type'
+                  : 'Must match the medical report',
               style: TextStyle(
                 color: hasBloodError ? Colors.red : Colors.black45,
                 fontSize: 11,
@@ -477,9 +493,12 @@ class _DonorManagementReportSheetState
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Medical Report File *',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            // ✅ FIX: removed `const` — isOtherReasons is a runtime variable
+            Text(
+              isOtherReasons
+                  ? 'Medical Report File (optional)'
+                  : 'Medical Report File *',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
             ),
             const SizedBox(height: 8),
             GestureDetector(
@@ -586,9 +605,7 @@ class _DonorManagementReportSheetState
             ),
             const SizedBox(height: 4),
             Text(
-              hasFileError
-                  ? 'Required — attach PDF, JPG, or PNG'
-                  : 'Required — PDF, JPG, or PNG',
+              hasFileError ? 'Attach PDF, JPG, or PNG' : 'PDF, JPG, or PNG',
               style: TextStyle(
                 color: hasFileError ? Colors.red : Colors.black45,
                 fontSize: 11,

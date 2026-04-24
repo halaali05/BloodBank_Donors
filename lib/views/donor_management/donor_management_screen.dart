@@ -10,7 +10,8 @@ import '../../theme/app_theme.dart';
 import 'donor_management_appointment.dart';
 import 'donor_management_donor_list.dart';
 import 'donor_management_models.dart';
-import 'donor_management_report_sheet.dart';
+import 'donor_management_report_sheet.dart'
+    show DonorManagementReportSheet, RejectionSubType;
 import 'donor_management_request_summary.dart';
 import 'donor_management_tab_bar.dart';
 
@@ -291,7 +292,6 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
               });
 
               final isPermanentBlock =
-                  status == DonorProcessStatus.restricted &&
                   rejectionSubType == RejectionSubType.permanentBlock;
 
               try {
@@ -313,14 +313,12 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                 }
                 final msg = status == DonorProcessStatus.donated
                     ? '🩸 ${donor.fullName} donation recorded!'
-                    : isPermanentBlock
-                    ? '🚫 ${donor.fullName} permanently blocked'
-                    : '❌ ${donor.fullName} rejected';
+                    : '⚠️ ${donor.fullName} marked as restricted';
                 _showSnack(
                   msg,
                   status == DonorProcessStatus.donated
                       ? Colors.green[700]!
-                      : Colors.red[700]!,
+                      : Colors.orange[700]!,
                 );
               } catch (e) {
                 _scheduleSetState(() {
