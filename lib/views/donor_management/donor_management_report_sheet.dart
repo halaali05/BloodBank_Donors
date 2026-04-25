@@ -54,13 +54,41 @@ class _DonorManagementReportSheetState
   final _notesCtrl = TextEditingController();
   bool _showValidationErrors = false;
 
-  /// Explicit selection required before submit (do not default from pipeline).
+  /// Prefilled from donor information when a previous confirmed blood type exists.
   String? _selectedBloodType;
 
   String? _pickedFileName;
   String? _uploadedFileUrl;
   bool _isUploading = false;
   double _uploadProgress = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedBloodType = _knownDonorBloodType();
+  }
+
+  String? _knownDonorBloodType() {
+    final profileBloodType = _normalizeBloodType(widget.donor.bloodType);
+    if (profileBloodType != null) {
+      return profileBloodType;
+    }
+
+    final reportBloodType = _normalizeBloodType(
+      widget.donor.latestMedicalReport?.bloodType,
+    );
+    if (reportBloodType != null) {
+      return reportBloodType;
+    }
+
+    return null;
+  }
+
+  String? _normalizeBloodType(String? value) {
+    final normalized = value?.trim().toUpperCase().replaceAll(' ', '');
+    if (normalized == null || !_bloodTypes.contains(normalized)) return null;
+    return normalized;
+  }
 
   @override
   void dispose() {
@@ -186,6 +214,8 @@ class _DonorManagementReportSheetState
     final isRejected = _outcome == DonorProcessStatus.restricted;
     final isOtherReasons =
         isRejected && _rejectionSubType == RejectionSubType.otherReasons;
+    final knownBloodType = _knownDonorBloodType();
+    final effectiveBloodType = knownBloodType ?? _selectedBloodType;
     final reason = _reasonCtrl.text.trim();
     final hasReasonError = isRejected && reason.isEmpty;
     final hasSubTypeError = isRejected && _rejectionSubType == null;
@@ -193,8 +223,8 @@ class _DonorManagementReportSheetState
     final hasFileError = !isOtherReasons && _uploadedFileUrl == null;
     final hasBloodError =
         !isOtherReasons &&
-        (_selectedBloodType == null ||
-            !_bloodTypes.contains(_selectedBloodType));
+        (effectiveBloodType == null ||
+            !_bloodTypes.contains(effectiveBloodType));
 
     if (hasReasonError || hasSubTypeError || hasFileError || hasBloodError) {
       setState(() => _showValidationErrors = true);
@@ -218,8 +248,8 @@ class _DonorManagementReportSheetState
         ? (_uploadedFileUrl ?? '')
         : _uploadedFileUrl!;
     final blood = isOtherReasons
-        ? (_selectedBloodType ?? '')
-        : _selectedBloodType!;
+        ? (effectiveBloodType ?? '')
+        : effectiveBloodType!;
 
     widget.onSubmit(
       _outcome,
@@ -242,11 +272,13 @@ class _DonorManagementReportSheetState
         isRejected && _showValidationErrors && _reasonCtrl.text.trim().isEmpty;
     final hasFileError =
         !isOtherReasons && _showValidationErrors && _uploadedFileUrl == null;
+    final knownBloodType = _knownDonorBloodType();
+    final effectiveBloodType = knownBloodType ?? _selectedBloodType;
     final hasBloodError =
         !isOtherReasons &&
         _showValidationErrors &&
-        (_selectedBloodType == null ||
-            !_bloodTypes.contains(_selectedBloodType));
+        (effectiveBloodType == null ||
+            !_bloodTypes.contains(effectiveBloodType));
 
     return Container(
       decoration: const BoxDecoration(
@@ -427,9 +459,9 @@ class _DonorManagementReportSheetState
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String?>(
-              // Controlled selection (not Form initial-only).
+              // Controlled selection so known donor blood type is submitted automatically.
               // ignore: deprecated_member_use
-              value: _selectedBloodType,
+              value: effectiveBloodType,
               decoration: InputDecoration(
                 filled: true,
                 fillColor: AppTheme.softBg,
@@ -457,18 +489,23 @@ class _DonorManagementReportSheetState
                   size: 20,
                 ),
               ),
-              hint: const Text('Select blood type *'),
+              hint: Text(
+                knownBloodType != null
+                    ? 'Blood type from donor information'
+                    : 'Select blood type *',
+              ),
               items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text(
-                    '— Select blood type —',
-                    style: TextStyle(
-                      color: Colors.black45,
-                      fontWeight: FontWeight.w600,
+                if (knownBloodType == null)
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text(
+                      '— Select blood type —',
+                      style: TextStyle(
+                        color: Colors.black45,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
                 ..._bloodTypes.map(
                   (t) => DropdownMenuItem<String?>(
                     value: t,
@@ -479,17 +516,27 @@ class _DonorManagementReportSheetState
                   ),
                 ),
               ],
-              onChanged: (v) => setState(() => _selectedBloodType = v),
+              onChanged: knownBloodType == null
+                  ? (v) => setState(() => _selectedBloodType = v)
+                  : null,
             ),
             const SizedBox(height: 4),
             Text(
               hasBloodError
                   ? 'Choose the lab-confirmed blood type'
+                  : knownBloodType != null
+                  ? 'Locked from donor information'
                   : 'Must match the medical report',
               style: TextStyle(
-                color: hasBloodError ? Colors.red : Colors.black45,
+                color: hasBloodError
+                    ? Colors.red
+                    : knownBloodType != null
+                    ? Colors.green.shade700
+                    : Colors.black45,
                 fontSize: 11,
-                fontWeight: hasBloodError ? FontWeight.w600 : FontWeight.normal,
+                fontWeight: hasBloodError || knownBloodType != null
+                    ? FontWeight.w600
+                    : FontWeight.normal,
               ),
             ),
             const SizedBox(height: 16),

@@ -50,10 +50,6 @@ class AuthService {
         password: password,
       );
 
-      // Ensure token exists for callable auth
-      await cred.user!.reload();
-      await cred.user!.getIdToken(true); // force refresh
-
       // 2) Save pending profile FIRST (before sending email)
       final result = await _cloudFunctions.createPendingProfile(
         role: 'donor',
@@ -66,8 +62,6 @@ class AuthService {
       );
 
       // 3) Send verification email ONLY if Cloud Function succeeded
-      // Reload user to ensure we have the latest state
-      await cred.user!.reload();
       try {
         await cred.user!.sendEmailVerification();
       } catch (emailError) {
@@ -114,10 +108,6 @@ class AuthService {
         password: password,
       );
 
-      // Ensure token exists for callable auth
-      await cred.user!.reload();
-      await cred.user!.getIdToken(true); // force refresh
-
       // 2) Save pending profile FIRST (before sending email)
       final result = await _cloudFunctions.createPendingProfile(
         role: 'hospital',
@@ -128,8 +118,6 @@ class AuthService {
       );
 
       // 3) Send verification email ONLY if Cloud Function succeeded
-      // Reload user to ensure we have the latest state
-      await cred.user!.reload();
       try {
         await cred.user!.sendEmailVerification();
       } catch (emailError) {

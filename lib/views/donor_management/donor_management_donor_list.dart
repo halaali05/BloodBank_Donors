@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/donor_medical_report.dart';
 import '../../theme/app_theme.dart';
@@ -27,10 +28,7 @@ void _showRescheduleRequestDialog(
           children: [
             Text(
               donor.fullName,
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
             ),
             const SizedBox(height: 4),
             Row(
@@ -123,6 +121,31 @@ String _formatDialogDateTime(DateTime dt) {
   return '${dt.day} ${months[dt.month - 1]} ${dt.year} · $hour:$min $ampm';
 }
 
+Future<void> _openLatestReport(
+  BuildContext context,
+  DonorMedicalReport report,
+) async {
+  final rawUrl = report.reportFileUrl?.trim() ?? '';
+  if (rawUrl.isEmpty) return;
+
+  try {
+    final url = Uri.parse(rawUrl);
+    await launchUrl(url, mode: LaunchMode.inAppBrowserView);
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Could not open report: $e')));
+  }
+}
+
+String _latestReportSubtitle(DonorMedicalReport report) {
+  final date = _formatDialogDateTime(report.createdAt);
+  final bank = report.bloodBankName.trim();
+  if (bank.isEmpty) return date;
+  return '$bank · $date';
+}
+
 class DonorManagementDonorList extends StatelessWidget {
   final List<DonorPipelineRow> donors;
   final String emptyLabel;
@@ -198,10 +221,11 @@ class DonorManagementDonorTile extends StatelessWidget {
     final appointmentBadgeIcon = _appointmentBadgeIcon(donor);
     final isPendingTabRow = donor.status == DonorProcessStatus.accepted;
     final pendingReschedule = donor.hasPendingRescheduleRequest;
+    final latestReport = donor.latestMedicalReport;
+    final latestReportUrl = latestReport?.reportFileUrl?.trim() ?? '';
+    final hasLatestReport = latestReport != null && latestReportUrl.isNotEmpty;
     final borderColor = isPendingTabRow
-        ? (pendingReschedule
-              ? Colors.deepOrange
-              : const Color(0xFF1976D2))
+        ? (pendingReschedule ? Colors.deepOrange : const Color(0xFF1976D2))
         : statusColor.withValues(alpha: 0.25);
     final borderWidth = isPendingTabRow ? (pendingReschedule ? 3.0 : 2.5) : 1.0;
 
@@ -430,7 +454,9 @@ class DonorManagementDonorTile extends StatelessWidget {
                         color: const Color(0xFF1976D2).withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: const Color(0xFF1976D2).withValues(alpha: 0.35),
+                          color: const Color(
+                            0xFF1976D2,
+                          ).withValues(alpha: 0.35),
                         ),
                       ),
                       child: Row(
@@ -529,6 +555,70 @@ class DonorManagementDonorTile extends StatelessWidget {
                       ),
                     ),
                   ],
+                  if (isPendingTabRow && hasLatestReport) ...[
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: () => _openLatestReport(context, latestReport),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.green.withValues(alpha: 0.32),
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.description_outlined,
+                              size: 16,
+                              color: Colors.green.shade800,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Last uploaded report',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.green.shade900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _latestReportSubtitle(latestReport),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.green.shade800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Icon(
+                              Icons.open_in_new_rounded,
+                              size: 18,
+                              color: Colors.green.shade800,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -543,7 +633,9 @@ class DonorManagementDonorTile extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: actionColor!.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: actionColor!.withValues(alpha: 0.3)),
+                    border: Border.all(
+                      color: actionColor!.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Column(
                     children: [

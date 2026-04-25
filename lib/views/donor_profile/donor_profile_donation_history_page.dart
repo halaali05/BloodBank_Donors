@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import '../../models/donor_medical_report.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/donation_history_section.dart';
+import 'donation_history_section.dart';
 
 class DonorProfileDonationHistoryPage extends StatefulWidget {
   final List<DonorMedicalReport> initialReports;
   final bool initialLoading;
   final Future<List<DonorMedicalReport>> Function()? reloadReports;
 
-  DonorProfileDonationHistoryPage({
+  const DonorProfileDonationHistoryPage({
     super.key,
     required this.initialReports,
     this.initialLoading = false,
@@ -29,7 +29,12 @@ class _DonorProfileDonationHistoryPageState
   void initState() {
     super.initState();
     _reports = List<DonorMedicalReport>.from(widget.initialReports);
-    _loading = widget.initialLoading;
+    _loading = widget.initialLoading && widget.initialReports.isEmpty;
+    if (widget.reloadReports != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reload();
+      });
+    }
   }
 
   /// Always defer to the next frame so we never call [setState] during layout/build
@@ -44,7 +49,7 @@ class _DonorProfileDonationHistoryPageState
   Future<void> _reload() async {
     final fn = widget.reloadReports;
     if (fn == null) return;
-    _scheduleSetState(() => _loading = true);
+    _scheduleSetState(() => _loading = _reports.isEmpty);
     try {
       final next = await fn();
       if (!mounted) return;
@@ -72,14 +77,17 @@ class _DonorProfileDonationHistoryPageState
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          DonationHistorySection(
-            reports: _reports,
-            isLoading: _loading,
-            onRescheduleSubmitted:
-                widget.reloadReports == null ? null : _reload,
+      body: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: DonationHistorySliverSection(
+              reports: _reports,
+              isLoading: _loading,
+              onRescheduleSubmitted: widget.reloadReports == null
+                  ? null
+                  : _reload,
+            ),
           ),
         ],
       ),

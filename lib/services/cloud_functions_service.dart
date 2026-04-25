@@ -1,4 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class CloudFunctionsService {
   final FirebaseFunctions _functions;
@@ -6,6 +7,20 @@ class CloudFunctionsService {
   CloudFunctionsService({FirebaseFunctions? functions})
     : _functions =
           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+
+  Future<User?> _waitForCurrentUser() async {
+    final current = FirebaseAuth.instance.currentUser;
+    if (current != null) return current;
+
+    try {
+      return await FirebaseAuth.instance
+          .authStateChanges()
+          .firstWhere((user) => user != null)
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {
+      return FirebaseAuth.instance.currentUser;
+    }
+  }
 
   Future<Map<String, dynamic>> createPendingProfile({
     required String role, // 'donor' or 'hospital'
@@ -84,6 +99,7 @@ class CloudFunctionsService {
     } on FirebaseFunctionsException catch (e) {
       throw _handleFunctionsException(e);
     } catch (e) {
+      if (e.toString().startsWith('Exception: ')) rethrow;
       throw _handleNetworkError(e);
     }
   }
@@ -216,6 +232,20 @@ class CloudFunctionsService {
     }
   }
 
+  Future<Map<String, dynamic>> getRequestById({
+    required String requestId,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('getRequestById');
+      final result = await callable.call({'requestId': requestId});
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
+
   /// Get all requests for a specific blood bank
   ///
   /// Security Architecture:
@@ -225,10 +255,12 @@ class CloudFunctionsService {
   ///
   /// Returns:
   /// - Map with 'requests' list and 'count'
-  Future<Map<String, dynamic>> getRequestsByBloodBankId() async {
+  Future<Map<String, dynamic>> getRequestsByBloodBankId({
+    int limit = 80,
+  }) async {
     try {
       final callable = _functions.httpsCallable('getRequestsByBloodBankId');
-      final result = await callable.call();
+      final result = await callable.call({'limit': limit});
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {
       throw _handleFunctionsException(e);
@@ -358,10 +390,14 @@ class CloudFunctionsService {
   /// Hospital: donors who accepted / rejected this request (name + email).
   Future<Map<String, dynamic>> getRequestDonorResponses({
     required String requestId,
+    bool includeLatestReports = true,
   }) async {
     try {
       final callable = _functions.httpsCallable('getRequestDonorResponses');
-      final result = await callable.call({'requestId': requestId});
+      final result = await callable.call({
+        'requestId': requestId,
+        'includeLatestReports': includeLatestReports,
+      });
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {
       throw _handleFunctionsException(e);
@@ -414,36 +450,19 @@ class CloudFunctionsService {
     }
   }
 
-  // send request message to ddonors function by rand
-  Future<Map<String, dynamic>> sendRequestMessageToDonors({
-    required String requestId,
-    required String bloodType,
-    required bool isUrgent,
-    required String bloodBankId,
-  }) async {
-    try {
-      final callable = _functions.httpsCallable('sendRequestMessageToDonors');
-      final result = await callable.call({
-        'requestId': requestId,
-        'bloodType': bloodType,
-        'isUrgent': isUrgent,
-        'bloodBankId': bloodBankId,
-      });
-      return Map<String, dynamic>.from(result.data);
-    } on FirebaseFunctionsException catch (e) {
-      throw _handleFunctionsException(e);
-    }
-  }
-
   /// Get list of all donors (hospitals only).
   /// Each item includes `id`, `fullName`, `location`, `bloodType`, `email`, `phoneNumber`.
   /// Optional: filter by [bloodType] if provided.
-  Future<Map<String, dynamic>> getDonors({String? bloodType}) async {
+  Future<Map<String, dynamic>> getDonors({
+    String? bloodType,
+    int limit = 80,
+  }) async {
     try {
       final callable = _functions.httpsCallable('getDonors');
-      final result = await callable.call(
-        bloodType != null ? {'bloodType': bloodType} : {},
-      );
+      final result = await callable.call({
+        'limit': limit,
+        if (bloodType != null) 'bloodType': bloodType,
+      });
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {
       throw _handleFunctionsException(e);
@@ -608,11 +627,33 @@ class CloudFunctionsService {
   ///
   /// Returns a map with:
   /// - reports: List of medical report maps
-  Future<Map<String, dynamic>> getDonationHistory() async {
+  Future<Map<String, dynamic>> getDonationHistory({
+    bool includeActiveProgress = true,
+  }) async {
     try {
       final callable = _functions.httpsCallable('getDonationHistory');
-      final result = await callable.call();
-      return Map<String, dynamic>.from(result.data);
+
+      Future<Map<String, dynamic>> callWithFreshToken() async {
+        final user = await _waitForCurrentUser();
+        final idToken = await user?.getIdToken(true);
+        if (idToken == null || idToken.isEmpty) {
+          throw Exception('Please log in first');
+        }
+        final result = await callable.call({
+          'includeActiveProgress': includeActiveProgress,
+          'authToken': idToken,
+          'idToken': idToken,
+        });
+        return Map<String, dynamic>.from(result.data);
+      }
+
+      try {
+        return await callWithFreshToken();
+      } on FirebaseFunctionsException catch (e) {
+        if (e.code != 'unauthenticated') rethrow;
+        await FirebaseAuth.instance.currentUser?.reload();
+        return await callWithFreshToken();
+      }
     } on FirebaseFunctionsException catch (e) {
       throw _handleFunctionsException(e);
     } catch (e) {

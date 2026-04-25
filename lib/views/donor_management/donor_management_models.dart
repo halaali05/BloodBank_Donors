@@ -16,6 +16,7 @@ class DonorPipelineRow {
   final String? rescheduleReason;
   final DateTime? reschedulePreferredAt;
   final DateTime? rescheduleRequestedAt;
+  final DonorMedicalReport? latestMedicalReport;
 
   const DonorPipelineRow({
     required this.donorId,
@@ -29,6 +30,7 @@ class DonorPipelineRow {
     this.rescheduleReason,
     this.reschedulePreferredAt,
     this.rescheduleRequestedAt,
+    this.latestMedicalReport,
   });
 
   /// True when donor is back in pending and asked for a new slot (reason / time
@@ -49,6 +51,7 @@ class DonorPipelineRow {
     String? rescheduleReason,
     DateTime? reschedulePreferredAt,
     DateTime? rescheduleRequestedAt,
+    DonorMedicalReport? latestMedicalReport,
   }) => DonorPipelineRow(
     donorId: donorId,
     fullName: fullName,
@@ -59,9 +62,8 @@ class DonorPipelineRow {
     appointmentAt: appointmentAt ?? this.appointmentAt,
     bloodType: bloodType ?? this.bloodType,
     rescheduleReason: rescheduleReason ?? this.rescheduleReason,
-    reschedulePreferredAt:
-        reschedulePreferredAt ?? this.reschedulePreferredAt,
-    rescheduleRequestedAt:
-        rescheduleRequestedAt ?? this.rescheduleRequestedAt,
+    reschedulePreferredAt: reschedulePreferredAt ?? this.reschedulePreferredAt,
+    rescheduleRequestedAt: rescheduleRequestedAt ?? this.rescheduleRequestedAt,
+    latestMedicalReport: latestMedicalReport ?? this.latestMedicalReport,
   );
 }

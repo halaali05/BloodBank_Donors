@@ -26,7 +26,7 @@ class ChatScreen extends StatefulWidget {
   /// Optional: If provided, filters messages to show only those for this specific donor
   /// Used when blood bank wants to chat with a specific donor
   final String? recipientId;
-  
+
   /// When true, sends [initialMessage] automatically once on open.
   final bool autoSendInitialMessage;
 
@@ -102,24 +102,25 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     _loadMessages();
 
-    // Set up periodic refresh (every 10 seconds) for real-time updates
-    // Increased interval to improve performance
+    // Silent polling keeps chat responsive without flashing a loading state.
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (mounted) {
-        _loadMessages();
+        _loadMessages(showLoading: false);
       }
     });
   }
 
   // ------------------ Data Loading ------------------
   /// Loads messages via Cloud Functions
-  Future<void> _loadMessages() async {
+  Future<void> _loadMessages({bool showLoading = true}) async {
     if (!mounted) return;
 
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
 
     try {
       // Pass recipientId to filter messages when blood bank chats with specific donor
@@ -130,16 +131,16 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         setState(() {
           _messages = snapshot.messages;
-          _requestOwnerId =
-              snapshot.bloodBankId ?? _requestOwnerId;
-          _isLoading = false;
+          _requestOwnerId = snapshot.bloodBankId ?? _requestOwnerId;
+          _error = null;
+          if (showLoading) _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _error = e.toString().replaceFirst('Exception: ', '');
-          _isLoading = false;
+          if (showLoading) _isLoading = false;
         });
       }
     }
@@ -174,7 +175,7 @@ class _ChatScreenState extends State<ChatScreen> {
       FocusScope.of(context).unfocus();
 
       // Refresh messages after sending
-      await _loadMessages();
+      await _loadMessages(showLoading: false);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

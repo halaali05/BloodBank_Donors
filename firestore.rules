@@ -2,48 +2,35 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
     match /users/{userId} {
-      // Allow users to read their own data
-      // Allow hospitals to read donor data (for contacts list)
-      allow read: if isAuthenticated() && (
-        request.auth.uid == userId ||
-        // Hospitals can read donor profiles for contacts
-        (request.auth != null && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'hospital' &&
-         resource.data.role == 'donor')
-      );
+      // App data reads/writes go through Cloud Functions (Admin SDK).
+      allow read: if false;
       allow write: if false; // only Admin SDK (Cloud Functions)
     }
 
     // Cooldown / restriction after donations (written by Cloud Functions only).
     match /donorDonationSchedule/{donorId} {
-      allow read: if isAuthenticated() && request.auth.uid == donorId;
+      allow read: if false;
       allow write: if false;
     }
 
     match /pending_profiles/{userId} {
-      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow read: if false;
       allow write: if false; // only Admin SDK
     }
 
     match /requests/{requestId} {
-      allow read: if isAuthenticated(); // أو false إذا بدك كل شي عبر functions
+      allow read: if false;
       allow write: if false;
       
-      // Allow reading messages for authenticated users
-      // Messages are written via Cloud Functions, but users need to read them
       match /messages/{messageId} {
-        allow read: if isAuthenticated();
+        allow read: if false;
         allow write: if false; // only Admin SDK (Cloud Functions)
       }
     }
 
     match /notifications/{userId}/user_notifications/{notificationId} {
-      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow read: if false;
       allow write: if false; // Only Cloud Functions can write (create, update, delete)
     }
 

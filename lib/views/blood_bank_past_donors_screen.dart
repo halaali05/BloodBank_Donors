@@ -43,9 +43,7 @@ class _BloodBankPastDonorsScreenState extends State<BloodBankPastDonorsScreen> {
         for (final e in raw) {
           if (e is Map) {
             list.add(
-              BloodBankPastDonorSummary.fromMap(
-                Map<String, dynamic>.from(e),
-              ),
+              BloodBankPastDonorSummary.fromMap(Map<String, dynamic>.from(e)),
             );
           }
         }
@@ -98,6 +96,65 @@ class _BloodBankPastDonorsScreenState extends State<BloodBankPastDonorsScreen> {
     return '$y-$m-$day';
   }
 
+  Widget _buildDonorTile(BloodBankPastDonorSummary d) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      elevation: 0,
+      shadowColor: Colors.transparent,
+      child: ListTile(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: AppTheme.deepRed.withValues(alpha: 0.12)),
+        ),
+        leading: CircleAvatar(
+          backgroundColor: AppTheme.deepRed.withValues(alpha: 0.1),
+          child: const Icon(Icons.person, color: AppTheme.deepRed),
+        ),
+        title: Text(
+          d.fullName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: Text(
+          [
+            if (d.bloodType.isNotEmpty) d.bloodType,
+            '${d.donationCount} donation${d.donationCount == 1 ? '' : 's'}',
+            'Last ${_formatDateMs(d.lastDonatedAtMs)}',
+          ].join(' · '),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              tooltip: 'Message',
+              icon: Icon(
+                Icons.chat_bubble_outline_rounded,
+                color:
+                    d.messageRequestId != null && d.messageRequestId!.isNotEmpty
+                    ? AppTheme.deepRed
+                    : Colors.black26,
+              ),
+              onPressed: () => _openMessage(context, d),
+            ),
+            const Icon(Icons.chevron_right, color: AppTheme.deepRed),
+          ],
+        ),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => BloodBankDonorDetailScreen(summary: d),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -124,90 +181,13 @@ class _BloodBankPastDonorsScreenState extends State<BloodBankPastDonorsScreen> {
                           ),
                         ],
                       )
-                    : ListView(
+                    : ListView.separated(
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.all(AppTheme.padding),
-                        children: [
-                          ..._donors.map(
-                            (d) => Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: Material(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                elevation: 0,
-                                shadowColor: Colors.transparent,
-                                child: ListTile(
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    side: BorderSide(
-                                      color: AppTheme.deepRed.withValues(
-                                        alpha: 0.12,
-                                      ),
-                                    ),
-                                  ),
-                                  leading: CircleAvatar(
-                                    backgroundColor: AppTheme.deepRed.withValues(
-                                      alpha: 0.1,
-                                    ),
-                                    child: const Icon(
-                                      Icons.person,
-                                      color: AppTheme.deepRed,
-                                    ),
-                                  ),
-                                  title: Text(
-                                    d.fullName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  subtitle: Text(
-                                    [
-                                      if (d.bloodType.isNotEmpty) d.bloodType,
-                                      '${d.donationCount} donation${d.donationCount == 1 ? '' : 's'}',
-                                      'Last ${_formatDateMs(d.lastDonatedAtMs)}',
-                                    ].join(' · '),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        tooltip: 'Message',
-                                        icon: Icon(
-                                          Icons.chat_bubble_outline_rounded,
-                                          color: d.messageRequestId != null &&
-                                                  d.messageRequestId!.isNotEmpty
-                                              ? AppTheme.deepRed
-                                              : Colors.black26,
-                                        ),
-                                        onPressed: () =>
-                                            _openMessage(context, d),
-                                      ),
-                                      const Icon(
-                                        Icons.chevron_right,
-                                        color: AppTheme.deepRed,
-                                      ),
-                                    ],
-                                  ),
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            BloodBankDonorDetailScreen(
-                                          summary: d,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                        itemCount: _donors.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (_, index) =>
+                            _buildDonorTile(_donors[index]),
                       ),
               ),
       ),

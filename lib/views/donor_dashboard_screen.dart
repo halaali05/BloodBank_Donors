@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'chat_screen.dart';
@@ -35,7 +34,7 @@ enum DonorRequestFilter { all, nearest, completed, urgent, normal }
 ///   - Notifications: Read via getNotifications Cloud Function
 /// - Write operations: All go through Cloud Functions
 ///
-/// NOTE: Real-time updates are achieved through periodic polling (every 10 seconds)
+/// NOTE: Updates are refreshed periodically through Cloud Functions.
 /// since Cloud Functions cannot return real-time streams.
 class DonorDashboardScreen extends StatefulWidget {
   const DonorDashboardScreen({super.key});
@@ -49,11 +48,11 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
   final DonorDashboardController _controller = DonorDashboardController();
   late final TabController _tabController;
   Timer? _refreshTimer;
-  Timer? _notificationsTimer;
   List<BloodRequest> _requests = [];
   Map<String, dynamic>? _userProfile;
   int _unreadNotificationsCount = 0;
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _error;
   String? _respondingRequestId;
   DonorRequestFilter _selectedFilter = DonorRequestFilter.all;
@@ -62,23 +61,11 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadRequests();
-    _loadUserProfile();
-    _loadUnreadNotificationsCount();
+    _loadDashboardData();
 
-    // Set up periodic refresh (every 30 seconds) for real-time updates
-    // Increased interval to improve performance
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) {
-        _loadRequests();
-        _loadUserProfile();
-      }
-    });
-
-    // Set up periodic refresh for notifications count (every 30 seconds)
-    _notificationsTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) {
-        _loadUnreadNotificationsCount();
+        _loadDashboardData(showLoading: false);
       }
     });
 
@@ -101,18 +88,34 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
   void dispose() {
     _tabController.dispose();
     _refreshTimer?.cancel();
-    _notificationsTimer?.cancel();
     super.dispose();
   }
 
+  Future<void> _loadDashboardData({bool showLoading = true}) async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+
+    try {
+      await Future.wait([
+        _loadRequests(showLoading: showLoading),
+        _loadUserProfile(),
+        _loadUnreadNotificationsCount(),
+      ]);
+    } finally {
+      _isRefreshing = false;
+    }
+  }
+
   /// Loads requests via Cloud Functions
-  Future<void> _loadRequests() async {
+  Future<void> _loadRequests({bool showLoading = true}) async {
     if (!mounted) return;
 
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
 
     try {
       final requests = await _controller.fetchRequests();
@@ -120,13 +123,14 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
         setState(() {
           _requests = requests;
           _isLoading = false;
+          _error = null;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _error = e.toString().replaceFirst('Exception: ', '');
-          _isLoading = false;
+          if (showLoading) _isLoading = false;
         });
       }
     }
@@ -186,7 +190,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
 
     // If profile was updated, refresh user profile immediately
     if (result == true && mounted) {
-      _loadUserProfile();
+      unawaited(_loadUserProfile());
     }
   }
 
@@ -247,8 +251,23 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
     );
     if (compatible == null) return requests;
     return requests
-        .where((r) => compatible.contains(r.bloodType.trim()))
+        .where(
+          (r) =>
+              _isDonorCompletedRequest(r) ||
+              compatible.contains(r.bloodType.trim()),
+        )
         .toList();
+  }
+
+  bool _isDonorCompletedRequest(BloodRequest request) {
+    final process = request.donorProcessStatus?.trim().toLowerCase();
+    return request.isCompleted ||
+        process == 'donated' ||
+        process == 'restricted';
+  }
+
+  bool _isActiveForRequestFilters(BloodRequest request) {
+    return !_isDonorCompletedRequest(request);
   }
 
   List<BloodRequest> get _displayRequests {
@@ -257,15 +276,19 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
         return _applyBloodTypeFilter(_requests);
       case DonorRequestFilter.completed:
         return _applyBloodTypeFilter(
-          _requests.where((r) => r.isCompleted).toList(),
+          _requests.where(_isDonorCompletedRequest).toList(),
         );
       case DonorRequestFilter.urgent:
         return _applyBloodTypeFilter(
-          _requests.where((r) => !r.isCompleted && r.isUrgent).toList(),
+          _requests
+              .where((r) => _isActiveForRequestFilters(r) && r.isUrgent)
+              .toList(),
         );
       case DonorRequestFilter.normal:
         return _applyBloodTypeFilter(
-          _requests.where((r) => !r.isCompleted && !r.isUrgent).toList(),
+          _requests
+              .where((r) => _isActiveForRequestFilters(r) && !r.isUrgent)
+              .toList(),
         );
       case DonorRequestFilter.nearest:
         return _applyBloodTypeFilter(_nearestRequestsOnly(_requests));
@@ -280,149 +303,52 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
         .replaceAll(RegExp(r'\s+'), ' ');
   }
 
-  ({double lat, double lng})? _coordsFromLocationLabel(String rawLocation) {
-    final location = rawLocation.trim();
-    if (location.isEmpty) return null;
+  String? _governorateFromLocationLabel(String value) {
+    final normalized = _normalizeLocationLabel(value);
+    if (normalized.isEmpty) return null;
 
-    final directLat = AppTheme.getLatitude(location);
-    final directLng = AppTheme.getLongitude(location);
-    if (directLat != null && directLng != null) {
-      return (lat: directLat, lng: directLng);
-    }
-
-    final normalized = _normalizeLocationLabel(location);
-    for (final entry in AppTheme.governorateCoordinates.entries) {
-      final key = _normalizeLocationLabel(entry.key);
-      if (normalized == key ||
-          normalized.contains(key) ||
-          key.contains(normalized)) {
-        final lat = entry.value['lat'];
-        final lng = entry.value['lng'];
-        if (lat != null && lng != null) {
-          return (lat: lat, lng: lng);
-        }
+    for (final governorate in AppTheme.jordanianGovernorates) {
+      if (normalized == _normalizeLocationLabel(governorate)) {
+        return governorate;
       }
     }
+
+    for (final governorate in AppTheme.jordanianGovernorates) {
+      final governorateLabel = _normalizeLocationLabel(governorate);
+      final pattern = RegExp(
+        '(^|[^a-z0-9])${RegExp.escape(governorateLabel)}([^a-z0-9]|\$)',
+      );
+      if (pattern.hasMatch(normalized)) return governorate;
+    }
+
     return null;
   }
 
-  ({double lat, double lng})? _resolveDonorCoordinates() {
-    final lat = _userProfile?['latitude'];
-    final lng = _userProfile?['longitude'];
-    final latNum = lat is num ? lat.toDouble() : null;
-    final lngNum = lng is num ? lng.toDouble() : null;
-    if (latNum != null && lngNum != null) {
-      return (lat: latNum, lng: lngNum);
-    }
-
-    final governorate = (_userProfile?['location'] ?? '').toString().trim();
-    if (governorate.isEmpty) return null;
-    return _coordsFromLocationLabel(governorate);
-  }
-
-  ({double lat, double lng})? _resolveRequestCoordinates(BloodRequest request) {
-    final lat = request.hospitalLatitude;
-    final lng = request.hospitalLongitude;
-    if (lat != null && lng != null) {
-      return (lat: lat, lng: lng);
-    }
-
-    final location = request.hospitalLocation.trim();
-    if (location.isEmpty) return null;
-    return _coordsFromLocationLabel(location);
-  }
-
-  double _distanceKm(
-    double fromLat,
-    double fromLng,
-    double toLat,
-    double toLng,
-  ) {
-    const earthRadiusKm = 6371.0;
-    final dLat = _degToRad(toLat - fromLat);
-    final dLng = _degToRad(toLng - fromLng);
-    final a =
-        math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_degToRad(fromLat)) *
-            math.cos(_degToRad(toLat)) *
-            math.sin(dLng / 2) *
-            math.sin(dLng / 2);
-    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-    return earthRadiusKm * c;
-  }
-
-  double _degToRad(double deg) => deg * (math.pi / 180);
-
-  List<BloodRequest> _nearestSortedRequests(List<BloodRequest> requests) {
-    final donorCoords = _resolveDonorCoordinates();
-    if (donorCoords == null) return const [];
-
-    final activeRequests = requests.where((r) => !r.isCompleted).toList();
-    final candidates = activeRequests;
-
-    final withDistance = <({BloodRequest request, double distance})>[];
-    for (final request in candidates) {
-      final reqCoords = _resolveRequestCoordinates(request);
-      if (reqCoords == null) continue;
-      final distance = _distanceKm(
-        donorCoords.lat,
-        donorCoords.lng,
-        reqCoords.lat,
-        reqCoords.lng,
-      );
-      withDistance.add((request: request, distance: distance));
-    }
-    withDistance.sort((a, b) => a.distance.compareTo(b.distance));
-    return withDistance.map((e) => e.request).toList();
-  }
-
   List<BloodRequest> _nearestRequestsOnly(List<BloodRequest> requests) {
-    final sorted = _nearestSortedRequests(requests);
-    if (sorted.isEmpty) return const [];
+    final donorGovernorate = _governorateFromLocationLabel(
+      (_userProfile?['location'] ?? '').toString(),
+    );
+    if (donorGovernorate == null) return const [];
 
-    final donorCoords = _resolveDonorCoordinates();
-    if (donorCoords == null) return const [];
-
-    double? minDistance;
-    final distances = <String, double>{};
-    for (final request in sorted) {
-      final coords = _resolveRequestCoordinates(request);
-      if (coords == null) continue;
-      final d = _distanceKm(
-        donorCoords.lat,
-        donorCoords.lng,
-        coords.lat,
-        coords.lng,
+    return requests.where((request) {
+      if (!_isActiveForRequestFilters(request)) return false;
+      final requestGovernorate = _governorateFromLocationLabel(
+        request.hospitalLocation,
       );
-      distances[request.id] = d;
-      minDistance = minDistance == null ? d : math.min(minDistance, d);
-    }
-    if (minDistance == null) return const [];
-
-    // Keep only requests around the nearest zone.
-    const nearestBandKm = 10.0;
-    return sorted.where((r) {
-      final d = distances[r.id];
-      if (d == null) return false;
-      return d <= minDistance! + nearestBandKm;
+      return requestGovernorate == donorGovernorate;
     }).toList();
   }
 
   void _setRequestFilter(DonorRequestFilter filter) {
     if (_selectedFilter == filter) return;
-    if (filter == DonorRequestFilter.nearest &&
-        _nearestRequestsOnly(_requests).isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Could not determine nearest request. Check your profile location.',
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
     setState(() => _selectedFilter = filter);
+  }
+
+  String _emptyFilterTitle() {
+    if (_selectedFilter == DonorRequestFilter.nearest) {
+      return 'NO Nearest Requests Found';
+    }
+    return 'No Requests Found';
   }
 
   String _filterLabel(DonorRequestFilter filter) {
@@ -497,8 +423,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
           ),
         ),
       );
-      await _loadRequests();
-      await _loadUserProfile();
+      await _loadDashboardData(showLoading: false);
     } catch (e) {
       if (!mounted) return;
       final msg = e.toString().replaceFirst('Exception: ', '');
@@ -538,6 +463,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
   @override
   Widget build(BuildContext context) {
     final user = _controller.getCurrentUser();
+    final displayRequests = _displayRequests;
 
     return Scaffold(
       backgroundColor: AppTheme.softBg,
@@ -598,105 +524,72 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
                 : _error != null
                 ? ErrorBox(title: 'Error loading requests', message: _error!)
                 : RefreshIndicator(
-                    onRefresh: _loadRequests,
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppTheme.padding,
-                        AppTheme.padding,
-                        AppTheme.padding,
-                        18,
-                      ),
-                      children: [
-                        _buildHeader(user),
-                        const SizedBox(height: 14),
-                        SectionHeader(
-                          title: 'Blood Requests',
-                          subtitle: _displayRequests.isEmpty
-                              ? 'No requests for ${_filterLabel(_selectedFilter)}'
-                              : '${_displayRequests.length} request(s) - ${_filterLabel(_selectedFilter)}',
-                        ),
-                        const SizedBox(height: 10),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
+                    onRefresh: () => _loadDashboardData(showLoading: false),
+                    child: CustomScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      slivers: [
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppTheme.padding,
+                            AppTheme.padding,
+                            AppTheme.padding,
+                            10,
+                          ),
+                          sliver: SliverList.list(
                             children: [
-                              _RequestFilterChip(
-                                label: 'All',
-                                selected:
-                                    _selectedFilter == DonorRequestFilter.all,
-                                onTap: () =>
-                                    _setRequestFilter(DonorRequestFilter.all),
+                              _buildHeader(user),
+                              const SizedBox(height: 14),
+                              SectionHeader(
+                                title: 'Blood Requests',
+                                subtitle: displayRequests.isEmpty
+                                    ? 'No requests for ${_filterLabel(_selectedFilter)}'
+                                    : '${displayRequests.length} request(s) - ${_filterLabel(_selectedFilter)}',
                               ),
-                              const SizedBox(width: 8),
-                              _RequestFilterChip(
-                                label: 'Nearest',
-                                selected:
-                                    _selectedFilter ==
-                                    DonorRequestFilter.nearest,
-                                onTap: () => _setRequestFilter(
-                                  DonorRequestFilter.nearest,
+                              const SizedBox(height: 10),
+                              _RequestFilterBar(
+                                selectedFilter: _selectedFilter,
+                                onFilterSelected: _setRequestFilter,
+                              ),
+                              const SizedBox(height: 10),
+                              if (displayRequests.isEmpty)
+                                EmptyState(
+                                  icon: Icons.bloodtype_outlined,
+                                  title: _emptyFilterTitle(),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              _RequestFilterChip(
-                                label: 'Completed',
-                                selected:
-                                    _selectedFilter ==
-                                    DonorRequestFilter.completed,
-                                onTap: () => _setRequestFilter(
-                                  DonorRequestFilter.completed,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              _RequestFilterChip(
-                                label: 'Urgent',
-                                selected:
-                                    _selectedFilter ==
-                                    DonorRequestFilter.urgent,
-                                onTap: () => _setRequestFilter(
-                                  DonorRequestFilter.urgent,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              _RequestFilterChip(
-                                label: 'Normal',
-                                selected:
-                                    _selectedFilter ==
-                                    DonorRequestFilter.normal,
-                                onTap: () => _setRequestFilter(
-                                  DonorRequestFilter.normal,
-                                ),
-                              ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        if (_displayRequests.isEmpty)
-                          const EmptyState(
-                            icon: Icons.bloodtype_outlined,
-                            title: 'No requests found',
-                            subtitle: 'Try another filter.',
-                          )
-                        else
-                          ..._displayRequests.map(
-                            (request) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: DonorRequestCard(
-                                request: request,
-                                isSubmittingResponse:
-                                    _respondingRequestId == request.id,
-                                acceptBlockedByCooldown:
-                                    _donationCooldownActive,
-                                permanentlyBlocked:
-                                    DonorEligibility.isPermanentlyBlocked(
-                                      _userProfile,
-                                    ),
-                                onDonate: () =>
-                                    _submitDonorResponse(request, 'accepted'),
-                                onUndoDonate: () =>
-                                    _submitDonorResponse(request, 'none'),
-                                onMessage: () => _navigateToChat(request),
-                              ),
+                        if (displayRequests.isNotEmpty)
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppTheme.padding,
+                              0,
+                              AppTheme.padding,
+                              18,
+                            ),
+                            sliver: SliverList.separated(
+                              itemCount: displayRequests.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 12),
+                              itemBuilder: (context, index) {
+                                final request = displayRequests[index];
+                                return DonorRequestCard(
+                                  request: request,
+                                  isSubmittingResponse:
+                                      _respondingRequestId == request.id,
+                                  acceptBlockedByCooldown:
+                                      _donationCooldownActive,
+                                  permanentlyBlocked:
+                                      DonorEligibility.isPermanentlyBlocked(
+                                        _userProfile,
+                                      ),
+                                  onDonate: () =>
+                                      _submitDonorResponse(request, 'accepted'),
+                                  onUndoDonate: () =>
+                                      _submitDonorResponse(request, 'none'),
+                                  onMessage: () => _navigateToChat(request),
+                                );
+                              },
                             ),
                           ),
                       ],
@@ -802,6 +695,56 @@ class _RequestFilterChip extends StatelessWidget {
             color: selected ? Colors.white : Colors.black87,
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _RequestFilterBar extends StatelessWidget {
+  final DonorRequestFilter selectedFilter;
+  final ValueChanged<DonorRequestFilter> onFilterSelected;
+
+  const _RequestFilterBar({
+    required this.selectedFilter,
+    required this.onFilterSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _RequestFilterChip(
+            label: 'All',
+            selected: selectedFilter == DonorRequestFilter.all,
+            onTap: () => onFilterSelected(DonorRequestFilter.all),
+          ),
+          const SizedBox(width: 8),
+          _RequestFilterChip(
+            label: 'Nearest',
+            selected: selectedFilter == DonorRequestFilter.nearest,
+            onTap: () => onFilterSelected(DonorRequestFilter.nearest),
+          ),
+          const SizedBox(width: 8),
+          _RequestFilterChip(
+            label: 'Completed',
+            selected: selectedFilter == DonorRequestFilter.completed,
+            onTap: () => onFilterSelected(DonorRequestFilter.completed),
+          ),
+          const SizedBox(width: 8),
+          _RequestFilterChip(
+            label: 'Urgent',
+            selected: selectedFilter == DonorRequestFilter.urgent,
+            onTap: () => onFilterSelected(DonorRequestFilter.urgent),
+          ),
+          const SizedBox(width: 8),
+          _RequestFilterChip(
+            label: 'Normal',
+            selected: selectedFilter == DonorRequestFilter.normal,
+            onTap: () => onFilterSelected(DonorRequestFilter.normal),
+          ),
+        ],
       ),
     );
   }

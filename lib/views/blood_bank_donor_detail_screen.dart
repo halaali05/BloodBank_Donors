@@ -6,7 +6,7 @@ import '../services/cloud_functions_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common/app_bar_with_logo.dart';
 import '../widgets/common/error_box.dart';
-import '../widgets/donation_history_section.dart';
+import 'donor_profile/donation_history_section.dart';
 import 'chat_screen.dart';
 
 class BloodBankDonorDetailScreen extends StatefulWidget {
@@ -19,7 +19,8 @@ class BloodBankDonorDetailScreen extends StatefulWidget {
       _BloodBankDonorDetailScreenState();
 }
 
-class _BloodBankDonorDetailScreenState extends State<BloodBankDonorDetailScreen> {
+class _BloodBankDonorDetailScreenState
+    extends State<BloodBankDonorDetailScreen> {
   final CloudFunctionsService _cloud = CloudFunctionsService();
   List<DonorMedicalReport> _reports = [];
   bool _loadingHistory = true;
@@ -103,8 +104,8 @@ class _BloodBankDonorDetailScreenState extends State<BloodBankDonorDetailScreen>
             tooltip: 'Message',
             icon: Icon(
               Icons.chat_bubble_outline_rounded,
-              color: s.messageRequestId != null &&
-                      s.messageRequestId!.isNotEmpty
+              color:
+                  s.messageRequestId != null && s.messageRequestId!.isNotEmpty
                   ? AppTheme.deepRed
                   : Colors.black26,
             ),
@@ -115,68 +116,87 @@ class _BloodBankDonorDetailScreenState extends State<BloodBankDonorDetailScreen>
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _loadHistory,
-          child: ListView(
-            padding: const EdgeInsets.all(AppTheme.padding),
-            children: [
-              Card(
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(
-                    color: AppTheme.deepRed.withValues(alpha: 0.12),
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Contact',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: AppTheme.deepRed,
-                          fontSize: 13,
+          child: CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.all(AppTheme.padding),
+                sliver: SliverList.list(
+                  children: [
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: AppTheme.deepRed.withValues(alpha: 0.12),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      _ContactRow(
-                        icon: Icons.badge_outlined,
-                        label: 'Name',
-                        value: s.fullName,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Contact',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.deepRed,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _ContactRow(
+                              icon: Icons.badge_outlined,
+                              label: 'Name',
+                              value: s.fullName,
+                            ),
+                            const SizedBox(height: 10),
+                            _ContactRow(
+                              icon: Icons.phone_outlined,
+                              label: 'Phone',
+                              value: s.phoneNumber.isEmpty
+                                  ? '—'
+                                  : s.phoneNumber,
+                            ),
+                            const SizedBox(height: 10),
+                            _ContactRow(
+                              icon: Icons.email_outlined,
+                              label: 'Email',
+                              value: s.email.isEmpty ? '—' : s.email,
+                            ),
+                            const SizedBox(height: 10),
+                            _ContactRow(
+                              icon: Icons.bloodtype_rounded,
+                              label: 'Blood type',
+                              value: s.bloodType.isEmpty
+                                  ? 'Not set'
+                                  : s.bloodType,
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 10),
-                      _ContactRow(
-                        icon: Icons.phone_outlined,
-                        label: 'Phone',
-                        value: s.phoneNumber.isEmpty ? '—' : s.phoneNumber,
+                    ),
+                    const SizedBox(height: 20),
+                    if (_historyError != null)
+                      ErrorBox(
+                        title: 'Could not load history',
+                        message: _historyError!,
                       ),
-                      const SizedBox(height: 10),
-                      _ContactRow(
-                        icon: Icons.email_outlined,
-                        label: 'Email',
-                        value: s.email.isEmpty ? '—' : s.email,
-                      ),
-                      const SizedBox(height: 10),
-                      _ContactRow(
-                        icon: Icons.bloodtype_rounded,
-                        label: 'Blood type',
-                        value: s.bloodType.isEmpty ? 'Not set' : s.bloodType,
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 20),
-              if (_historyError != null)
-                ErrorBox(
-                  title: 'Could not load history',
-                  message: _historyError!,
-                )
-              else
-                DonationHistorySection(
-                  reports: _reports,
-                  isLoading: _loadingHistory,
+              if (_historyError == null)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppTheme.padding,
+                    0,
+                    AppTheme.padding,
+                    AppTheme.padding,
+                  ),
+                  sliver: DonationHistorySliverSection(
+                    reports: _reports,
+                    isLoading: _loadingHistory,
+                    showReportActions: true,
+                  ),
                 ),
             ],
           ),

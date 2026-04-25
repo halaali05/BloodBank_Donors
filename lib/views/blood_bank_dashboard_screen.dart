@@ -47,6 +47,7 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
   Timer? _refreshTimer;
   List<BloodRequest> _requests = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _error;
 
   @override
@@ -65,7 +66,7 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
     });
 
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) _loadRequests();
+      if (mounted) _loadRequests(showLoading: false);
     });
   }
 
@@ -75,13 +76,17 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
     super.dispose();
   }
 
-  Future<void> _loadRequests() async {
+  Future<void> _loadRequests({bool showLoading = true}) async {
     if (!mounted) return;
+    if (_isRefreshing) return;
+    _isRefreshing = true;
 
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
 
     try {
       final requests = await _controller.fetchRequests();
@@ -89,15 +94,18 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
         setState(() {
           _requests = requests;
           _isLoading = false;
+          _error = null;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _error = e.toString().replaceFirst('Exception: ', '');
-          _isLoading = false;
+          if (showLoading) _isLoading = false;
         });
       }
+    } finally {
+      _isRefreshing = false;
     }
   }
 
@@ -325,161 +333,157 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
         child: _isLoading && _requests.isEmpty
             ? const LoadingIndicator(color: AppTheme.deepRed)
             : _error != null
-            ? ErrorBox(
-                title: 'Error',
-                message: _error!,
-                onRetry: _loadRequests,
-              )
+            ? ErrorBox(title: 'Error', message: _error!, onRetry: _loadRequests)
             : RefreshIndicator(
-                onRefresh: _loadRequests,
-                child: SingleChildScrollView(
+                onRefresh: () => _loadRequests(showLoading: false),
+                child: CustomScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(AppTheme.padding),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      /// HEADER
-                      HeaderCard(
-                        title: widget.bloodBankName,
-                        subtitle: widget.location,
-                        activeUnits: activeUnits,
-                        urgentRequests: urgentCount,
-                        activeRequests: activeRequests.length,
+                  slivers: [
+                    SliverPadding(
+                      padding: const EdgeInsets.all(AppTheme.padding),
+                      sliver: SliverList.list(
+                        children: [
+                          HeaderCard(
+                            title: widget.bloodBankName,
+                            subtitle: widget.location,
+                            activeUnits: activeUnits,
+                            urgentRequests: urgentCount,
+                            activeRequests: activeRequests.length,
+                          ),
+                          const SizedBox(height: 24),
+                          SectionHeader(
+                            title: 'Active Requests',
+                            subtitle: activeRequests.isEmpty
+                                ? 'No active requests'
+                                : 'Manage current posts',
+                            rightWidget: ElevatedButton.icon(
+                              onPressed: () async {
+                                final created = await Navigator.push<bool>(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => NewRequestScreen(
+                                      bloodBankName: widget.bloodBankName,
+                                      initialHospitalLocation: widget.location,
+                                    ),
+                                  ),
+                                );
+                                if (created == true && mounted) {
+                                  await _loadRequests(showLoading: false);
+                                }
+                              },
+                              icon: const Icon(Icons.add),
+                              label: const Text('New'),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          if (activeRequests.isEmpty)
+                            const EmptyState(
+                              icon: Icons.inbox_outlined,
+                              title: 'No active requests',
+                              subtitle: 'Create one now.',
+                            ),
+                        ],
                       ),
-
-                      const SizedBox(height: 24),
-
-                      /// ACTIVE REQUESTS
-                      SectionHeader(
-                        title: 'Active Requests',
-                        subtitle: activeRequests.isEmpty
-                            ? 'No active requests'
-                            : 'Manage current posts',
-                        rightWidget: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => NewRequestScreen(
-                                  bloodBankName: widget.bloodBankName,
-                                  initialHospitalLocation: widget.location,
-                                ),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.add),
-                          label: const Text('New'),
+                    ),
+                    if (activeRequests.isNotEmpty)
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppTheme.padding,
                         ),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      if (activeRequests.isEmpty)
-                        const EmptyState(
-                          icon: Icons.inbox_outlined,
-                          title: 'No active requests',
-                          subtitle: 'Create one now.',
-                        )
-                      else
-                        ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
+                        sliver: SliverList.separated(
                           itemCount: activeRequests.length,
                           separatorBuilder: (_, __) =>
                               const SizedBox(height: 12),
                           itemBuilder: (context, index) {
                             final request = activeRequests[index];
-                            return RequestCard(
-                              request: request,
-                              onOpenAllDonors: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        RequestDonorsScreen(
-                                          requestId: request.id,
-                                          hospitalName: widget.bloodBankName,
-                                        ),
-                                  ),
-                                );
-                              },
-                              onDelete: () =>
-                                  _handleDeleteRequest(context, request),
-                              onEdit: () => _handleEditUnits(context, request),
-                              onMarkCompleted: () =>
-                                  _handleCompleteRequest(context, request),
-                              onTapAcceptances: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        DonorManagementScreen(request: request),
-                                  ),
-                                ).then((_) => _loadRequests());
-                              },
-                            );
+                            return _buildRequestCard(context, request);
                           },
                         ),
-
-                      const SizedBox(height: 24),
-
-                      /// COMPLETED
-                      SectionHeader(
-                        title: 'Completed Requests',
-                        subtitle: 'Closed posts',
                       ),
-
-                      const SizedBox(height: 12),
-
-                      if (completedRequests.isEmpty)
-                        const EmptyState(
-                          icon: Icons.check_circle_outline,
-                          title: 'No completed requests',
-                          subtitle: '',
-                        )
-                      else
-                        ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppTheme.padding,
+                        24,
+                        AppTheme.padding,
+                        12,
+                      ),
+                      sliver: SliverList.list(
+                        children: const [
+                          SectionHeader(
+                            title: 'Completed Requests',
+                            subtitle: 'Closed posts',
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (completedRequests.isEmpty)
+                      const SliverPadding(
+                        padding: EdgeInsets.fromLTRB(
+                          AppTheme.padding,
+                          0,
+                          AppTheme.padding,
+                          18,
+                        ),
+                        sliver: SliverToBoxAdapter(
+                          child: EmptyState(
+                            icon: Icons.check_circle_outline,
+                            title: 'No completed requests',
+                            subtitle: '',
+                          ),
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppTheme.padding,
+                          0,
+                          AppTheme.padding,
+                          18,
+                        ),
+                        sliver: SliverList.separated(
                           itemCount: completedRequests.length,
                           separatorBuilder: (_, __) =>
                               const SizedBox(height: 12),
                           itemBuilder: (context, index) {
                             final request = completedRequests[index];
-                            return RequestCard(
-                              request: request,
-                              onOpenAllDonors: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        RequestDonorsScreen(
-                                          requestId: request.id,
-                                          hospitalName: widget.bloodBankName,
-                                        ),
-                                  ),
-                                );
-                              },
-                              onDelete: () =>
-                                  _handleDeleteRequest(context, request),
-                              onEdit: () => _handleEditUnits(context, request),
-                              onTapAcceptances: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        DonorManagementScreen(request: request),
-                                  ),
-                                ).then((_) => _loadRequests());
-                              },
-                            );
+                            return _buildRequestCard(context, request);
                           },
                         ),
-                    ],
-                  ),
+                      ),
+                  ],
                 ),
               ),
       ),
+    );
+  }
+
+  Widget _buildRequestCard(BuildContext context, BloodRequest request) {
+    return RequestCard(
+      request: request,
+      onOpenAllDonors: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => RequestDonorsScreen(
+              requestId: request.id,
+              hospitalName: widget.bloodBankName,
+            ),
+          ),
+        );
+      },
+      onDelete: () => _handleDeleteRequest(context, request),
+      onEdit: () => _handleEditUnits(context, request),
+      onMarkCompleted: request.isCompleted
+          ? null
+          : () => _handleCompleteRequest(context, request),
+      onTapAcceptances: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DonorManagementScreen(request: request),
+          ),
+        ).then((_) => _loadRequests(showLoading: false));
+      },
     );
   }
 }

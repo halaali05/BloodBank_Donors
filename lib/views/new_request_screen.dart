@@ -85,8 +85,8 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
           ),
         );
 
-        // ✅ رجوع للداشبورد مباشرة
-        Navigator.of(context).pop();
+        // Return success so the dashboard refreshes immediately.
+        Navigator.of(context).pop(true);
       } else {
         // Show validation or error message from controller
         ScaffoldMessenger.of(context).showSnackBar(

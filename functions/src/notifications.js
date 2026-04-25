@@ -15,41 +15,139 @@ function notificationRequestId(data) {
   return s === "" ? null : s;
 }
 
+async function requireRequestChatAccess(uid, requestId, options = {}) {
+  const filterRecipientId =
+    typeof options.filterRecipientId === "string" &&
+    options.filterRecipientId.trim()
+      ? options.filterRecipientId.trim()
+      : null;
+
+  const userSnap = await db.collection("users").doc(uid).get();
+  if (!userSnap.exists) {
+    throw new HttpsError("not-found", "User profile not found.");
+  }
+
+  const userData = userSnap.data() || {};
+  const role = String(userData.role || "")
+    .trim()
+    .toLowerCase();
+
+  const requestRef = db.collection("requests").doc(requestId);
+  const requestSnap = await requestRef.get();
+  if (!requestSnap.exists) {
+    throw new HttpsError("not-found", "Request not found.");
+  }
+
+  const requestData = requestSnap.data() || {};
+  const ownerId =
+    typeof requestData.bloodBankId === "string"
+      ? requestData.bloodBankId.trim()
+      : "";
+
+  if (role === "hospital") {
+    if (ownerId !== uid) {
+      throw new HttpsError(
+        "permission-denied",
+        "You can only access messages for your own requests.",
+      );
+    }
+    if (filterRecipientId) {
+      const responseSnap = await requestRef
+        .collection("donorResponses")
+        .doc(filterRecipientId)
+        .get();
+      if (!responseSnap.exists) {
+        throw new HttpsError(
+          "permission-denied",
+          "You can only message donors linked to this request.",
+        );
+      }
+    }
+    return {
+      role,
+      userData,
+      requestRef,
+      requestData,
+      isRequestOwner: true,
+      ownerId,
+    };
+  }
+
+  if (role === "donor") {
+    const responseSnap = await requestRef
+      .collection("donorResponses")
+      .doc(uid)
+      .get();
+    if (!responseSnap.exists) {
+      throw new HttpsError(
+        "permission-denied",
+        "You can only access messages for requests you joined.",
+      );
+    }
+    return {
+      role,
+      userData,
+      requestRef,
+      requestData,
+      isRequestOwner: false,
+      ownerId,
+    };
+  }
+
+  throw new HttpsError("permission-denied", "Unsupported user role.");
+}
+
 /**
  * markNotificationsAsRead - mark all unread notifications as read for a user
  */
-exports.markNotificationsAsRead = onCall(publicCallableOpts, async (request) => {
-  try {
-    const uid = requireAuth(request);
+exports.markNotificationsAsRead = onCall(
+  publicCallableOpts,
+  async (request) => {
+    try {
+      const uid = requireAuth(request);
 
-    const snapshot = await db
-      .collection("notifications")
-      .doc(uid)
-      .collection("user_notifications")
-      .where("read", "==", false)
-      .get();
+      const notificationsRef = db
+        .collection("notifications")
+        .doc(uid)
+        .collection("user_notifications");
+      const batchSize = 500;
+      let markedCount = 0;
+      let hasMoreUnread = true;
 
-    if (snapshot.empty) {
-      return { ok: true, message: "No unread notifications.", count: 0 };
+      while (hasMoreUnread) {
+        const snapshot = await notificationsRef
+          .where("read", "==", false)
+          .limit(batchSize)
+          .get();
+        if (snapshot.empty) {
+          hasMoreUnread = false;
+          break;
+        }
+
+        const batch = db.batch();
+        snapshot.docs.forEach((doc) => {
+          batch.update(doc.ref, { read: true, isRead: true });
+        });
+        await batch.commit();
+        markedCount += snapshot.docs.length;
+        hasMoreUnread = snapshot.docs.length === batchSize;
+      }
+
+      if (markedCount === 0) {
+        return { ok: true, message: "No unread notifications.", count: 0 };
+      }
+
+      return {
+        ok: true,
+        message: `Marked ${markedCount} notification(s) as read.`,
+        count: markedCount,
+      };
+    } catch (err) {
+      console.error("[markNotificationsAsRead] ERROR:", err);
+      throw toHttpsError(err, "Failed to mark notifications as read.");
     }
-
-    const batch = db.batch();
-    snapshot.docs.forEach((doc) => {
-      batch.update(doc.ref, { read: true });
-    });
-
-    await batch.commit();
-
-    return {
-      ok: true,
-      message: `Marked ${snapshot.docs.length} notification(s) as read.`,
-      count: snapshot.docs.length,
-    };
-  } catch (err) {
-    console.error("[markNotificationsAsRead] ERROR:", err);
-    throw toHttpsError(err, "Failed to mark notifications as read.");
-  }
-});
+  },
+);
 
 /**
  * markNotificationAsRead - mark a single notification as read for a user
@@ -69,11 +167,6 @@ exports.markNotificationAsRead = onCall(publicCallableOpts, async (request) => {
       .doc(uid)
       .collection("user_notifications")
       .doc(notificationId);
-
-    const notificationSnap = await notificationRef.get();
-    if (!notificationSnap.exists) {
-      throw new HttpsError("not-found", "Notification not found.");
-    }
 
     // Update both read and isRead fields for compatibility
     await notificationRef.update({
@@ -180,12 +273,16 @@ exports.deleteOldNotifications = onCall(publicCallableOpts, async (request) => {
 exports.getNotifications = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
+    const data = request.data || {};
+    const limit =
+      typeof data.limit === "number" ? Math.min(data.limit, 100) : 80;
 
     const snapshot = await db
       .collection("notifications")
       .doc(uid)
       .collection("user_notifications")
       .orderBy("createdAt", "desc")
+      .limit(limit)
       .get();
 
     const rows = snapshot.docs.map((doc) => {
@@ -261,29 +358,35 @@ exports.getMessages = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
     const data = request.data || {};
+    const limit =
+      typeof data.limit === "number" ? Math.min(data.limit, 200) : 120;
 
     const requestId = nonEmptyString(data.requestId, "requestId");
 
-    // Verify request exists
-    const requestRef = db.collection("requests").doc(requestId);
-    const requestSnap = await requestRef.get();
-    if (!requestSnap.exists) {
-      throw new HttpsError("not-found", "Request not found.");
+    // Extract optional filterRecipientId (used when blood bank chats with specific donor)
+    let filterRecipientId = null;
+    if (
+      data.filterRecipientId !== undefined &&
+      data.filterRecipientId !== null
+    ) {
+      if (
+        typeof data.filterRecipientId === "string" &&
+        data.filterRecipientId.trim().length > 0
+      ) {
+        filterRecipientId = data.filterRecipientId.trim();
+      }
     }
 
-    const requestData = requestSnap.data() || {};
-    const isRequestOwner = requestData.bloodBankId === uid;
-
-    // Get user role
-    const userSnap = await db.collection("users").doc(uid).get();
-    if (!userSnap.exists) {
-      throw new HttpsError("not-found", "User profile not found.");
-    }
+    const access = await requireRequestChatAccess(uid, requestId, {
+      filterRecipientId,
+    });
+    const { requestRef, requestData, isRequestOwner } = access;
 
     // Get all messages
     const messagesSnapshot = await requestRef
       .collection("messages")
       .orderBy("createdAt", "desc")
+      .limit(limit)
       .get();
 
     // Filter messages based on user role and recipientId
@@ -298,23 +401,6 @@ exports.getMessages = onCall(publicCallableOpts, async (request) => {
             : null,
       };
     });
-
-    // Extract optional filterRecipientId (used when blood bank chats with specific donor)
-    let filterRecipientId = null;
-    if (
-      data.filterRecipientId !== undefined &&
-      data.filterRecipientId !== null
-    ) {
-      if (
-        typeof data.filterRecipientId === "string" &&
-        data.filterRecipientId.trim().length > 0
-      ) {
-        filterRecipientId = data.filterRecipientId.trim();
-        console.log(
-          `[getMessages] 🔍 Blood bank filtering messages for recipientId: ${filterRecipientId}`,
-        );
-      }
-    }
 
     // Filter messages:
     // - If user is request owner (blood bank) AND filterRecipientId is provided:
@@ -341,26 +427,17 @@ exports.getMessages = onCall(publicCallableOpts, async (request) => {
 
           // 2. Messages TO this specific donor (recipientId matches)
           if (msgRecipientId === filterId) {
-            console.log(
-              `[getMessages] ✅ Showing message TO ${filterId} (recipientId matches)`,
-            );
             return true;
           }
 
           // 3. Messages FROM this specific donor (senderId matches)
           // These are messages the donor sent to the blood bank
           if (msgSenderId === filterId) {
-            console.log(
-              `[getMessages] ✅ Showing message FROM ${filterId} (senderId matches)`,
-            );
             return true;
           }
 
           // 4. EXCLUDE all other personalized messages (to other donors)
           // If message has recipientId but it's not for this donor, don't show it
-          console.log(
-            `[getMessages] ❌ Hiding message: recipientId=${msgRecipientId}, senderId=${msgSenderId}, filter=${filterId}`,
-          );
           return false;
         } else {
           // Blood bank viewing all messages (no filter)
@@ -373,12 +450,9 @@ exports.getMessages = onCall(publicCallableOpts, async (request) => {
       // 2. Messages with recipientId matching their uid (personalized messages)
       // 3. Their own sent messages (senderId == donor uid)
       const donorUid = String(uid).trim();
-      const msgRecipient = msg.recipientId != null
-        ? String(msg.recipientId).trim()
-        : "";
-      const msgSender = msg.senderId != null
-        ? String(msg.senderId).trim()
-        : "";
+      const msgRecipient =
+        msg.recipientId != null ? String(msg.recipientId).trim() : "";
+      const msgSender = msg.senderId != null ? String(msg.senderId).trim() : "";
       const hasRecipientId = msgRecipient.length > 0;
       if (msgSender === donorUid) {
         return true; // Always show donor's own outgoing messages
@@ -414,62 +488,35 @@ exports.sendMessage = onCall(publicCallableOpts, async (request) => {
 
     // Extract recipientId - must be a non-empty string
     let recipientId = null;
-    console.log(
-      `[sendMessage] 🔍 Received data.recipientId: ${data.recipientId} (type: ${typeof data.recipientId})`,
-    );
-    console.log(
-      `[sendMessage] 🔍 data object keys: ${Object.keys(data).join(", ")}`,
-    );
-
     if (data.recipientId !== undefined && data.recipientId !== null) {
       if (
         typeof data.recipientId === "string" &&
         data.recipientId.trim().length > 0
       ) {
         recipientId = data.recipientId.trim();
-        console.log(
-          `[sendMessage] ✅ Received VALID recipientId: ${recipientId}`,
-        );
-      } else {
-        console.log(
-          `[sendMessage] ❌ recipientId provided but invalid: ${data.recipientId} (type: ${typeof data.recipientId})`,
-        );
       }
-    } else {
-      console.log(
-        `[sendMessage] ⚠️ No recipientId provided - this will be a general message (visible to all donors)`,
-      );
     }
 
-    // Get user role
-    const userSnap = await db.collection("users").doc(uid).get();
-    if (!userSnap.exists) {
-      throw new HttpsError("not-found", "User profile not found.");
-    }
-
-    const userData = userSnap.data() || {};
-    const senderRole = userData.role || "donor";
+    const access = await requireRequestChatAccess(uid, requestId, {
+      filterRecipientId: recipientId,
+    });
+    const { requestRef, requestData, ownerId, userData } = access;
+    const senderRole = String(userData.role || "donor")
+      .trim()
+      .toLowerCase();
     const senderName =
       userData.fullName || userData.name || userData.bloodBankName || "User";
 
-    // Verify request exists
-    const requestRef = db.collection("requests").doc(requestId);
-    const requestSnap = await requestRef.get();
-    const requestData = requestSnap.data() || {};
-
-    if (!requestSnap.exists) {
-      throw new HttpsError("not-found", "Request not found.");
-    }
-
     let effectiveRecipientId = recipientId;
     if (!effectiveRecipientId && senderRole === "donor") {
-      const ownerId =
-        typeof requestData.bloodBankId === "string"
-          ? requestData.bloodBankId.trim()
-          : "";
       if (ownerId) {
         effectiveRecipientId = ownerId;
       }
+    } else if (senderRole === "donor" && effectiveRecipientId !== ownerId) {
+      throw new HttpsError(
+        "permission-denied",
+        "Donors can only message the owning blood bank.",
+      );
     }
 
     // Build message object
@@ -480,33 +527,13 @@ exports.sendMessage = onCall(publicCallableOpts, async (request) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    // CRITICAL: Add recipientId if provided (for direct messages between blood bank and specific donor)
-    // This field is essential for filtering messages to show only to the intended donor
-    console.log(
-      `[sendMessage] 🔍 About to store message. recipientId value: ${recipientId}`,
-    );
     if (effectiveRecipientId) {
       messageData.recipientId = effectiveRecipientId;
-      console.log(
-        `[sendMessage] ✅ Storing PERSONALIZED message with recipientId: ${effectiveRecipientId}`,
-      );
-      console.log(
-        `[sendMessage] ✅ messageData.recipientId = ${messageData.recipientId}`,
-      );
-      console.log(
-        `[sendMessage] ✅ This message will ONLY be visible to recipient: ${effectiveRecipientId}`,
-      );
-    } else {
-      console.log(
-        `[sendMessage] ⚠️ Storing GENERAL message WITHOUT recipientId (visible to all donors)`,
-      );
-      console.log(`[sendMessage] ⚠️ messageData.recipientId will be undefined`);
     }
 
     // Add message to the request's messages subcollection
     const messageRef = await requestRef.collection("messages").add(messageData);
 
-    // Verify what was actually stored
     const storedData = {
       messageId: messageRef.id,
       recipientId: messageData.recipientId || null,
@@ -517,19 +544,6 @@ exports.sendMessage = onCall(publicCallableOpts, async (request) => {
     console.log(
       `[sendMessage] ✅ Message stored successfully:`,
       JSON.stringify(storedData),
-    );
-
-    // Double-check by reading it back
-    const verifyDoc = await messageRef.get();
-    const verifyData = verifyDoc.data();
-    console.log(
-      `[sendMessage] 🔍 Verification - Message read back from Firestore:`,
-      {
-        id: verifyDoc.id,
-        recipientId: verifyData?.recipientId || null,
-        senderId: verifyData?.senderId,
-        senderRole: verifyData?.senderRole,
-      },
     );
 
     // Push notification for direct messages only (no persistence in notifications list).
@@ -553,30 +567,33 @@ exports.sendMessage = onCall(publicCallableOpts, async (request) => {
             .collection("users")
             .doc(recipientUid)
             .get();
-          const recipientData = recipientUserSnap.exists ?
-            recipientUserSnap.data() || {} :
-            {};
+          const recipientData = recipientUserSnap.exists
+            ? recipientUserSnap.data() || {}
+            : {};
           console.log(
             `[sendMessage] 🔔 Recipient doc exists=${recipientUserSnap.exists} role=${recipientData.role || "unknown"}`,
           );
-          const token = typeof recipientData.fcmToken === "string" ?
-            recipientData.fcmToken.trim() :
-            "";
+          const token =
+            typeof recipientData.fcmToken === "string"
+              ? recipientData.fcmToken.trim()
+              : "";
           if (!token) {
             console.warn(
               `[sendMessage] 🔕 Push skipped: recipient has no fcmToken (uid=${recipientUid})`,
             );
             continue;
           }
-          const title = senderRole === "hospital" ?
-            `${requestData.bloodBankName || senderName}` :
-            senderName;
-          const body = text.trim().length > 120 ?
-            `${text.trim().slice(0, 117)}...` :
-            text.trim();
+          const title =
+            senderRole === "hospital"
+              ? `${requestData.bloodBankName || senderName}`
+              : senderName;
+          const body =
+            text.trim().length > 120
+              ? `${text.trim().slice(0, 117)}...`
+              : text.trim();
           const messagePayload = {
             token,
-            notification: {title, body},
+            notification: { title, body },
             data: {
               type: "chat",
               requestId: String(requestId),
@@ -598,7 +615,7 @@ exports.sendMessage = onCall(publicCallableOpts, async (request) => {
             apns: {
               payload: {
                 aps: {
-                  alert: {title, body},
+                  alert: { title, body },
                   sound: "normal_request.mp3",
                 },
               },
@@ -652,78 +669,78 @@ exports.sendMessage = onCall(publicCallableOpts, async (request) => {
  * for the request yet, create the same line as sendRequestMessageToDonors (idempotent).
  * Lets Messages from the donor dashboard match notification/chat content.
  */
-exports.ensureDonorWelcomeMessage = onCall(publicCallableOpts, async (request) => {
-  try {
-    const uid = requireAuth(request);
-    const data = request.data || {};
-    const requestId = nonEmptyString(data.requestId, "requestId");
+exports.ensureDonorWelcomeMessage = onCall(
+  publicCallableOpts,
+  async (request) => {
+    try {
+      const uid = requireAuth(request);
+      const data = request.data || {};
+      const requestId = nonEmptyString(data.requestId, "requestId");
 
-    const userSnap = await db.collection("users").doc(uid).get();
-    if (!userSnap.exists) {
-      throw new HttpsError("not-found", "User profile not found.");
+      const userSnap = await db.collection("users").doc(uid).get();
+      if (!userSnap.exists) {
+        throw new HttpsError("not-found", "User profile not found.");
+      }
+      const userData = userSnap.data() || {};
+      if (userData.role !== "donor") {
+        throw new HttpsError(
+          "permission-denied",
+          "Only donors can ensure welcome messages.",
+        );
+      }
+
+      const requestRef = db.collection("requests").doc(requestId);
+      const requestSnap = await requestRef.get();
+      if (!requestSnap.exists) {
+        throw new HttpsError("not-found", "Request not found.");
+      }
+
+      const rd = requestSnap.data() || {};
+      const bloodBankId = rd.bloodBankId;
+      if (!bloodBankId || typeof bloodBankId !== "string") {
+        throw new HttpsError("failed-precondition", "Invalid request data.");
+      }
+
+      const snapshot = await requestRef
+        .collection("messages")
+        .orderBy("createdAt", "desc")
+        .limit(80)
+        .get();
+
+      const donorUid = String(uid).trim();
+      const bankId = String(bloodBankId).trim();
+
+      const hasPersonalFromBank = snapshot.docs.some((doc) => {
+        const m = doc.data() || {};
+        const recip = m.recipientId != null ? String(m.recipientId).trim() : "";
+        const send = m.senderId != null ? String(m.senderId).trim() : "";
+        const role = m.senderRole || "";
+        return recip === donorUid && send === bankId && role === "hospital";
+      });
+
+      if (hasPersonalFromBank) {
+        return { ok: true, created: false };
+      }
+
+      const donorName = userData.fullName || userData.name || "Donor";
+      const bloodBankName = rd.bloodBankName || "Blood Bank";
+      const text = `Please ${donorName}, ${bloodBankName} needs your help ❤️`;
+
+      await requestRef.collection("messages").add({
+        senderId: bloodBankId,
+        senderRole: "hospital",
+        recipientId: uid,
+        text,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return { ok: true, created: true };
+    } catch (err) {
+      console.error("[ensureDonorWelcomeMessage] ERROR:", err);
+      throw toHttpsError(err, "Failed to ensure welcome message.");
     }
-    const userData = userSnap.data() || {};
-    if (userData.role !== "donor") {
-      throw new HttpsError(
-        "permission-denied",
-        "Only donors can ensure welcome messages.",
-      );
-    }
-
-    const requestRef = db.collection("requests").doc(requestId);
-    const requestSnap = await requestRef.get();
-    if (!requestSnap.exists) {
-      throw new HttpsError("not-found", "Request not found.");
-    }
-
-    const rd = requestSnap.data() || {};
-    const bloodBankId = rd.bloodBankId;
-    if (!bloodBankId || typeof bloodBankId !== "string") {
-      throw new HttpsError("failed-precondition", "Invalid request data.");
-    }
-
-    const snapshot = await requestRef
-      .collection("messages")
-      .orderBy("createdAt", "desc")
-      .limit(80)
-      .get();
-
-    const donorUid = String(uid).trim();
-    const bankId = String(bloodBankId).trim();
-
-    const hasPersonalFromBank = snapshot.docs.some((doc) => {
-      const m = doc.data() || {};
-      const recip =
-        m.recipientId != null ? String(m.recipientId).trim() : "";
-      const send = m.senderId != null ? String(m.senderId).trim() : "";
-      const role = m.senderRole || "";
-      return recip === donorUid && send === bankId && role === "hospital";
-    });
-
-    if (hasPersonalFromBank) {
-      return { ok: true, created: false };
-    }
-
-    const donorName =
-      userData.fullName || userData.name || "Donor";
-    const bloodBankName = rd.bloodBankName || "Blood Bank";
-    const text =
-      `Please ${donorName}, ${bloodBankName} needs your help ❤️`;
-
-    await requestRef.collection("messages").add({
-      senderId: bloodBankId,
-      senderRole: "hospital",
-      recipientId: uid,
-      text,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    return { ok: true, created: true };
-  } catch (err) {
-    console.error("[ensureDonorWelcomeMessage] ERROR:", err);
-    throw toHttpsError(err, "Failed to ensure welcome message.");
-  }
-});
+  },
+);
 
 /**
  * cleanupOrphanNotifications - Scheduled cleanup for orphan notifications

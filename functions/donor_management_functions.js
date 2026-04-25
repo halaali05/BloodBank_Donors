@@ -3,7 +3,6 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const { publicCallableOpts } = require("./callable_config");
 const { scheduleRef } = require("./donation_schedule");
-const { createAndBroadcastFollowUpRequest } = require("./src/requests");
 
 const db = admin.firestore();
 
@@ -11,11 +10,24 @@ const db = admin.firestore();
 // Helpers
 // ---------------------------------------------------------------------------
 
-function requireAuth(request) {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "Please log in first");
+async function requireAuth(request) {
+  if (request.auth) return request.auth.uid;
+
+  const data = request.data || {};
+  const authToken = String(data.authToken || data.idToken || "").trim();
+  if (authToken) {
+    try {
+      const decoded = await admin.auth().verifyIdToken(authToken);
+      if (decoded && decoded.uid) return decoded.uid;
+    } catch (e) {
+      console.warn(
+        "[requireAuth] authToken verification failed:",
+        e.message || e,
+      );
+    }
   }
-  return request.auth.uid;
+
+  throw new HttpsError("unauthenticated", "Please log in first");
 }
 
 async function requireRole(uid, expectedRole) {
@@ -155,7 +167,7 @@ exports.scheduleDonorAppointment = onCall(
   publicCallableOpts,
   async (request) => {
     try {
-      const callerUid = requireAuth(request);
+      const callerUid = await requireAuth(request);
       await requireRole(callerUid, "hospital");
 
       const data = request.data || {};
@@ -333,7 +345,7 @@ exports.requestAppointmentReschedule = onCall(
   publicCallableOpts,
   async (request) => {
     try {
-      const callerUid = requireAuth(request);
+      const callerUid = await requireAuth(request);
       await requireRole(callerUid, "donor");
 
       const data = request.data || {};
@@ -440,7 +452,7 @@ exports.requestAppointmentReschedule = onCall(
 // ---------------------------------------------------------------------------
 exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
   try {
-    const callerUid = requireAuth(request);
+    const callerUid = await requireAuth(request);
     await requireRole(callerUid, "hospital");
 
     const {
@@ -566,40 +578,48 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
 
     const isPermanentBlockBool =
       normalizedStatus === "restricted" && isPermanentBlock === true;
+    const shouldCreateReport = !isOtherReasons;
 
-    const reportData = {
-      requestId,
-      donorId,
-      bloodBankId: callerUid,
-      bloodBankName: req.bloodBankName || "",
-      bloodType: confirmedNorm,
-      confirmedBloodType: confirmedNorm,
-      isUrgent: !!req.isUrgent,
-      status: normalizedStatus,
-      isPermanentBlock: isPermanentBlockBool,
-      restrictionReason:
-        normalizedStatus === "restricted" ? restrictionReason.trim() : null,
-      notes: notes && String(notes).trim() ? String(notes).trim() : null,
-      reportFileUrl: fileTrim,
-      canDonateAgainAt: reportCanDonateTs,
-      appointmentAt: appointmentAtForReport,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
-    const reportRef = db.collection("medicalReports").doc();
     const batch = db.batch();
+    let reportRef = null;
 
-    batch.set(reportRef, reportData);
+    if (shouldCreateReport) {
+      const reportData = {
+        requestId,
+        donorId,
+        bloodBankId: callerUid,
+        bloodBankName: req.bloodBankName || "",
+        bloodType: confirmedNorm,
+        confirmedBloodType: confirmedNorm,
+        isUrgent: !!req.isUrgent,
+        status: normalizedStatus,
+        isPermanentBlock: isPermanentBlockBool,
+        restrictionReason:
+          normalizedStatus === "restricted" ? restrictionReason.trim() : null,
+        notes: notes && String(notes).trim() ? String(notes).trim() : null,
+        reportFileUrl: fileTrim,
+        canDonateAgainAt: reportCanDonateTs,
+        appointmentAt: appointmentAtForReport,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+      reportRef = db.collection("medicalReports").doc();
+      batch.set(reportRef, reportData);
+    }
 
-    batch.update(donorResponseRef, {
+    const donorResponseUpdate = {
       processStatus: normalizedStatus,
       appointmentStatus: "completed",
-      reportId: reportRef.id,
       completedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    };
+    if (shouldCreateReport && reportRef) {
+      donorResponseUpdate.reportId = reportRef.id;
+    } else {
+      donorResponseUpdate.reportId = admin.firestore.FieldValue.delete();
+    }
+    batch.update(donorResponseRef, donorResponseUpdate);
 
     const donorRef = db.collection("users").doc(donorId);
-    const requestRef = db.collection("requests").doc(requestId);
     const schedRef = scheduleRef(db, donorId);
 
     const scheduleUpdate = {
@@ -634,10 +654,6 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       scheduleUpdate.lastDonatedAt =
         admin.firestore.FieldValue.serverTimestamp();
       scheduleUpdate.nextDonationEligibleAt = nextElig;
-      batch.update(requestRef, {
-        isCompleted: true,
-        completedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
     }
 
     batch.set(schedRef, scheduleUpdate, { merge: true });
@@ -662,98 +678,67 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
 
     await batch.commit();
 
-    let generatedRequestId = null;
-    if (normalizedStatus === "donated") {
+    if (shouldCreateReport && reportRef) {
       try {
-        const autoPost = await createAndBroadcastFollowUpRequest({
-          bloodBankId: callerUid,
-          bloodBankName: req.bloodBankName || "",
-          bloodType: confirmedNorm,
-          units: 1,
-          isUrgent: !!req.isUrgent,
-          hospitalLocation: req.hospitalLocation || "",
-          hospitalLatitude:
-            typeof req.hospitalLatitude === "number"
-              ? req.hospitalLatitude
-              : null,
-          hospitalLongitude:
-            typeof req.hospitalLongitude === "number"
-              ? req.hospitalLongitude
-              : null,
-          details:
-            "Auto-generated after confirmed donation and medical report upload.",
-          sourceRequestId: requestId,
-          sourceReportId: reportRef.id,
-        });
-        generatedRequestId = autoPost.requestId || null;
-      } catch (autoPostErr) {
-        console.error(
-          "[saveMedicalReport] Failed to generate follow-up request:",
-          autoPostErr,
+        const donorSnap = await db.collection("users").doc(donorId).get();
+        if (donorSnap.exists) {
+          const du = donorSnap.data() || {};
+          const fcmToken = du.fcmToken;
+
+          const title =
+            normalizedStatus === "donated"
+              ? "🩸 Donation Confirmed!"
+              : "⚠️ Donation Result";
+
+          const body =
+            normalizedStatus === "donated"
+              ? `${req.bloodBankName || "The blood bank"} confirmed your ${confirmedNorm} donation. Your report is now available.`
+              : `${req.bloodBankName || "The blood bank"} updated your donation status. Check your profile.`;
+
+          // ✅ احفظ الإشعار داخل التطبيق
+          const notifRef = db
+            .collection("notifications")
+            .doc(donorId)
+            .collection("user_notifications")
+            .doc();
+
+          await notifRef.set({
+            title,
+            body,
+            type: "medical_report_saved",
+            requestId: String(requestId),
+            reportId: String(reportRef.id),
+            status: String(normalizedStatus),
+            isRead: false,
+            read: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          // ✅ ابعث push notification
+          if (typeof fcmToken === "string" && fcmToken.trim()) {
+            await admin.messaging().send({
+              token: fcmToken.trim(),
+              notification: { title, body },
+              data: {
+                type: "medical_report_saved",
+                requestId: String(requestId),
+                reportId: String(reportRef.id),
+                status: String(normalizedStatus),
+              },
+            });
+          }
+        }
+      } catch (e) {
+        console.warn(
+          "Notification or FCM failed (saveMedicalReport):",
+          e.message || e,
         );
       }
     }
 
-    try {
-      const donorSnap = await db.collection("users").doc(donorId).get();
-      if (donorSnap.exists) {
-        const du = donorSnap.data() || {};
-        const fcmToken = du.fcmToken;
-
-        const title =
-          normalizedStatus === "donated"
-            ? "🩸 Donation Confirmed!"
-            : "⚠️ Donation Result";
-
-        const body =
-          normalizedStatus === "donated"
-            ? `${req.bloodBankName || "The blood bank"} confirmed your ${confirmedNorm} donation. Your report is now available.`
-            : `${req.bloodBankName || "The blood bank"} updated your donation status. Check your profile.`;
-
-        // ✅ احفظ الإشعار داخل التطبيق
-        const notifRef = db
-          .collection("notifications")
-          .doc(donorId)
-          .collection("user_notifications")
-          .doc();
-
-        await notifRef.set({
-          title,
-          body,
-          type: "medical_report_saved",
-          requestId: String(requestId),
-          reportId: String(reportRef.id),
-          status: String(normalizedStatus),
-          isRead: false,
-          read: false,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        // ✅ ابعث push notification
-        if (typeof fcmToken === "string" && fcmToken.trim()) {
-          await admin.messaging().send({
-            token: fcmToken.trim(),
-            notification: { title, body },
-            data: {
-              type: "medical_report_saved",
-              requestId: String(requestId),
-              reportId: String(reportRef.id),
-              status: String(normalizedStatus),
-            },
-          });
-        }
-      }
-    } catch (e) {
-      console.warn(
-        "Notification or FCM failed (saveMedicalReport):",
-        e.message || e,
-      );
-    }
-
     return {
       success: true,
-      reportId: reportRef.id,
-      generatedRequestId,
+      reportId: reportRef ? reportRef.id : null,
     };
   } catch (e) {
     if (e instanceof HttpsError) throw e;
@@ -769,45 +754,78 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
 // ---------------------------------------------------------------------------
 exports.getDonationHistory = onCall(publicCallableOpts, async (request) => {
   try {
-    const callerUid = requireAuth(request);
+    const callerUid = await requireAuth(request);
     await requireRole(callerUid, "donor");
+    const includeActiveProgress =
+      (request.data || {}).includeActiveProgress !== false;
 
-    const reportsSnapshot = await db
-      .collection("medicalReports")
-      .where("donorId", "==", callerUid)
-      .orderBy("createdAt", "desc")
-      .limit(100)
-      .get();
-
-    const toISO = (ts) => {
-      if (!ts) return null;
-      if (ts.toDate) return ts.toDate().toISOString();
-      if (ts instanceof Date) return ts.toISOString();
-      return null;
-    };
-
-    const reports = reportsSnapshot.docs.map((doc) => {
-      const d = doc.data() || {};
-      return {
-        id: doc.id,
-        requestId: d.requestId || "",
-        bloodBankId: d.bloodBankId || "",
-        bloodBankName: d.bloodBankName || "",
-        bloodType: d.bloodType || "",
-        isUrgent: d.isUrgent || false,
-        status: d.status || "donated",
-        restrictionReason: d.restrictionReason || null,
-        notes: d.notes || null,
-        reportFileUrl: d.reportFileUrl || null,
-        canDonateAgainAt: toISO(d.canDonateAgainAt),
-        appointmentAt: toISO(d.appointmentAt),
-        createdAt: toISO(d.createdAt),
-      };
+    const reportDocsByPath = new Map();
+    const reportQueries = await Promise.allSettled([
+      db
+        .collection("medicalReports")
+        .where("donorId", "==", callerUid)
+        .limit(100)
+        .get(),
+      db
+        .collection("medicalReports")
+        .where("donorID", "==", callerUid)
+        .limit(100)
+        .get(),
+      db
+        .collection("medicalReports")
+        .where("userId", "==", callerUid)
+        .limit(100)
+        .get(),
+    ]);
+    reportQueries.forEach((result, index) => {
+      if (result.status === "fulfilled") {
+        for (const doc of result.value.docs) {
+          reportDocsByPath.set(doc.ref.path, doc);
+        }
+      } else {
+        console.warn(
+          `[getDonationHistory] report query ${index} failed:`,
+          result.reason && result.reason.message
+            ? result.reason.message
+            : result.reason,
+        );
+      }
     });
 
-    const reportRequestIds = new Set(
-      reports.map((r) => r.requestId).filter((v) => typeof v === "string" && v),
+    const notificationReportIds = new Set();
+    try {
+      const notificationSnap = await db
+        .collection("notifications")
+        .doc(callerUid)
+        .collection("user_notifications")
+        .where("type", "==", "medical_report_saved")
+        .limit(100)
+        .get();
+      for (const doc of notificationSnap.docs) {
+        const reportId = String((doc.data() || {}).reportId || "").trim();
+        if (reportId) notificationReportIds.add(reportId);
+      }
+    } catch (e) {
+      console.warn(
+        "[getDonationHistory] notification report lookup failed:",
+        e.message || e,
+      );
+    }
+
+    const missingReportIds = [...notificationReportIds].filter(
+      (reportId) => !reportDocsByPath.has(`medicalReports/${reportId}`),
     );
+    if (missingReportIds.length > 0) {
+      for (let i = 0; i < missingReportIds.length; i += 100) {
+        const refs = missingReportIds
+          .slice(i, i + 100)
+          .map((reportId) => db.collection("medicalReports").doc(reportId));
+        const snaps = await db.getAll(...refs);
+        for (const snap of snaps) {
+          if (snap.exists) reportDocsByPath.set(snap.ref.path, snap);
+        }
+      }
+    }
 
     const userSnap = await db.collection("users").doc(callerUid).get();
     const uData = userSnap.exists ? userSnap.data() || {} : {};
@@ -848,6 +866,83 @@ exports.getDonationHistory = onCall(publicCallableOpts, async (request) => {
       }
     }
 
+    const donorResponseReportIds = new Set();
+    for (const doc of donorResponseDocs) {
+      const reportId = String((doc.data() || {}).reportId || "").trim();
+      if (reportId) donorResponseReportIds.add(reportId);
+    }
+    const missingDonorResponseReportIds = [...donorResponseReportIds].filter(
+      (reportId) => !reportDocsByPath.has(`medicalReports/${reportId}`),
+    );
+    if (missingDonorResponseReportIds.length > 0) {
+      for (let i = 0; i < missingDonorResponseReportIds.length; i += 100) {
+        const refs = missingDonorResponseReportIds
+          .slice(i, i + 100)
+          .map((reportId) => db.collection("medicalReports").doc(reportId));
+        const snaps = await db.getAll(...refs);
+        for (const snap of snaps) {
+          if (snap.exists) reportDocsByPath.set(snap.ref.path, snap);
+        }
+      }
+    }
+
+    const toISO = (ts) => {
+      if (!ts) return null;
+      if (ts.toDate) return ts.toDate().toISOString();
+      if (ts instanceof Date) return ts.toISOString();
+      if (typeof ts === "string") return ts;
+      if (typeof ts === "number" && Number.isFinite(ts)) {
+        return new Date(ts).toISOString();
+      }
+      return null;
+    };
+    const pick = (source, keys, fallback = "") => {
+      for (const key of keys) {
+        const value = source[key];
+        if (value == null) continue;
+        const text = String(value).trim();
+        if (text) return text;
+      }
+      return fallback;
+    };
+
+    const reports = [...reportDocsByPath.values()].map((doc) => {
+      const d = doc.data() || {};
+      return {
+        id: doc.id,
+        requestId: pick(d, ["requestId", "requestID", "bloodRequestId"]),
+        bloodBankId: pick(d, ["bloodBankId", "hospitalId"]),
+        bloodBankName: pick(d, ["bloodBankName", "hospitalName"]),
+        bloodType: pick(d, ["bloodType", "confirmedBloodType"]),
+        isUrgent: d.isUrgent || false,
+        status: d.status || "donated",
+        restrictionReason: d.restrictionReason || null,
+        notes: d.notes || null,
+        reportFileUrl: pick(
+          d,
+          ["reportFileUrl", "reportUrl", "fileUrl", "downloadUrl", "url"],
+          null,
+        ),
+        canDonateAgainAt: toISO(d.canDonateAgainAt),
+        appointmentAt: toISO(d.appointmentAt),
+        createdAt: toISO(d.createdAt) || toISO(d.completedAt),
+      };
+    });
+
+    if (!includeActiveProgress) {
+      reports.sort((a, b) => {
+        const at = Date.parse(a.createdAt || 0);
+        const bt = Date.parse(b.createdAt || 0);
+        return bt - at;
+      });
+      return { reports, activeProgressIncluded: false };
+    }
+
+    const reportRequestIds = new Set(
+      reports.map((r) => r.requestId).filter((v) => typeof v === "string" && v),
+    );
+
+    const activeRows = [];
     for (const doc of donorResponseDocs) {
       const d = doc.data() || {};
       const inviteStatus = String(d.status || "").toLowerCase();
@@ -864,25 +959,40 @@ exports.getDonationHistory = onCall(publicCallableOpts, async (request) => {
         continue;
       }
 
-      const reqSnap = await requestRef.get();
+      activeRows.push({
+        donorResponse: d,
+        processStatus,
+        requestId,
+        requestRef,
+      });
+    }
+
+    const requestSnaps =
+      activeRows.length > 0
+        ? await db.getAll(...activeRows.map((row) => row.requestRef))
+        : [];
+
+    for (let i = 0; i < activeRows.length; i++) {
+      const row = activeRows[i];
+      const reqSnap = requestSnaps[i];
       if (!reqSnap.exists) continue;
       const req = reqSnap.data() || {};
 
       reports.push({
-        id: `active_${requestId}_${callerUid}`,
-        requestId,
+        id: `active_${row.requestId}_${callerUid}`,
+        requestId: row.requestId,
         bloodBankId: req.bloodBankId || "",
         bloodBankName: req.bloodBankName || "",
         bloodType: req.bloodType || "",
         isUrgent: req.isUrgent || false,
-        status: processStatus,
+        status: row.processStatus,
         restrictionReason: null,
         notes: null,
         reportFileUrl: null,
         canDonateAgainAt: null,
-        appointmentAt: toISO(d.appointmentAt),
+        appointmentAt: toISO(row.donorResponse.appointmentAt),
         createdAt:
-          toISO(d.updatedAt) ||
+          toISO(row.donorResponse.updatedAt) ||
           toISO(req.createdAt) ||
           new Date().toISOString(),
       });
@@ -894,7 +1004,7 @@ exports.getDonationHistory = onCall(publicCallableOpts, async (request) => {
       return bt - at;
     });
 
-    return { reports };
+    return { reports, activeProgressIncluded: true };
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error("[getDonationHistory] unhandled:", e);
@@ -909,7 +1019,7 @@ exports.getRequestDonorResponses = onCall(
   publicCallableOpts,
   async (request) => {
     try {
-      const callerUid = requireAuth(request);
+      const callerUid = await requireAuth(request);
       await requireRole(callerUid, "hospital");
 
       const { requestId } = request.data || {};
@@ -1003,7 +1113,7 @@ exports.listBloodBankPastDonors = onCall(
   publicCallableOpts,
   async (request) => {
     try {
-      const callerUid = requireAuth(request);
+      const callerUid = await requireAuth(request);
       await requireRole(callerUid, "hospital");
 
       const snap = await db
@@ -1116,7 +1226,7 @@ exports.getBloodBankDonorMedicalHistory = onCall(
   publicCallableOpts,
   async (request) => {
     try {
-      const callerUid = requireAuth(request);
+      const callerUid = await requireAuth(request);
       await requireRole(callerUid, "hospital");
       const donorId = (request.data || {}).donorId;
       if (!donorId || typeof donorId !== "string") {

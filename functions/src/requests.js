@@ -49,6 +49,18 @@ function millisFromFirestoreValue(v) {
   return null;
 }
 
+function appointmentMillis(appt) {
+  if (!appt) return null;
+  if (typeof appt.toMillis === "function") return appt.toMillis();
+  if (appt._seconds) return appt._seconds * 1000;
+  if (typeof appt === "number") return appt;
+  if (typeof appt === "string") {
+    const parsed = Date.parse(appt);
+    return isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
 /**
  * Best-effort phone string from a Firestore map (users/* or donorResponses/*).
  * Handles numeric storage and alternate field names.
@@ -129,141 +141,11 @@ function assertDonorMayAcceptNewRequest(userData) {
   }
 }
 
-/**
- * After medical reports are removed, align donorDonationSchedule/{donorId}
- * lastDonatedAt / nextDonationEligibleAt with the newest remaining "donated"
- * report, or clear those fields when the donor has no donated reports left.
- * Also strips legacy copies from users/{donorId}.
- */
-/**
- * Removes this request's id from users/{donorId}.donorAcceptedRequestIds
- * (handles string vs number entries). Stops getDonationHistory from surfacing
- * stale pipeline rows after the request and donorResponses are removed.
- */
-async function stripDonorAcceptedRequestIdFromUser(
-  donorId,
-  requestIdVariantSet,
-) {
-  if (!donorId || typeof donorId !== "string" || !donorId.trim()) return;
-  const wantDelete = (x) => {
-    const sx = String(x);
-    const nx = Number(sx);
-    for (const rid of requestIdVariantSet) {
-      if (rid === x || rid === sx) return true;
-      if (
-        typeof rid === "number" &&
-        Number.isFinite(rid) &&
-        Number.isFinite(nx) &&
-        rid === nx
-      ) {
-        return true;
-      }
-    }
-    return false;
-  };
-  try {
-    const ref = db.collection("users").doc(donorId.trim());
-    await db.runTransaction(async (t) => {
-      const snap = await t.get(ref);
-      if (!snap.exists) return;
-      const u = snap.data() || {};
-      const raw = u.donorAcceptedRequestIds;
-      if (!Array.isArray(raw) || raw.length === 0) return;
-      const next = raw.filter((x) => !wantDelete(x));
-      if (next.length === raw.length) return;
-      t.set(ref, { donorAcceptedRequestIds: next }, { merge: true });
-    });
-  } catch (e) {
-    console.warn(
-      `[stripDonorAcceptedRequestIdFromUser] donor=${donorId}:`,
-      e.message || e,
-    );
-  }
-}
-
-async function reconcileDonorDonationProfileFromReports(donorId) {
-  if (!donorId || typeof donorId !== "string") return;
-  try {
-    const snap = await db
-      .collection("medicalReports")
-      .where("donorId", "==", donorId)
-      .orderBy("createdAt", "desc")
-      .limit(100)
-      .get();
-
-    let latestDonated = null;
-    let latestMs = -1;
-    for (const doc of snap.docs) {
-      const d = doc.data() || {};
-      if (String(d.status || "").toLowerCase() !== "donated") continue;
-      const ts = d.createdAt;
-      let ms = 0;
-      if (ts && typeof ts.toMillis === "function") ms = ts.toMillis();
-      else if (ts instanceof Date) ms = ts.getTime();
-      if (ms >= latestMs) {
-        latestMs = ms;
-        latestDonated = d;
-      }
-    }
-
-    const donorRef = db.collection("users").doc(donorId);
-    const schedRef = scheduleRef(db, donorId);
-    if (!latestDonated) {
-      await schedRef.set(
-        {
-          lastDonatedAt: admin.firestore.FieldValue.delete(),
-          nextDonationEligibleAt: admin.firestore.FieldValue.delete(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
-      await donorRef.set(
-        {
-          lastDonatedAt: admin.firestore.FieldValue.delete(),
-          nextDonationEligibleAt: admin.firestore.FieldValue.delete(),
-        },
-        { merge: true },
-      );
-      return;
-    }
-
-    const patch = {
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
-    const createdAt = latestDonated.createdAt;
-    if (createdAt && typeof createdAt.toMillis === "function") {
-      patch.lastDonatedAt = createdAt;
-    }
-    const canAgain = latestDonated.canDonateAgainAt;
-    if (canAgain && typeof canAgain.toMillis === "function") {
-      patch.nextDonationEligibleAt = canAgain;
-    } else {
-      patch.nextDonationEligibleAt = admin.firestore.FieldValue.delete();
-    }
-    await schedRef.set(patch, { merge: true });
-    await donorRef.set(
-      {
-        lastDonatedAt: admin.firestore.FieldValue.delete(),
-        nextDonationEligibleAt: admin.firestore.FieldValue.delete(),
-      },
-      { merge: true },
-    );
-  } catch (e) {
-    console.warn(
-      `[reconcileDonorDonationProfileFromReports] donor=${donorId}:`,
-      e.message || e,
-    );
-  }
-}
-
 async function deleteRequestCascade(requestRef, requestId) {
   let notificationsDeleted = 0;
 
   const trimmedRequestId = String(requestId ?? "").trim();
   const responsesSnapshot = await requestRef.collection("donorResponses").get();
-  const donorIdsFromResponses = responsesSnapshot.docs
-    .map((doc) => doc.id)
-    .filter((id) => typeof id === "string" && id.trim());
 
   const requestIdVariants = [trimmedRequestId];
   const asNumber = Number(trimmedRequestId);
@@ -386,189 +268,174 @@ async function deleteRequestCascade(requestRef, requestId) {
     }
   }
 
-  // Medical reports reference requestId; remove them so past-donor lists and
-  // per-donor donation history match deleted posts.
-  let medicalReportsDeleted = 0;
-  const medicalReportByPath = new Map();
-  const medQueries = [];
-  for (const idValue of requestIdVariants) {
-    if (idValue === "" || idValue == null) continue;
-    medQueries.push(
-      db.collection("medicalReports").where("requestId", "==", idValue).get(),
-    );
-    medQueries.push(
-      db.collection("medicalReports").where("requestID", "==", idValue).get(),
-    );
-  }
-  const medSettled = await Promise.allSettled(medQueries);
-  medSettled.forEach((r, i) => {
-    if (r.status === "fulfilled") {
-      for (const doc of r.value.docs) {
-        medicalReportByPath.set(doc.ref.path, doc);
-      }
-    } else {
-      console.warn(
-        `[deleteRequestCascade] medicalReports query ${i} failed: ${
-          r.reason && r.reason.message ? r.reason.message : r.reason
-        }`,
-      );
-    }
-  });
-
-  const donorIdsToReconcile = new Set();
-  for (const doc of medicalReportByPath.values()) {
-    const d = doc.data() || {};
-    if (typeof d.donorId === "string" && d.donorId.trim()) {
-      donorIdsToReconcile.add(d.donorId.trim());
-    }
-  }
-
-  const medRefsToDelete = [...medicalReportByPath.values()].map((d) => d.ref);
-  if (medRefsToDelete.length > 0) {
-    const batchSize = 500;
-    for (let i = 0; i < medRefsToDelete.length; i += batchSize) {
-      const batch = db.batch();
-      medRefsToDelete.slice(i, i + batchSize).forEach((ref) => {
-        batch.delete(ref);
-        medicalReportsDeleted++;
-      });
-      await batch.commit();
-    }
-  }
-
-  const donorIdsList = [...donorIdsToReconcile];
-  const RECONCILE_CHUNK = 12;
-  for (let i = 0; i < donorIdsList.length; i += RECONCILE_CHUNK) {
-    const slice = donorIdsList.slice(i, i + RECONCILE_CHUNK);
-    await Promise.all(
-      slice.map((donorId) => reconcileDonorDonationProfileFromReports(donorId)),
-    );
-  }
-
-  const requestIdVariantSet = new Set(
-    requestIdVariants.filter((v) => v !== "" && v != null),
-  );
-  const stripChunk = 20;
-  for (let i = 0; i < donorIdsFromResponses.length; i += stripChunk) {
-    const slice = donorIdsFromResponses.slice(i, i + stripChunk);
-    await Promise.all(
-      slice.map((donorId) =>
-        stripDonorAcceptedRequestIdFromUser(donorId, requestIdVariantSet),
-      ),
-    );
-  }
-
   await requestRef.delete();
-  return { notificationsDeleted, medicalReportsDeleted };
+  return { notificationsDeleted };
 }
 
-/**
- * Builds { donorId, fullName, email, phoneNumber } from users/{donorId}, with Auth fallback
- * when Firestore is missing name or email (common for older accounts).
- */
-async function buildDonorResponseEntry(donorId) {
-  const donorUserSnap = await db.collection("users").doc(donorId).get();
-  const ud = donorUserSnap.exists ? donorUserSnap.data() || {} : {};
-  let fullName =
-    (typeof ud.fullName === "string" && ud.fullName.trim()) ||
-    (typeof ud.name === "string" && ud.name.trim()) ||
-    "";
-  let email = typeof ud.email === "string" ? ud.email.trim() : "";
-  let phoneNumber = pickPhoneFromObject(ud);
-  if (!email || !fullName || !phoneNumber) {
-    try {
-      const authUser = await admin.auth().getUser(donorId);
-      if (!email && typeof authUser.email === "string" && authUser.email) {
-        email = authUser.email.trim();
-      }
-      if (
-        !fullName &&
-        typeof authUser.displayName === "string" &&
-        authUser.displayName.trim()
-      ) {
-        fullName = authUser.displayName.trim();
-      }
-      if (
-        !phoneNumber &&
-        typeof authUser.phoneNumber === "string" &&
-        authUser.phoneNumber.trim()
-      ) {
-        phoneNumber = authUser.phoneNumber.trim();
-      }
-    } catch (_) {
-      // Donor may be deleted from Auth
-    }
-  }
-  if (!fullName) fullName = "Donor";
-  const bloodType =
-    typeof ud.bloodType === "string" && ud.bloodType.trim()
-      ? ud.bloodType.trim()
-      : null;
-  return { donorId, fullName, email, phoneNumber, bloodType };
-}
-
-/**
- * Same as buildDonorResponseEntry plus pipeline fields for blood-bank donor management UI.
- */
-async function buildDonorManagementEntry(donorId, responseRow) {
-  const base = await buildDonorResponseEntry(donorId);
-  const row = responseRow || {};
-  const rowPhone = pickPhoneFromObject(row);
-  const phoneNumber =
-    (base.phoneNumber && String(base.phoneNumber).trim()) || rowPhone || "";
-
-  let appointmentAtMillis = null;
-  const apt = row.appointmentAt;
-  if (apt && typeof apt.toMillis === "function") {
-    appointmentAtMillis = apt.toMillis();
-  }
-
-  const toMillis = (ts) => {
+function serializeMedicalReportForClient(doc) {
+  const d = doc.data() || {};
+  const toISO = (ts) => {
     if (!ts) return null;
-    if (typeof ts.toMillis === "function") return ts.toMillis();
-    if (ts instanceof Date) return ts.getTime();
-    if (typeof ts === "number" && Number.isFinite(ts)) return ts;
-    if (typeof ts === "string") {
-      const s = ts.trim();
-      if (!s) return null;
-      if (/^\d+$/.test(s)) {
-        const n = Number(s);
-        return Number.isFinite(n) ? n : null;
-      }
-      const p = Date.parse(s);
-      return isNaN(p) ? null : p;
-    }
-    if (
-      typeof ts === "object" &&
-      typeof ts._seconds === "number" &&
-      Number.isFinite(ts._seconds)
-    ) {
-      return ts._seconds * 1000 + Math.floor((ts._nanoseconds || 0) / 1e6);
-    }
+    if (typeof ts.toDate === "function") return ts.toDate().toISOString();
+    if (ts instanceof Date) return ts.toISOString();
+    if (typeof ts === "string") return ts;
     return null;
   };
-
-  const reschedulePreferredAtMillis = toMillis(row.reschedulePreferredAt);
-  const rescheduleRequestedAtMillis = toMillis(row.rescheduleRequestedAt);
-
-  const rescheduleReason =
-    typeof row.rescheduleReason === "string" && row.rescheduleReason.trim()
-      ? row.rescheduleReason.trim()
-      : null;
-
   return {
-    ...base,
-    phoneNumber,
-    processStatus: row.processStatus ?? null,
-    appointmentStatus:
-      typeof row.appointmentStatus === "string" && row.appointmentStatus.trim()
-        ? row.appointmentStatus.trim().toLowerCase()
-        : null,
-    appointmentAtMillis,
-    rescheduleReason,
-    reschedulePreferredAtMillis,
-    rescheduleRequestedAtMillis,
+    id: doc.id,
+    requestId: d.requestId || "",
+    bloodBankId: d.bloodBankId || "",
+    bloodBankName: d.bloodBankName || "",
+    bloodType: d.bloodType || d.confirmedBloodType || "",
+    isUrgent: !!d.isUrgent,
+    status: d.status || "",
+    restrictionReason: d.restrictionReason || null,
+    notes: d.notes || null,
+    reportFileUrl: d.reportFileUrl || null,
+    canDonateAgainAt: toISO(d.canDonateAgainAt),
+    appointmentAt: toISO(d.appointmentAt),
+    createdAt: toISO(d.createdAt),
   };
+}
+
+async function getLatestUploadedMedicalReportsByDonor(donorIds) {
+  const uniqueDonorIds = [...new Set(donorIds.filter(Boolean))];
+  const latestByDonor = new Map();
+  if (uniqueDonorIds.length === 0) return latestByDonor;
+
+  for (let i = 0; i < uniqueDonorIds.length; i += 30) {
+    const chunk = uniqueDonorIds.slice(i, i + 30);
+    const snap = await db
+      .collection("medicalReports")
+      .where("donorId", "in", chunk)
+      .limit(chunk.length * 50)
+      .get();
+
+    for (const doc of snap.docs) {
+      const data = doc.data() || {};
+      const url = data.reportFileUrl;
+      const donorId = data.donorId;
+      if (
+        typeof donorId !== "string" ||
+        !donorId ||
+        typeof url !== "string" ||
+        !url.trim()
+      ) {
+        continue;
+      }
+
+      const createdAt = data.createdAt;
+      let createdAtMs = 0;
+      if (createdAt && typeof createdAt.toMillis === "function") {
+        createdAtMs = createdAt.toMillis();
+      } else if (createdAt instanceof Date) {
+        createdAtMs = createdAt.getTime();
+      } else if (typeof createdAt === "string") {
+        createdAtMs = Date.parse(createdAt) || 0;
+      }
+
+      const current = latestByDonor.get(donorId);
+      if (!current || createdAtMs > current.createdAtMs) {
+        latestByDonor.set(donorId, {
+          createdAtMs,
+          report: serializeMedicalReportForClient(doc),
+        });
+      }
+    }
+  }
+
+  return new Map(
+    [...latestByDonor.entries()].map(([donorId, value]) => [
+      donorId,
+      value.report,
+    ]),
+  );
+}
+
+function millisFromPipelineValue(ts) {
+  if (!ts) return null;
+  if (typeof ts.toMillis === "function") return ts.toMillis();
+  if (ts instanceof Date) return ts.getTime();
+  if (typeof ts === "number" && Number.isFinite(ts)) return ts;
+  if (typeof ts === "string") {
+    const s = ts.trim();
+    if (!s) return null;
+    if (/^\d+$/.test(s)) {
+      const n = Number(s);
+      return Number.isFinite(n) ? n : null;
+    }
+    const p = Date.parse(s);
+    return isNaN(p) ? null : p;
+  }
+  if (
+    typeof ts === "object" &&
+    typeof ts._seconds === "number" &&
+    Number.isFinite(ts._seconds)
+  ) {
+    return ts._seconds * 1000 + Math.floor((ts._nanoseconds || 0) / 1e6);
+  }
+  return null;
+}
+
+async function buildDonorManagementEntries(responseDocs, options = {}) {
+  const includeLatestReports = options.includeLatestReports !== false;
+  const userRefs = responseDocs.map((doc) =>
+    db.collection("users").doc(doc.id),
+  );
+  const userSnaps = userRefs.length > 0 ? await db.getAll(...userRefs) : [];
+  const reportsByDonor = includeLatestReports
+    ? await getLatestUploadedMedicalReportsByDonor(
+        responseDocs.map((doc) => doc.id),
+      )
+    : new Map();
+
+  return responseDocs.map((doc, index) => {
+    const row = doc.data() || {};
+    const userSnap = userSnaps[index];
+    const userData = userSnap && userSnap.exists ? userSnap.data() || {} : {};
+    const rowPhone = pickPhoneFromObject(row);
+    const userPhone = pickPhoneFromObject(userData);
+    const fullName =
+      (typeof row.fullName === "string" && row.fullName.trim()) ||
+      (typeof userData.fullName === "string" && userData.fullName.trim()) ||
+      (typeof userData.name === "string" && userData.name.trim()) ||
+      "Donor";
+    const email =
+      (typeof row.email === "string" && row.email.trim()) ||
+      (typeof userData.email === "string" && userData.email.trim()) ||
+      "";
+    const bloodType =
+      (typeof userData.bloodType === "string" && userData.bloodType.trim()) ||
+      (typeof row.bloodType === "string" && row.bloodType.trim()) ||
+      null;
+    const rescheduleReason =
+      typeof row.rescheduleReason === "string" && row.rescheduleReason.trim()
+        ? row.rescheduleReason.trim()
+        : null;
+
+    return {
+      donorId: doc.id,
+      fullName,
+      email,
+      phoneNumber: userPhone || rowPhone || "",
+      bloodType,
+      processStatus: row.processStatus ?? null,
+      appointmentStatus:
+        typeof row.appointmentStatus === "string" &&
+        row.appointmentStatus.trim()
+          ? row.appointmentStatus.trim().toLowerCase()
+          : null,
+      appointmentAtMillis: millisFromPipelineValue(row.appointmentAt),
+      rescheduleReason,
+      reschedulePreferredAtMillis: millisFromPipelineValue(
+        row.reschedulePreferredAt,
+      ),
+      rescheduleRequestedAtMillis: millisFromPipelineValue(
+        row.rescheduleRequestedAt,
+      ),
+      latestMedicalReport: reportsByDonor.get(doc.id) || null,
+    };
+  });
 }
 
 /**
@@ -713,11 +580,14 @@ exports.getDonors = onCall(publicCallableOpts, async (request) => {
       typeof data.bloodType === "string" && data.bloodType.trim() !== ""
         ? data.bloodType.trim()
         : null;
+    const limit =
+      typeof data.limit === "number" ? Math.min(data.limit, 100) : 80;
 
     let query = db.collection("users").where("role", "==", "donor");
     if (bloodType) {
       query = query.where("bloodType", "==", bloodType);
     }
+    query = query.limit(limit);
 
     const donorsSnapshot = await query.get();
 
@@ -734,7 +604,12 @@ exports.getDonors = onCall(publicCallableOpts, async (request) => {
       };
     });
 
-    return { ok: true, donors, count: donors.length };
+    return {
+      ok: true,
+      donors,
+      count: donors.length,
+      hasMore: donorsSnapshot.docs.length === limit,
+    };
   } catch (err) {
     console.error("[getDonors] ERROR:", err);
     throw toHttpsError(err, "Failed to get donors list.");
@@ -769,82 +644,65 @@ exports.getRequests = onCall(publicCallableOpts, async (request) => {
 
     const snapshot = await query.get();
 
-    const requests = await Promise.all(
-      snapshot.docs.map(async (doc) => {
-        const d = doc.data() || {};
-
-        if (isRequestExpired(d.createdAt)) {
-          return null;
-        }
-
-        let myResponse = null;
-        let appointmentAt = null;
-        let processStatus = null;
-
-        try {
-          const respSnap = await doc.ref
-            .collection("donorResponses")
-            .doc(uid)
-            .get();
-
-          if (respSnap.exists) {
-            const respData = respSnap.data() || {};
-            const st = respData.status;
-
-            if (st === "accepted" || st === "rejected") {
-              myResponse = st;
-            }
-
-            if (typeof respData.processStatus === "string") {
-              processStatus = respData.processStatus;
-            }
-
-            const appt = respData.appointmentAt;
-
-            if (appt) {
-              if (typeof appt.toMillis === "function") {
-                // Firestore Timestamp
-                appointmentAt = appt.toMillis();
-              } else if (appt._seconds) {
-                // plain object
-                appointmentAt = appt._seconds * 1000;
-              } else if (typeof appt === "number") {
-                // already millis
-                appointmentAt = appt;
-              } else if (typeof appt === "string") {
-                // ISO string
-                const parsed = Date.parse(appt);
-                if (!isNaN(parsed)) {
-                  appointmentAt = parsed;
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn("[getRequests] donorResponse read:", e.message);
-        }
-
-        return {
-          id: doc.id,
-          ...d,
-
-          acceptedCount:
-            typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
-
-          rejectedCount:
-            typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
-
-          myResponse,
-          appointmentAt,
-          processStatus,
-
-          createdAt:
-            d.createdAt && typeof d.createdAt.toMillis === "function"
-              ? d.createdAt.toMillis()
-              : null,
-        };
-      }),
+    const responseRefs = snapshot.docs.map((doc) =>
+      doc.ref.collection("donorResponses").doc(uid),
     );
+    let responseSnaps = [];
+    try {
+      responseSnaps =
+        responseRefs.length > 0 ? await db.getAll(...responseRefs) : [];
+    } catch (e) {
+      console.warn("[getRequests] donorResponse batch read:", e.message);
+      responseSnaps = [];
+    }
+
+    const requests = snapshot.docs.map((doc, index) => {
+      const d = doc.data() || {};
+
+      if (isRequestExpired(d.createdAt)) {
+        return null;
+      }
+
+      let myResponse = null;
+      let appointmentAt = null;
+      let processStatus = null;
+
+      const respSnap = responseSnaps[index];
+      if (respSnap && respSnap.exists) {
+        const respData = respSnap.data() || {};
+        const st = respData.status;
+
+        if (st === "accepted" || st === "rejected") {
+          myResponse = st;
+        }
+
+        if (typeof respData.processStatus === "string") {
+          processStatus = respData.processStatus;
+        }
+
+        appointmentAt = appointmentMillis(respData.appointmentAt);
+      }
+
+      return {
+        id: doc.id,
+        ...d,
+
+        acceptedCount:
+          typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
+
+        rejectedCount:
+          typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
+
+        myResponse,
+        appointmentAt,
+        processStatus,
+
+        createdAt:
+          d.createdAt && typeof d.createdAt.toMillis === "function"
+            ? d.createdAt.toMillis()
+            : null,
+      };
+    });
 
     return {
       requests: requests.filter((r) => r !== null),
@@ -857,6 +715,87 @@ exports.getRequests = onCall(publicCallableOpts, async (request) => {
 });
 
 /**
+ * getRequestById - single request lookup for detail/notification screens.
+ */
+exports.getRequestById = onCall(publicCallableOpts, async (request) => {
+  try {
+    const uid = requireAuth(request);
+    const data = request.data || {};
+    const requestId = nonEmptyString(data.requestId, "requestId");
+
+    const userSnap = await db.collection("users").doc(uid).get();
+    if (!userSnap.exists) {
+      throw new HttpsError("not-found", "User profile not found.");
+    }
+    const userData = userSnap.data() || {};
+    const role = String(userData.role || "")
+      .trim()
+      .toLowerCase();
+
+    const requestRef = db.collection("requests").doc(requestId);
+    const requestSnap = await requestRef.get();
+    if (!requestSnap.exists) {
+      throw new HttpsError("not-found", "Request not found.");
+    }
+
+    const d = requestSnap.data() || {};
+    if (role === "hospital" && d.bloodBankId !== uid) {
+      throw new HttpsError(
+        "permission-denied",
+        "You can only view your own request.",
+      );
+    }
+
+    let myResponse = null;
+    let appointmentAt = null;
+    let processStatus = null;
+
+    if (role === "donor") {
+      const respSnap = await requestRef
+        .collection("donorResponses")
+        .doc(uid)
+        .get();
+      if (respSnap.exists) {
+        const respData = respSnap.data() || {};
+        const st = respData.status;
+        if (st === "accepted" || st === "rejected") {
+          myResponse = st;
+        }
+        if (typeof respData.processStatus === "string") {
+          processStatus = respData.processStatus;
+        }
+        appointmentAt = appointmentMillis(respData.appointmentAt);
+      } else if (isRequestExpired(d.createdAt)) {
+        throw new HttpsError("not-found", "Request not found.");
+      }
+    } else if (role !== "hospital") {
+      throw new HttpsError("permission-denied", "Unsupported user role.");
+    }
+
+    return {
+      request: {
+        id: requestSnap.id,
+        ...d,
+        acceptedCount:
+          typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
+        rejectedCount:
+          typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
+        myResponse,
+        appointmentAt,
+        processStatus,
+        createdAt:
+          d.createdAt && typeof d.createdAt.toMillis === "function"
+            ? d.createdAt.toMillis()
+            : null,
+      },
+    };
+  } catch (err) {
+    console.error("[getRequestById] ERROR:", err);
+    throw toHttpsError(err, "Failed to load request.");
+  }
+});
+
+/**
  * getRequestsByBloodBankId - Get all requests for a specific blood bank.
  */
 exports.getRequestsByBloodBankId = onCall(
@@ -864,6 +803,9 @@ exports.getRequestsByBloodBankId = onCall(
   async (request) => {
     try {
       const uid = requireAuth(request);
+      const data = request.data || {};
+      const limit =
+        typeof data.limit === "number" ? Math.min(data.limit, 100) : 80;
 
       const userSnap = await db.collection("users").doc(uid).get();
       if (!userSnap.exists) {
@@ -882,6 +824,7 @@ exports.getRequestsByBloodBankId = onCall(
         .collection("requests")
         .where("bloodBankId", "==", uid)
         .orderBy("createdAt", "desc")
+        .limit(limit)
         .get();
 
       const requests = await Promise.all(
@@ -895,10 +838,11 @@ exports.getRequestsByBloodBankId = onCall(
             .get();
           const acceptedDonors = [];
           const rejectedDonors = [];
-          for (const rdoc of responsesSnap.docs) {
-            const donorId = rdoc.id;
+          const entries = await buildDonorManagementEntries(responsesSnap.docs);
+          for (let i = 0; i < responsesSnap.docs.length; i++) {
+            const rdoc = responsesSnap.docs[i];
             const st = (rdoc.data() || {}).status;
-            const entry = await buildDonorManagementEntry(donorId, rdoc.data());
+            const entry = entries[i];
             if (st === "accepted") {
               acceptedDonors.push(entry);
             } else if (st === "rejected") {
@@ -923,7 +867,11 @@ exports.getRequestsByBloodBankId = onCall(
       );
 
       const liveRequests = requests.filter((r) => r !== null);
-      return { requests: liveRequests, count: liveRequests.length };
+      return {
+        requests: liveRequests,
+        count: liveRequests.length,
+        hasMore: snapshot.docs.length === limit,
+      };
     } catch (err) {
       console.error("[getRequestsByBloodBankId] ERROR:", err);
       throw toHttpsError(err, "Failed to load requests.");
@@ -1202,6 +1150,7 @@ exports.getRequestDonorResponses = onCall(
       const uid = requireAuth(request);
       const data = request.data || {};
       const requestId = nonEmptyString(data.requestId, "requestId");
+      const includeLatestReports = data.includeLatestReports !== false;
 
       const userSnap = await db.collection("users").doc(uid).get();
       if (!userSnap.exists || userSnap.data().role !== "hospital") {
@@ -1226,11 +1175,14 @@ exports.getRequestDonorResponses = onCall(
       const responsesSnap = await requestRef.collection("donorResponses").get();
       const accepted = [];
       const rejected = [];
+      const entries = await buildDonorManagementEntries(responsesSnap.docs, {
+        includeLatestReports,
+      });
 
-      for (const doc of responsesSnap.docs) {
-        const donorId = doc.id;
+      for (let i = 0; i < responsesSnap.docs.length; i++) {
+        const doc = responsesSnap.docs[i];
         const st = (doc.data() || {}).status;
-        const entry = await buildDonorManagementEntry(donorId, doc.data());
+        const entry = entries[i];
         if (st === "accepted") {
           accepted.push(entry);
         } else if (st === "rejected") {
@@ -1285,16 +1237,15 @@ exports.deleteRequest = onCall(publicCallableOpts, async (request) => {
       );
     }
 
-    const { notificationsDeleted, medicalReportsDeleted } =
-      await deleteRequestCascade(requestRef, requestId);
+    const { notificationsDeleted } = await deleteRequestCascade(
+      requestRef,
+      requestId,
+    );
     console.log("[deleteRequest] Request document deleted from Firestore");
 
     const parts = ["Request and messages deleted"];
     if (notificationsDeleted > 0) {
       parts.push(`${notificationsDeleted} notification(s)`);
-    }
-    if (medicalReportsDeleted > 0) {
-      parts.push(`${medicalReportsDeleted} donation record(s)`);
     }
     const message =
       parts.length > 1
@@ -1305,7 +1256,7 @@ exports.deleteRequest = onCall(publicCallableOpts, async (request) => {
       ok: true,
       message,
       notificationsDeleted,
-      medicalReportsDeleted,
+      medicalReportsDeleted: 0,
     };
   } catch (err) {
     console.error("[deleteRequest] ERROR:", err);
@@ -1437,7 +1388,7 @@ function canonicalStandardBloodType(raw) {
   s = s.replace(/POS$/g, "+").replace(/NEG$/g, "-");
   if (STANDARD_BLOOD_TYPES.has(s)) return s;
 
-  const m = s.match(/^(A|B|AB|O)(\+|\-)$/);
+  const m = s.match(/^(A|B|AB|O)([+-])$/);
   if (m) {
     const key = m[1] + m[2];
     if (STANDARD_BLOOD_TYPES.has(key)) return key;

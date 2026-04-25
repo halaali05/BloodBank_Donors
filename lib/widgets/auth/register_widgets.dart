@@ -168,6 +168,13 @@ class LocationDropdown extends StatelessWidget {
   final ValueChanged<String?> onChanged;
   final bool useOutlinedInput;
 
+  static final List<DropdownMenuItem<String>> _governorateItems = AppTheme
+      .jordanianGovernorates
+      .map((location) {
+        return DropdownMenuItem<String>(value: location, child: Text(location));
+      })
+      .toList(growable: false);
+
   const LocationDropdown({
     super.key,
     this.selectedLocation,
@@ -191,9 +198,7 @@ class LocationDropdown extends StatelessWidget {
       key: ValueKey<String?>(selectedLocation),
       initialValue: selectedLocation,
       decoration: decoration,
-      items: AppTheme.jordanianGovernorates.map((location) {
-        return DropdownMenuItem<String>(value: location, child: Text(location));
-      }).toList(),
+      items: _governorateItems,
       onChanged: onChanged,
     );
   }

@@ -65,6 +65,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _openMapPicker() async {
+    if (_isLoading) return;
     final result = await Navigator.of(context).push<LocationPickerResult>(
       MaterialPageRoute(
         builder: (_) =>
@@ -84,6 +85,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _handleSubmit() async {
+    if (_isLoading) return;
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
@@ -268,16 +270,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   _RegisterChoicesPanel(
                     userType: _type,
                     onUserTypeChanged: (isDonor) {
+                      final nextType = isDonor
+                          ? UserType.donor
+                          : UserType.bloodBank;
+                      if (nextType == _type) return;
                       setState(() {
-                        _type = isDonor ? UserType.donor : UserType.bloodBank;
+                        _type = nextType;
                       });
                     },
                     donorGender: _donorGender,
-                    onDonorGenderChanged: (g) =>
-                        setState(() => _donorGender = g),
+                    onDonorGenderChanged: (g) {
+                      if (_donorGender == g) return;
+                      setState(() => _donorGender = g);
+                    },
                     selectedLocation: _selectedLocation,
-                    onLocationChanged: (v) =>
-                        setState(() => _selectedLocation = v),
+                    onLocationChanged: (v) {
+                      if (_selectedLocation == v) return;
+                      setState(() => _selectedLocation = v);
+                    },
                     bloodBankAddressLabel: _pickedAddressLabel,
                     onBloodBankMapTap: _openMapPicker,
                   ),
@@ -346,10 +356,7 @@ class _RegisterChoicesPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'I am signing up as',
-            style: _RegisterFormStyles.sectionLabel,
-          ),
+          Text('I am signing up as', style: _RegisterFormStyles.sectionLabel),
           const SizedBox(height: 8),
           UserTypeToggle(
             isDonor: userType == UserType.donor,

@@ -30,6 +30,7 @@ exports.cleanupUnverifiedUsers = authFunctions.cleanupUnverifiedUsers;
 exports.addRequest = requestFunctions.addRequest;
 exports.getDonors = requestFunctions.getDonors;
 exports.getRequests = requestFunctions.getRequests;
+exports.getRequestById = requestFunctions.getRequestById;
 exports.getRequestsByBloodBankId = requestFunctions.getRequestsByBloodBankId;
 exports.setDonorRequestResponse = requestFunctions.setDonorRequestResponse;
 exports.markRequestCompleted = requestFunctions.markRequestCompleted;

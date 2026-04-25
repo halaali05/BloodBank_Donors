@@ -25,7 +25,7 @@ import 'donor_profile_donation_restrictions_page.dart';
 /// - Write operations: All go through Cloud Functions (server-side)
 ///   - Profile updates: Uses updateUserProfile Cloud Function
 ///
-/// NOTE: Real-time updates are achieved through periodic polling (every 10 seconds)
+/// NOTE: Updates are refreshed periodically through Cloud Functions.
 /// since Cloud Functions cannot return real-time streams.
 class DonorProfileScreen extends StatefulWidget {
   const DonorProfileScreen({super.key});
@@ -52,6 +52,8 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
 
   List<DonorMedicalReport> _donationHistory = [];
   bool _historyLoading = true;
+  Future<List<DonorMedicalReport>>? _historyLoadFuture;
+  Future<List<DonorMedicalReport>>? _reportsLoadFuture;
 
   String get uid => FirebaseAuth.instance.currentUser!.uid;
 
@@ -60,6 +62,19 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(fn);
     });
+  }
+
+  Future<User?> _waitForCurrentUser() async {
+    final current = FirebaseAuth.instance.currentUser;
+    if (current != null) return current;
+    try {
+      return await FirebaseAuth.instance
+          .authStateChanges()
+          .firstWhere((user) => user != null)
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {
+      return FirebaseAuth.instance.currentUser;
+    }
   }
 
   @override
@@ -115,29 +130,81 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
     }
   }
 
-  Future<List<DonorMedicalReport>> _reloadDonationHistoryList() async {
-    if (!mounted) return _donationHistory;
+  Future<List<DonorMedicalReport>> _reloadDonationHistoryList({
+    bool includeActiveProgress = true,
+  }) {
+    if (!mounted) return Future.value(_donationHistory);
 
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return _donationHistory;
+    final existingFuture = includeActiveProgress
+        ? _historyLoadFuture
+        : _reportsLoadFuture;
+    if (existingFuture != null) return existingFuture;
 
-    await user.getIdToken();
+    _scheduleSetState(
+      () => _historyLoading = includeActiveProgress || _donationHistory.isEmpty,
+    );
+    final future = _waitForCurrentUser()
+        .then((user) {
+          if (user == null) throw Exception('Please log in first');
+          return user.getIdToken(true);
+        })
+        .then(
+          (_) => _controller.fetchDonationHistory(
+            includeActiveProgress: includeActiveProgress,
+          ),
+        )
+        .then((history) {
+          if (!mounted) return _donationHistory;
+          _scheduleSetState(() {
+            if (includeActiveProgress) {
+              _donationHistory = history;
+            } else {
+              final reportRequestIds = {
+                for (final report in history)
+                  if (report.requestId.trim().isNotEmpty)
+                    report.requestId.trim(),
+              };
+              final activeProgressRows = _donationHistory.where((report) {
+                final hasUploadedReport =
+                    report.reportFileUrl != null &&
+                    report.reportFileUrl!.trim().isNotEmpty;
+                if (hasUploadedReport) return false;
+                final requestId = report.requestId.trim();
+                return requestId.isEmpty ||
+                    !reportRequestIds.contains(requestId);
+              });
+              _donationHistory = [...history, ...activeProgressRows]
+                ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            }
+            _historyLoading = false;
+          });
+          return history;
+        })
+        .catchError((e) {
+          debugPrint('loadDonationHistory: $e');
+          if (!mounted) return _donationHistory;
+          _scheduleSetState(() => _historyLoading = false);
+          if (!includeActiveProgress) throw e;
+          return _donationHistory;
+        })
+        .whenComplete(() {
+          if (includeActiveProgress) {
+            _historyLoadFuture = null;
+          } else {
+            _reportsLoadFuture = null;
+          }
+        });
 
-    _scheduleSetState(() => _historyLoading = true);
-    try {
-      final history = await _controller.fetchDonationHistory();
-      if (!mounted) return _donationHistory;
-      _scheduleSetState(() {
-        _donationHistory = history;
-        _historyLoading = false;
-      });
-      return history;
-    } catch (e) {
-      debugPrint('loadDonationHistory: $e');
-      if (!mounted) return _donationHistory;
-      _scheduleSetState(() => _historyLoading = false);
-      return _donationHistory;
+    if (includeActiveProgress) {
+      _historyLoadFuture = future;
+    } else {
+      _reportsLoadFuture = future;
     }
+    return future;
+  }
+
+  Future<List<DonorMedicalReport>> _reloadReportsList() {
+    return _reloadDonationHistoryList(includeActiveProgress: false);
   }
 
   Future<void> _loadDonationHistory() async {
@@ -645,8 +712,7 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                               builder: (_) => DonorProfileDonationHistoryPage(
                                 initialReports: _donationHistory,
                                 initialLoading: _historyLoading,
-                                reloadReports: () =>
-                                    _controller.fetchDonationHistory(),
+                                reloadReports: _reloadDonationHistoryList,
                               ),
                             ),
                           )
@@ -675,8 +741,9 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => DonorProfileReportsPage(
-                            reports: _donationHistory,
-                            isLoading: _historyLoading,
+                            initialReports: _donationHistory,
+                            initialLoading: _historyLoading,
+                            reloadReports: _reloadReportsList,
                           ),
                         ),
                       );

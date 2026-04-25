@@ -3,21 +3,75 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/donor_medical_report.dart';
 import '../../theme/app_theme.dart';
 
-class DonorProfileReportsPage extends StatelessWidget {
-  final List<DonorMedicalReport> reports;
-  final bool isLoading;
+class DonorProfileReportsPage extends StatefulWidget {
+  final List<DonorMedicalReport> initialReports;
+  final bool initialLoading;
+  final Future<List<DonorMedicalReport>> Function()? reloadReports;
 
   const DonorProfileReportsPage({
     super.key,
-    required this.reports,
-    required this.isLoading,
+    required this.initialReports,
+    required this.initialLoading,
+    this.reloadReports,
   });
 
   @override
+  State<DonorProfileReportsPage> createState() =>
+      _DonorProfileReportsPageState();
+}
+
+class _DonorProfileReportsPageState extends State<DonorProfileReportsPage> {
+  late List<DonorMedicalReport> _reports;
+  late bool _isLoading;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _reports = List<DonorMedicalReport>.from(widget.initialReports);
+    _isLoading =
+        widget.initialLoading && !_hasUploadedReports(widget.initialReports);
+    if (widget.reloadReports != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reloadReports();
+      });
+    }
+  }
+
+  static bool _hasUploadedReports(List<DonorMedicalReport> reports) {
+    return reports.any(_isSavedReport);
+  }
+
+  static bool _isSavedReport(DonorMedicalReport report) {
+    if (report.id.startsWith('active_')) return false;
+    return report.reportFileUrl != null &&
+        report.reportFileUrl!.trim().isNotEmpty;
+  }
+
+  Future<void> _reloadReports() async {
+    final reload = widget.reloadReports;
+    if (reload == null) return;
+    setState(() => _isLoading = !_hasUploadedReports(_reports));
+    try {
+      final next = await reload();
+      if (!mounted) return;
+      setState(() {
+        _reports = List<DonorMedicalReport>.from(next);
+        _isLoading = false;
+        _loadError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _loadError = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final uploadedReports = reports
-        .where((r) => r.reportFileUrl != null && r.reportFileUrl!.isNotEmpty)
-        .toList();
+    final savedReports = _reports.where(_isSavedReport).toList();
 
     return Scaffold(
       backgroundColor: AppTheme.softBg,
@@ -31,11 +85,11 @@ class DonorProfileReportsPage extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
-      body: isLoading
+      body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: AppTheme.deepRed),
             )
-          : uploadedReports.isEmpty
+          : savedReports.isEmpty
           ? Center(
               child: Container(
                 margin: const EdgeInsets.all(16),
@@ -54,23 +108,39 @@ class DonorProfileReportsPage extends StatelessWidget {
                       color: Colors.black38,
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'No reports uploaded yet',
+                    Text(
+                      _loadError == null
+                          ? 'No reports uploaded yet'
+                          : 'Reports could not load',
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 15,
                       ),
                     ),
+                    if (_loadError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _loadError!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
             )
           : ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: uploadedReports.length,
+              itemCount: savedReports.length,
               itemBuilder: (_, i) {
-                final report = uploadedReports[i];
+                final report = savedReports[i];
                 final status = donorProcessStatusToString(report.status);
+                final reportUrl = report.reportFileUrl?.trim() ?? '';
+                final hasReportFile = reportUrl.isNotEmpty;
                 final hasNotes =
                     report.notes != null && report.notes!.trim().isNotEmpty;
 
@@ -172,39 +242,58 @@ class DonorProfileReportsPage extends StatelessWidget {
                       const SizedBox(height: 12),
                       SizedBox(
                         width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () async {
-                            try {
-                              final url = Uri.parse(report.reportFileUrl!);
-                              await launchUrl(
-                                url,
-                                mode: LaunchMode.inAppBrowserView,
-                              );
-                            } catch (e) {
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Error: $e'),
-                                  backgroundColor: Colors.red,
+                        child: hasReportFile
+                            ? ElevatedButton.icon(
+                                onPressed: () async {
+                                  try {
+                                    final url = Uri.parse(reportUrl);
+                                    await launchUrl(
+                                      url,
+                                      mode: LaunchMode.inAppBrowserView,
+                                    );
+                                  } catch (e) {
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Error: $e'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.deepRed,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                 ),
-                              );
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.deepRed,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: const Icon(Icons.open_in_new_rounded),
-                          label: const Text(
-                            'View Report',
-                            style: TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ),
+                                icon: const Icon(Icons.open_in_new_rounded),
+                                label: const Text(
+                                  'View Report',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              )
+                            : OutlinedButton.icon(
+                                onPressed: null,
+                                icon: const Icon(Icons.info_outline_rounded),
+                                label: const Text(
+                                  'Report saved, file link unavailable',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
                       ),
                     ],
                   ),

@@ -16,7 +16,7 @@ import '../widgets/notifications/notification_item_cloud.dart';
 ///   - Notifications: Read via getNotifications Cloud Function
 /// - Write operations: All go through Cloud Functions (server-side)
 ///
-/// NOTE: Real-time updates are achieved through periodic polling (every 10 seconds)
+/// NOTE: Updates are refreshed periodically through Cloud Functions.
 /// since Cloud Functions cannot return real-time streams.
 class NotificationsScreen extends StatefulWidget {
   /// Initial tab index (0 = All, 1 = Unread)
@@ -35,6 +35,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   Timer? _refreshTimer;
   List<Map<String, dynamic>> _notifications = [];
   bool _isLoading = true;
+  bool _isMarkingAll = false;
   String? _error;
   late TabController _tabController;
 
@@ -62,11 +63,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       }
     });
 
-    // Set up periodic refresh (every 30 seconds) for real-time updates
-    // Increased interval to improve performance
+    // Silent refresh keeps the list current without showing a loading screen.
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) {
-        _loadNotifications();
+        _loadNotifications(showLoading: false);
       }
     });
   }
@@ -93,27 +93,30 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
   // ------------------ Data Loading ------------------
   /// Loads notifications via Cloud Functions
-  Future<void> _loadNotifications() async {
+  Future<void> _loadNotifications({bool showLoading = true}) async {
     if (!mounted) return;
 
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
 
     try {
       final notifications = await _controller.fetchNotifications();
       if (mounted) {
         setState(() {
           _notifications = notifications;
-          _isLoading = false;
+          if (showLoading) _isLoading = false;
+          _error = null;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _error = e.toString().replaceFirst('Exception: ', '');
-          _isLoading = false;
+          if (showLoading) _isLoading = false;
         });
       }
     }
@@ -122,12 +125,27 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   // ------------------ Notification Actions ------------------
   /// Handles marking all notifications as read
   Future<void> _handleMarkAllAsRead() async {
+    if (_isMarkingAll) return;
+    final previous = _notifications
+        .map((n) => Map<String, dynamic>.from(n))
+        .toList();
+    final hasUnread = previous.any(
+      (n) => n['isRead'] != true && n['read'] != true,
+    );
+    if (!hasUnread) return;
+
+    setState(() {
+      _isMarkingAll = true;
+      _notifications = _notifications
+          .map((n) => {...n, 'read': true, 'isRead': true})
+          .toList();
+    });
+
     try {
       await _controller.markAllAsRead();
       if (!mounted) return;
 
-      // Refresh notifications after marking as read
-      await _loadNotifications();
+      unawaited(_loadNotifications(showLoading: false));
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -138,6 +156,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       );
     } catch (e) {
       if (!mounted) return;
+      setState(() => _notifications = previous);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -146,7 +165,46 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      if (mounted) setState(() => _isMarkingAll = false);
     }
+  }
+
+  Future<void> _markNotificationAsReadFast(String notificationId) async {
+    if (notificationId.isEmpty) return;
+
+    var changed = false;
+    setState(() {
+      _notifications = _notifications.map((n) {
+        final id =
+            (n['id'] as String?) ?? (n['notificationId'] as String?) ?? '';
+        if (id != notificationId || n['read'] == true || n['isRead'] == true) {
+          return n;
+        }
+        changed = true;
+        return {...n, 'read': true, 'isRead': true};
+      }).toList();
+    });
+    if (!changed) return;
+
+    unawaited(
+      _controller
+          .markAsRead(notificationId)
+          .then((_) => _loadNotifications(showLoading: false))
+          .catchError((_) {
+            if (!mounted) return;
+            setState(() {
+              _notifications = _notifications.map((n) {
+                final id =
+                    (n['id'] as String?) ??
+                    (n['notificationId'] as String?) ??
+                    '';
+                if (id != notificationId) return n;
+                return {...n, 'read': false, 'isRead': false};
+              }).toList();
+            });
+          }),
+    );
   }
 
   // ------------------ UI Build ------------------
@@ -199,8 +257,17 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           actions: [
             IconButton(
               tooltip: 'Mark all as read',
-              icon: const Icon(Icons.done_all, color: AppTheme.deepRed),
-              onPressed: _handleMarkAllAsRead,
+              icon: _isMarkingAll
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppTheme.deepRed,
+                      ),
+                    )
+                  : const Icon(Icons.done_all, color: AppTheme.deepRed),
+              onPressed: _isMarkingAll ? null : _handleMarkAllAsRead,
             ),
             Padding(
               padding: const EdgeInsets.only(right: 12),
@@ -241,14 +308,14 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                           _NotificationsList(
                             notifications: _notifications,
                             controller: _controller,
-                            onRefresh: _loadNotifications,
+                            onMarkAsRead: _markNotificationAsReadFast,
                           ),
                           _NotificationsList(
                             notifications: _controller.getUnreadNotifications(
                               _notifications,
                             ),
                             controller: _controller,
-                            onRefresh: _loadNotifications,
+                            onMarkAsRead: _markNotificationAsReadFast,
                           ),
                         ],
                       ),
@@ -263,12 +330,12 @@ class _NotificationsList extends StatelessWidget {
   const _NotificationsList({
     required this.notifications,
     required this.controller,
-    required this.onRefresh,
+    required this.onMarkAsRead,
   });
 
   final List<Map<String, dynamic>> notifications;
   final NotificationsController controller;
-  final VoidCallback onRefresh;
+  final Future<void> Function(String) onMarkAsRead;
 
   @override
   Widget build(BuildContext context) {
@@ -297,13 +364,7 @@ class _NotificationsList extends StatelessWidget {
           notification: notification,
           formatTime: (context, timestamp) =>
               controller.formatTime(context, timestamp),
-          onMarkAsRead: notificationId.isNotEmpty
-              ? (id) => controller.markAsRead(id)
-              : null,
-          onRefresh: () {
-            // Refresh notifications list immediately after marking as read
-            onRefresh();
-          },
+          onMarkAsRead: notificationId.isNotEmpty ? onMarkAsRead : null,
         );
       },
     );

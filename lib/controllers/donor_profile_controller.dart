@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/blood_request_model.dart';
 import '../models/donor_medical_report.dart';
@@ -12,16 +11,25 @@ class DonorProfileController {
   final CloudFunctionsService _cloudFunctions;
 
   final FirebaseAuth _auth;
-  final FirebaseFirestore _firestore;
 
   DonorProfileController({
     CloudFunctionsService? cloudFunctions,
     FirebaseAuth? auth,
-    FirebaseFirestore? firestore,
-  })  : _cloudFunctions = cloudFunctions ?? CloudFunctionsService(),
-        _auth = auth ?? FirebaseAuth.instance,
-        _firestore = firestore ?? FirebaseFirestore.instance;
+  }) : _cloudFunctions = cloudFunctions ?? CloudFunctionsService(),
+       _auth = auth ?? FirebaseAuth.instance;
 
+  Future<User?> _waitForCurrentUser() async {
+    final current = _auth.currentUser;
+    if (current != null) return current;
+    try {
+      return await _auth
+          .authStateChanges()
+          .firstWhere((user) => user != null)
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {
+      return _auth.currentUser;
+    }
+  }
 
   // ------------------ Profile Data Fetching ------------------
   Future<Map<String, dynamic>> fetchUserProfile() async {
@@ -42,58 +50,68 @@ class DonorProfileController {
   }
 
   // ------------------ Donation History ------------------
-  /// يجيب التقارير مباشرة من Firestore بدل Cloud Function
-  Future<List<DonorMedicalReport>> fetchDonationHistory() async {
-    final uid = _auth.currentUser?.uid ?? '';
+  /// Fetches the donor journey through Cloud Functions so Firestore remains
+  /// server-only for app data reads.
+  Future<List<DonorMedicalReport>> fetchDonationHistory({
+    bool includeActiveProgress = true,
+  }) async {
+    final uid = (await _waitForCurrentUser())?.uid ?? '';
     if (uid.isEmpty) return [];
 
-    List<DonorMedicalReport> fromFirestore = [];
-
+    final reports = <DonorMedicalReport>[];
+    var activeProgressIncluded = false;
     try {
-      // نقرأ مباشرة من medicalReports collection
-      final snapshot = await _firestore
-          .collection('medicalReports')
-          .where('donorId', isEqualTo: uid)
-          .orderBy('createdAt', descending: true)
-          .get();
-
-      fromFirestore = snapshot.docs.map((doc) {
-        return DonorMedicalReport.fromMap(doc.data(), doc.id);
-      }).toList();
-
-      debugPrint('Firestore reports: ${fromFirestore.length}');
+      final result = includeActiveProgress
+          ? await _cloudFunctions.getDonationHistory()
+          : await _cloudFunctions.getDonationHistory(
+              includeActiveProgress: false,
+            );
+      activeProgressIncluded = result['activeProgressIncluded'] == true;
+      final rawReports = result['reports'] as List<dynamic>? ?? const [];
+      reports.addAll(
+        rawReports.map((data) {
+          final map = Map<String, dynamic>.from(data as Map);
+          return DonorMedicalReport.fromMap(map, map['id']?.toString() ?? '');
+        }),
+      );
     } catch (e) {
-      debugPrint('Firestore read error: $e');
-      fromFirestore = [];
+      debugPrint('Donation history load error: $e');
+      if (!includeActiveProgress) rethrow;
     }
+    if (includeActiveProgress && !activeProgressIncluded && reports.isEmpty) {
+      await _mergeActiveDonationProgress(reports, uid);
+    }
+    reports.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return reports;
+  }
 
+  Future<void> _mergeActiveDonationProgress(
+    List<DonorMedicalReport> reports,
+    String uid,
+  ) async {
     final seenRequestIds = <String>{
-      for (final r in fromFirestore)
-        if (r.requestId.isNotEmpty) r.requestId,
+      for (final report in reports)
+        if (report.requestId.trim().isNotEmpty) report.requestId.trim(),
     };
 
-    List<BloodRequest> feed = [];
     try {
       final feedResult = await _cloudFunctions.getRequests(limit: 100);
-      final list = feedResult['requests'] as List<dynamic>? ?? [];
-      feed = list.map((data) {
-        final map = Map<String, dynamic>.from(data as Map);
-        final id = map['id'] as String? ?? '';
-        return BloodRequest.fromMap(map, id);
-      }).toList();
-    } catch (_) {
-      feed = [];
-    }
+      final rawRequests = feedResult['requests'] as List<dynamic>? ?? const [];
+      for (final raw in rawRequests) {
+        if (raw is! Map) continue;
+        final map = Map<String, dynamic>.from(raw);
+        final requestId = map['id']?.toString() ?? '';
+        if (requestId.isEmpty || seenRequestIds.contains(requestId)) continue;
 
-    final merged = List<DonorMedicalReport>.from(fromFirestore);
-    for (final req in feed) {
-      if (req.myResponse != 'accepted') continue;
-      if (req.isCompleted) continue;
-      if (seenRequestIds.contains(req.id)) continue;
-      merged.add(DonorMedicalReport.fromActiveBloodRequest(req, uid));
-    }
+        final request = BloodRequest.fromMap(map, requestId);
+        if (request.myResponse != 'accepted') continue;
+        if (request.isCompleted) continue;
 
-    merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return merged;
+        reports.add(DonorMedicalReport.fromActiveBloodRequest(request, uid));
+        seenRequestIds.add(requestId);
+      }
+    } catch (e) {
+      debugPrint('Active donation progress fallback failed: $e');
+    }
   }
 }

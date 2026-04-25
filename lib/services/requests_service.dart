@@ -47,4 +47,16 @@ class RequestsService {
 
     return {'requests': requestsList, 'hasMore': result['hasMore'] as bool};
   }
+
+  Future<BloodRequest> getRequestById(String requestId) async {
+    final result = await _cloudFunctions.getRequestById(requestId: requestId);
+    final requestData = Map<String, dynamic>.from(result['request'] as Map);
+    final id = requestData.remove('id') as String;
+    if (requestData['createdAt'] != null) {
+      requestData['createdAt'] = Timestamp.fromMillisecondsSinceEpoch(
+        requestData['createdAt'] as int,
+      );
+    }
+    return BloodRequest.fromMap(requestData, id);
+  }
 }

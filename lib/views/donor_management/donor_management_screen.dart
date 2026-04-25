@@ -32,6 +32,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
 
   List<DonorPipelineRow> _donors = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
   Timer? _refreshTimer;
 
   @override
@@ -55,11 +56,17 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
   }
 
   Future<void> _loadDonors({bool showSpinner = true}) async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+
     if (showSpinner && mounted) {
       _scheduleSetState(() => _isLoading = true);
     }
 
     List<DonorPipelineRow> fromEntries(List<DonorResponseEntry> entries) {
+      final existingReportsByDonor = {
+        for (final donor in _donors) donor.donorId: donor.latestMedicalReport,
+      };
       return entries
           .map(
             (d) => DonorPipelineRow(
@@ -84,6 +91,8 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                       d.rescheduleRequestedAtMillis!,
                     )
                   : null,
+              latestMedicalReport:
+                  d.latestMedicalReport ?? existingReportsByDonor[d.donorId],
             ),
           )
           .toList();
@@ -92,6 +101,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
     try {
       final res = await _cloudFunctions.getRequestDonorResponses(
         requestId: widget.request.id,
+        includeLatestReports: showSpinner,
       );
       final raw = res['accepted'];
       if (raw is List) {
@@ -104,6 +114,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
           _donors = fromEntries(entries);
           _isLoading = false;
         });
+        _isRefreshing = false;
         return;
       }
     } catch (_) {}
@@ -113,6 +124,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
       _donors = fromEntries(widget.request.acceptedDonors);
       _isLoading = false;
     });
+    _isRefreshing = false;
   }
 
   @override

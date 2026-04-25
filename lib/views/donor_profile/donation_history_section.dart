@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import '../models/donor_medical_report.dart';
-import '../services/cloud_functions_service.dart';
-import '../theme/app_theme.dart';
-import '../views/donor_management/donor_management_appointment.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../models/donor_medical_report.dart';
+import '../../services/cloud_functions_service.dart';
+import '../../theme/app_theme.dart';
+import '../donor_management/donor_management_appointment.dart';
 
 /// Displays the donor's full donation history on their profile.
 /// Each card shows a step-by-step journey timeline only.
@@ -13,16 +14,106 @@ class DonationHistorySection extends StatelessWidget {
   /// When set (donor profile), scheduled donors can send a reschedule request
   /// and this runs after a successful submit (e.g. reload history).
   final Future<void> Function()? onRescheduleSubmitted;
+  final bool showReportActions;
 
-  DonationHistorySection({
+  const DonationHistorySection({
     super.key,
     required this.reports,
     this.isLoading = false,
     this.onRescheduleSubmitted,
+    this.showReportActions = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _DonationHistoryHeader(reports: reports),
+        if (isLoading)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(color: AppTheme.deepRed),
+            ),
+          )
+        else if (reports.isEmpty)
+          _EmptyHistoryCard()
+        else ...[
+          for (var index = 0; index < reports.length; index++) ...[
+            _JourneyCard(
+              report: reports[index],
+              onRescheduleSubmitted: onRescheduleSubmitted,
+              showReportAction: showReportActions,
+            ),
+            if (index != reports.length - 1) const SizedBox(height: 14),
+          ],
+        ],
+      ],
+    );
+  }
+}
+
+class DonationHistorySliverSection extends StatelessWidget {
+  final List<DonorMedicalReport> reports;
+  final bool isLoading;
+  final Future<void> Function()? onRescheduleSubmitted;
+  final bool showReportActions;
+
+  const DonationHistorySliverSection({
+    super.key,
+    required this.reports,
+    this.isLoading = false,
+    this.onRescheduleSubmitted,
+    this.showReportActions = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading || reports.isEmpty) {
+      return SliverList.list(
+        children: [
+          _DonationHistoryHeader(reports: reports),
+          if (isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(color: AppTheme.deepRed),
+              ),
+            )
+          else
+            _EmptyHistoryCard(),
+        ],
+      );
+    }
+
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverList.list(children: [_DonationHistoryHeader(reports: reports)]),
+        SliverList.separated(
+          itemCount: reports.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 14),
+          itemBuilder: (_, index) => _JourneyCard(
+            report: reports[index],
+            onRescheduleSubmitted: onRescheduleSubmitted,
+            showReportAction: showReportActions,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DonationHistoryHeader extends StatelessWidget {
+  final List<DonorMedicalReport> reports;
+
+  const _DonationHistoryHeader({required this.reports});
+
+  @override
+  Widget build(BuildContext context) {
+    final donated = reports
+        .where((r) => r.status == DonorProcessStatus.donated)
+        .length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -78,7 +169,7 @@ class DonationHistorySection extends StatelessWidget {
                     boxShadow: AppTheme.cardShadow,
                   ),
                   child: Text(
-                    '${reports.where((r) => r.status == DonorProcessStatus.donated).length} donations',
+                    '$donated donations',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -91,28 +182,10 @@ class DonationHistorySection extends StatelessWidget {
             ],
           ),
         ),
-
         if (reports.isNotEmpty) ...[
           _StatsRow(reports: reports),
           const SizedBox(height: 14),
         ],
-
-        if (isLoading)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: CircularProgressIndicator(color: AppTheme.deepRed),
-            ),
-          )
-        else if (reports.isEmpty)
-          _EmptyHistoryCard()
-        else
-          ...reports.map(
-            (r) => _JourneyCard(
-              report: r,
-              onRescheduleSubmitted: onRescheduleSubmitted,
-            ),
-          ),
       ],
     );
   }
@@ -262,7 +335,8 @@ class _RescheduleAppointmentSheet extends StatefulWidget {
       _RescheduleAppointmentSheetState();
 }
 
-class _RescheduleAppointmentSheetState extends State<_RescheduleAppointmentSheet> {
+class _RescheduleAppointmentSheetState
+    extends State<_RescheduleAppointmentSheet> {
   late final TextEditingController _reason;
   DateTime? _preferred;
   bool _submitting = false;
@@ -320,10 +394,7 @@ class _RescheduleAppointmentSheetState extends State<_RescheduleAppointmentSheet
               children: [
                 const Text(
                   'Request a new appointment',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 17,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -352,8 +423,9 @@ class _RescheduleAppointmentSheetState extends State<_RescheduleAppointmentSheet
                   onPressed: _submitting
                       ? null
                       : () async {
-                          final dt =
-                              await pickDonorAppointmentDateTime(context);
+                          final dt = await pickDonorAppointmentDateTime(
+                            context,
+                          );
                           if (dt != null) setState(() => _preferred = dt);
                         },
                   icon: const Icon(Icons.calendar_month_rounded),
@@ -481,9 +553,7 @@ class _RescheduleAppointmentSheetState extends State<_RescheduleAppointmentSheet
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            e.toString().replaceFirst('Exception: ', ''),
-          ),
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -494,10 +564,12 @@ class _RescheduleAppointmentSheetState extends State<_RescheduleAppointmentSheet
 class _JourneyCard extends StatefulWidget {
   final DonorMedicalReport report;
   final Future<void> Function()? onRescheduleSubmitted;
+  final bool showReportAction;
 
   const _JourneyCard({
     required this.report,
     this.onRescheduleSubmitted,
+    this.showReportAction = false,
   });
 
   @override
@@ -538,6 +610,22 @@ class _JourneyCardState extends State<_JourneyCard> {
         onRescheduleSubmitted: widget.onRescheduleSubmitted!,
       ),
     );
+  }
+
+  Future<void> _openReportFile() async {
+    final url = widget.report.reportFileUrl?.trim() ?? '';
+    if (url.isEmpty) return;
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not open report: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   static const _statusOrder = {
@@ -610,9 +698,10 @@ class _JourneyCardState extends State<_JourneyCard> {
         : isRestricted
         ? 'Not Eligible'
         : 'In Progress';
+    final reportUrl = widget.report.reportFileUrl?.trim() ?? '';
+    final canViewReport = widget.showReportAction && reportUrl.isNotEmpty;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -841,6 +930,30 @@ class _JourneyCardState extends State<_JourneyCard> {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                  ],
+                  if (canViewReport) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _openReportFile,
+                        icon: const Icon(Icons.description_outlined),
+                        label: const Text(
+                          'View Donation Report',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.deepRed,
+                          side: BorderSide(
+                            color: AppTheme.deepRed.withValues(alpha: 0.35),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
                       ),
                     ),
                   ],

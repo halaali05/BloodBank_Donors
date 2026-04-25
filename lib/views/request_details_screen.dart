@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -16,20 +15,13 @@ import 'chat_screen.dart';
 ///
 /// SECURITY ARCHITECTURE:
 /// - Read operations: All go through Cloud Functions (server-side)
-///   - Request data: Read via getRequests Cloud Function
+///   - Request data: Read via getRequestById Cloud Function
 /// - No direct Firestore access
 class RequestDetailsScreen extends StatefulWidget {
   /// ID of the blood request to display
   final String requestId;
 
-  /// [Deprecated] This parameter is ignored - notifications are always marked as read when opened
-  final bool skipAutoMarkAsRead;
-
-  const RequestDetailsScreen({
-    super.key,
-    required this.requestId,
-    this.skipAutoMarkAsRead = false,
-  });
+  const RequestDetailsScreen({super.key, required this.requestId});
 
   @override
   State<RequestDetailsScreen> createState() => _RequestDetailsScreenState();
@@ -76,15 +68,7 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
     });
 
     try {
-      // Fetch requests via Cloud Functions
-      final result = await _requestsService.getRequests(limit: 100);
-      final requests = result['requests'] as List<BloodRequest>;
-
-      // Find the request with matching ID
-      final request = requests.firstWhere(
-        (r) => r.id == widget.requestId,
-        orElse: () => throw Exception('Request not found'),
-      );
+      final request = await _requestsService.getRequestById(widget.requestId);
 
       if (mounted) {
         setState(() {
@@ -252,4 +236,3 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
     );
   }
 }
-

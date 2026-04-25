@@ -158,18 +158,37 @@ class DonorMedicalReport {
   }
 
   factory DonorMedicalReport.fromMap(Map<String, dynamic> data, String id) {
+    String pickString(List<String> keys) {
+      for (final key in keys) {
+        final value = data[key];
+        if (value == null) continue;
+        final text = value.toString().trim();
+        if (text.isNotEmpty && text.toLowerCase() != 'null') return text;
+      }
+      return '';
+    }
+
     return DonorMedicalReport(
       id: id,
       requestId: _requestIdFromMap(data, id),
-      bloodBankId: data['bloodBankId']?.toString() ?? '',
-      bloodBankName: data['bloodBankName']?.toString() ?? '',
-      bloodType: data['bloodType']?.toString() ?? '',
+      bloodBankId: pickString(['bloodBankId', 'hospitalId']),
+      bloodBankName: pickString(['bloodBankName', 'hospitalName']),
+      bloodType: pickString(['bloodType', 'confirmedBloodType']),
       isUrgent: data['isUrgent'] == true,
       status: parseDonorProcessStatus(data['status']?.toString()),
       restrictionReason: data['restrictionReason']?.toString(),
       notes: data['notes']?.toString(),
-      reportFileUrl: data['reportFileUrl']?.toString(),
-      createdAt: _parseDate(data['createdAt']) ?? DateTime.now(),
+      reportFileUrl: pickString([
+        'reportFileUrl',
+        'reportUrl',
+        'fileUrl',
+        'downloadUrl',
+        'url',
+      ]).let((url) => url.isEmpty ? null : url),
+      createdAt:
+          _parseDate(data['createdAt']) ??
+          _parseDate(data['completedAt']) ??
+          DateTime.now(),
       canDonateAgainAt: _parseDate(data['canDonateAgainAt']),
       appointmentAt: _parseDate(data['appointmentAt']), // NEW
     );
@@ -281,4 +300,3 @@ class DonorProcessEntry {
 extension _Let<T> on T {
   R let<R>(R Function(T) block) => block(this);
 }
-
