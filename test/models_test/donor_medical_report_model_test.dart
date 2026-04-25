@@ -78,7 +78,7 @@ void main() {
   });
 
   // =====================================================
-  // fromActiveBloodRequest 🔥
+  // fromActiveBloodRequest 
   // =====================================================
 
   group('fromActiveBloodRequest', () {
@@ -168,4 +168,254 @@ void main() {
       expect(entry.medicalReport, isNotNull);
     });
   });
+
+// =====================================================
+// EXTRA COVERAGE - parseDonorProcessStatus
+// =====================================================
+
+group('parseDonorProcessStatus edge cases', () {
+  test('handles uppercase and spaces', () {
+    expect(parseDonorProcessStatus('  TESTED '),
+        DonorProcessStatus.tested);
+  });
+
+  test('handles null-like strings', () {
+    expect(parseDonorProcessStatus('null'),
+        DonorProcessStatus.accepted);
+  });
+});
+
+
+// =====================================================
+// EXTRA COVERAGE - effectiveRequestId
+// =====================================================
+
+group('effectiveRequestId', () {
+  test('returns trimmed requestId', () {
+    final report = DonorMedicalReport(
+      id: 'id1',
+      requestId: '  r1  ',
+      bloodBankId: '',
+      bloodBankName: '',
+      bloodType: '',
+      isUrgent: false,
+      status: DonorProcessStatus.accepted,
+      createdAt: DateTime.now(),
+    );
+
+    expect(report.effectiveRequestId, 'r1');
+  });
+
+  test('extracts from active id when empty requestId', () {
+    final report = DonorMedicalReport(
+      id: 'active_req123_user1',
+      requestId: '',
+      bloodBankId: '',
+      bloodBankName: '',
+      bloodType: '',
+      isUrgent: false,
+      status: DonorProcessStatus.accepted,
+      createdAt: DateTime.now(),
+    );
+
+    expect(report.effectiveRequestId, 'req123');
+  });
+
+  test('returns empty if no valid source', () {
+    final report = DonorMedicalReport(
+      id: 'random',
+      requestId: '',
+      bloodBankId: '',
+      bloodBankName: '',
+      bloodType: '',
+      isUrgent: false,
+      status: DonorProcessStatus.accepted,
+      createdAt: DateTime.now(),
+    );
+
+    expect(report.effectiveRequestId, '');
+  });
+});
+
+
+// =====================================================
+// EXTRA COVERAGE - fromMap advanced parsing
+// =====================================================
+
+group('DonorMedicalReport.fromMap advanced', () {
+
+  test('uses fallback keys correctly', () {
+    final report = DonorMedicalReport.fromMap({
+      'hospitalId': 'h1',
+      'hospitalName': 'Hosp',
+      'confirmedBloodType': 'B+',
+    }, 'id1');
+
+    expect(report.bloodBankId, 'h1');
+    expect(report.bloodBankName, 'Hosp');
+    expect(report.bloodType, 'B+');
+  });
+
+  test('extracts requestId from alternative keys', () {
+    final report = DonorMedicalReport.fromMap({
+      'bloodRequestId': 'r99',
+    }, 'id1');
+
+    expect(report.requestId, 'r99');
+  });
+
+  test('extracts requestId from docId', () {
+    final report = DonorMedicalReport.fromMap({}, 'active_r77_u1');
+
+    expect(report.requestId, 'r77');
+  });
+
+  test('parses Firestore timestamp map', () {
+    final report = DonorMedicalReport.fromMap({
+      'createdAt': {'_seconds': 1000},
+    }, 'id1');
+
+    expect(report.createdAt, isNotNull);
+  });
+
+  test('handles reportFileUrl normalization', () {
+    final report = DonorMedicalReport.fromMap({
+      'url': 'http://file.com',
+    }, 'id1');
+
+    expect(report.reportFileUrl, 'http://file.com');
+  });
+
+  test('empty url becomes null', () {
+    final report = DonorMedicalReport.fromMap({
+      'url': '',
+    }, 'id1');
+
+    expect(report.reportFileUrl, isNull);
+  });
+
+  test('parses canDonateAgainAt', () {
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    final report = DonorMedicalReport.fromMap({
+      'canDonateAgainAt': now,
+    }, 'id1');
+
+    expect(report.canDonateAgainAt, isNotNull);
+  });
+});
+
+
+// =====================================================
+// EXTRA COVERAGE - toMap
+// =====================================================
+
+group('DonorMedicalReport.toMap', () {
+
+  test('includes optional fields when present', () {
+    final report = DonorMedicalReport(
+      id: 'id1',
+      requestId: 'r1',
+      bloodBankId: 'b1',
+      bloodBankName: 'Bank',
+      bloodType: 'A+',
+      isUrgent: true,
+      status: DonorProcessStatus.restricted,
+      createdAt: DateTime.now(),
+      restrictionReason: 'test',
+      notes: 'note',
+      reportFileUrl: 'url',
+      canDonateAgainAt: DateTime.now(),
+      appointmentAt: DateTime.now(),
+    );
+
+    final map = report.toMap();
+
+    expect(map.containsKey('restrictionReason'), true);
+    expect(map.containsKey('appointmentAt'), true);
+  });
+
+  test('excludes null optional fields', () {
+    final report = DonorMedicalReport(
+      id: 'id1',
+      requestId: 'r1',
+      bloodBankId: 'b1',
+      bloodBankName: 'Bank',
+      bloodType: 'A+',
+      isUrgent: false,
+      status: DonorProcessStatus.accepted,
+      createdAt: DateTime.now(),
+    );
+
+    final map = report.toMap();
+
+    expect(map.containsKey('restrictionReason'), false);
+    expect(map.containsKey('appointmentAt'), false);
+  });
+});
+
+
+// =====================================================
+// EXTRA COVERAGE - fromActiveBloodRequest
+// =====================================================
+
+group('fromActiveBloodRequest edge cases', () {
+
+  test('does not override non-accepted status', () {
+    final req = BloodRequest(
+      id: 'r1',
+      bloodBankId: 'b',
+      bloodBankName: 'Bank',
+      bloodType: 'A+',
+      units: 1,
+      isUrgent: false,
+      donorProcessStatus: 'tested',
+      appointmentAt: DateTime.now(),
+    );
+
+    final result =
+        DonorMedicalReport.fromActiveBloodRequest(req, 'u1');
+
+    expect(result.status, DonorProcessStatus.tested);
+  });
+});
+
+
+// =====================================================
+// EXTRA COVERAGE - DonorProcessEntry
+// =====================================================
+
+group('DonorProcessEntry edge cases', () {
+
+  test('uses alternative donorId keys', () {
+    final entry = DonorProcessEntry.fromMap({
+      'userId': 'u1',
+    });
+
+    expect(entry.donorId, 'u1');
+  });
+
+  test('defaults status to accepted', () {
+    final entry = DonorProcessEntry.fromMap({});
+
+    expect(entry.status, DonorProcessStatus.accepted);
+  });
+
+  test('handles empty email and bloodType', () {
+    final entry = DonorProcessEntry.fromMap({});
+
+    expect(entry.email, '');
+    expect(entry.bloodType, '');
+  });
+
+  test('medicalReport parses id correctly', () {
+    final entry = DonorProcessEntry.fromMap({
+      'medicalReport': {
+        'id': 'r123',
+      }
+    });
+
+    expect(entry.medicalReport?.id, 'r123');
+  });
+});
 }

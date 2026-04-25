@@ -144,4 +144,135 @@ void main() {
     });
 
   });
+
+  // =====================================================
+// EXTRA COVERAGE - appointmentStatus
+// =====================================================
+
+test('appointmentStatus is lowercased', () {
+  final result = DonorResponseEntry.fromMap({
+    'appointmentStatus': 'COMPLETED',
+  });
+
+  expect(result.appointmentStatus, 'completed');
+});
+
+test('appointmentStatus null when empty', () {
+  final result = DonorResponseEntry.fromMap({
+    'appointmentStatus': '   ',
+  });
+
+  expect(result.appointmentStatus, null);
+});
+
+
+// =====================================================
+// EXTRA COVERAGE - bloodType
+// =====================================================
+
+test('bloodType trims correctly', () {
+  final result = DonorResponseEntry.fromMap({
+    'bloodType': '  A+  ',
+  });
+
+  expect(result.bloodType, 'A+');
+});
+
+test('bloodType null when empty', () {
+  final result = DonorResponseEntry.fromMap({
+    'bloodType': '   ',
+  });
+
+  expect(result.bloodType, null);
+});
+
+
+// =====================================================
+// EXTRA COVERAGE - readMillis()
+// =====================================================
+
+test('appointmentAtMillis null when empty string', () {
+  final result = DonorResponseEntry.fromMap({
+    'appointmentAtMillis': '',
+  });
+
+  expect(result.appointmentAtMillis, null);
+});
+
+test('reschedule millis null when invalid string', () {
+  final result = DonorResponseEntry.fromMap({
+    'rescheduleRequestedAtMillis': 'abc',
+  });
+
+  expect(result.rescheduleRequestedAtMillis, null);
+});
+
+test('readMillis handles null correctly', () {
+  final result = DonorResponseEntry.fromMap({
+    'appointmentAtMillis': null,
+  });
+
+  expect(result.appointmentAtMillis, null);
+});
+
+
+// =====================================================
+// EXTRA COVERAGE - processStatus robustness
+// =====================================================
+
+test('processStatus handles non-string values', () {
+  final result = DonorResponseEntry.fromMap({
+    'processStatus': 123,
+  });
+
+  expect(result.processStatus, '123');
+});
+
+
+// =====================================================
+// EXTRA COVERAGE - latestMedicalReport
+// =====================================================
+
+test('parses latestMedicalReport correctly', () {
+  final result = DonorResponseEntry.fromMap({
+    'latestMedicalReport': {
+      'id': 'r1',
+      'createdAt': DateTime.now().toIso8601String(),
+    }
+  });
+
+  expect(result.latestMedicalReport, isNotNull);
+  expect(result.latestMedicalReport!.id, 'r1');
+});
+
+test('latestMedicalReport null when not map', () {
+  final result = DonorResponseEntry.fromMap({
+    'latestMedicalReport': 'invalid',
+  });
+
+  expect(result.latestMedicalReport, null);
+});
+
+
+// =====================================================
+// EXTRA COVERAGE - pick() edge cases
+// =====================================================
+
+test('pick ignores empty and whitespace values', () {
+  final result = DonorResponseEntry.fromMap({
+    'donorId': '   ',
+    'userId': '',
+    'uid': 'realId',
+  });
+
+  expect(result.donorId, 'realId');
+});
+
+test('email trims correctly', () {
+  final result = DonorResponseEntry.fromMap({
+    'email': '  test@mail.com  ',
+  });
+
+  expect(result.email, 'test@mail.com');
+});
 }

@@ -19,6 +19,7 @@ void main() {
     notificationService = NotificationService.test(mockCloudFunctions);
   });
 
+group('mark all as read', () {
   test('markAllAsRead() should call markNotificationsAsRead() once', () async {
    
     when(() => mockCloudFunctions.markNotificationsAsRead()).thenAnswer((_) async => {'ok': true});
@@ -42,6 +43,30 @@ void main() {
     verify(() => mockCloudFunctions.markNotificationAsRead(notificationId: notificationId,)).called(1);
   });
 
+test('markAllAsRead rethrows on failure', () async {
+  when(() => mockCloudFunctions.markNotificationsAsRead())
+      .thenThrow(Exception('fail'));
+
+  expect(
+    () => notificationService.markAllAsRead(),
+    throwsException,
+  );
+});
+
+test('markAsRead rethrows on failure', () async {
+  when(() => mockCloudFunctions.markNotificationAsRead(
+        notificationId: any(named: 'notificationId'),
+      )).thenThrow(Exception());
+
+  expect(
+    () => notificationService.markAsRead('id'),
+    throwsException,
+  );
+});
+
+});
+  
+group('delete Notification ', () {
   test('deleteNotification() should call deleteNotification() with correct id',() async {
     // Arrange
     const notificationId = 'notif_456';
@@ -55,4 +80,84 @@ void main() {
     // Assert
     verify(() => mockCloudFunctions.deleteNotification(notificationId: notificationId,)).called(1);
   });
+
+  test('deleteOldNotifications returns int when deletedCount is int', () async {
+  when(() => mockCloudFunctions.deleteOldNotifications(days: any(named: 'days')))
+      .thenAnswer((_) async => {'deletedCount': 5});
+
+  final result = await notificationService.deleteOldNotifications();
+
+  expect(result, 5);
+});
+
+  test('deleteOldNotifications converts num to int', () async {
+  when(() => mockCloudFunctions.deleteOldNotifications(days: any(named: 'days')))
+      .thenAnswer((_) async => {'deletedCount': 5.8});
+
+  final result = await notificationService.deleteOldNotifications();
+
+  expect(result, 5); // truncated
+});
+
+  test('deleteOldNotifications returns 0 when deletedCount is invalid', () async {
+  when(() => mockCloudFunctions.deleteOldNotifications(days: any(named: 'days')))
+      .thenAnswer((_) async => {'deletedCount': 'invalid'});
+
+  final result = await notificationService.deleteOldNotifications();
+
+  expect(result, 0);
+});
+
+  test('deleteOldNotifications returns 0 when deletedCount is missing', () async {
+  when(() => mockCloudFunctions.deleteOldNotifications(days: any(named: 'days')))
+      .thenAnswer((_) async => {});
+
+  final result = await notificationService.deleteOldNotifications();
+
+  expect(result, 0);
+});
+
+  test('deleteOldNotifications passes custom days parameter', () async {
+  when(() => mockCloudFunctions.deleteOldNotifications(days: any(named: 'days')))
+      .thenAnswer((invocation) async {
+    expect(invocation.namedArguments[#days], 7);
+    return {'deletedCount': 1};
+  });
+
+  await notificationService.deleteOldNotifications(days: 7);
+});
+
+  test('deleteOldNotifications rethrows on error', () async {
+  when(() => mockCloudFunctions.deleteOldNotifications(days: any(named: 'days')))
+      .thenThrow(Exception('fail'));
+
+  expect(
+    () => notificationService.deleteOldNotifications(),
+    throwsException,
+  );
+});
+
+test('deleteNotification rethrows on failure', () async {
+  when(() => mockCloudFunctions.deleteNotification(
+        notificationId: any(named: 'notificationId'),
+      )).thenThrow(Exception());
+
+  expect(
+    () => notificationService.deleteNotification('id'),
+    throwsException,
+  );
+});
+
+test('deleteOldNotifications handles negative days', () async {
+  when(() => mockCloudFunctions.deleteOldNotifications(days: any(named: 'days')))
+      .thenAnswer((_) async => {'deletedCount': 0});
+
+  final result = await notificationService.deleteOldNotifications(days: -5);
+
+  expect(result, 0);
+});
+
+
+});
+
 }
