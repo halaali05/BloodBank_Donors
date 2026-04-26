@@ -140,6 +140,20 @@ group('fetchMessages', () {
 
     expect(() => controller.fetchMessages('r1'), throwsException);
   });
+
+  
+test('fetchMessages with empty data', () async {
+  when(() => mockCloudFunctions.getMessages(
+        requestId: any(named: 'requestId'),
+        filterRecipientId: any(named: 'filterRecipientId'),
+      )).thenAnswer((_) async => {});
+
+  final result = await controller.fetchMessages('r1');
+
+  expect(result.messages, []);
+  expect(result.bloodBankId, null);
+});
+
 });
 
 // ================= SEND =================
@@ -240,6 +254,7 @@ group('sendMessage', () {
 });
 
 // ================= PARTICIPANTS =================
+
 group('participants', () {
   test('getChatParticipants', () async {
     when(() => mockCloudFunctions.getMessages(
@@ -278,5 +293,104 @@ group('participants', () {
     expect(result['u1'], 2);
     expect(result['u2'], 1);
   });
+  
+test('getUnreadCountPerUser ignores non-bank messages', () async {
+  when(() => mockCloudFunctions.getMessages(
+        requestId: any(named: 'requestId'),
+        filterRecipientId: any(named: 'filterRecipientId'),
+      )).thenAnswer((_) async => {
+        'messages': [
+          {'senderId': 'u1', 'recipientId': 'u2'}, // ignored
+        ],
+        'bloodBankId': 'bank1',
+      });
+
+  final result = await controller.getUnreadCountPerUser('r1');
+
+  expect(result.isEmpty, true);
 });
+
+  test('getChatParticipants empty', () async {
+  when(() => mockCloudFunctions.getMessages(
+        requestId: any(named: 'requestId'),
+        filterRecipientId: any(named: 'filterRecipientId'),
+      )).thenAnswer((_) async => {
+        'messages': [],
+        'bloodBankId': 'bank1',
+      });
+
+  final result = await controller.getChatParticipants('r1');
+
+  expect(result.isEmpty, true);
+});
+
+});
+
+  group('ensureDonorWelcomeMessage', () {
+
+  test('throws when cloud function fails', () {
+    when(() => mockCloudFunctions.ensureDonorWelcomeMessage(
+          requestId: any(named: 'requestId'),
+        )).thenThrow(Exception());
+
+    expect(
+      () => controller.ensureDonorWelcomeMessage('r1'),
+      throwsException,
+    );
+  });
+
+
+});
+
+group('isMessageFromCurrentUser', () {
+  test('returns true when sender is current user', () {
+    when(() => mockFirebaseAuth.currentUser).thenReturn(mockUser);
+    when(() => mockUser.uid).thenReturn('u1');
+
+    final result = controller.isMessageFromCurrentUser({
+      'senderId': 'u1',
+    });
+
+    expect(result, true);
+  });
+
+  test('returns false when sender is different', () {
+    when(() => mockFirebaseAuth.currentUser).thenReturn(mockUser);
+    when(() => mockUser.uid).thenReturn('u1');
+
+    final result = controller.isMessageFromCurrentUser({
+      'senderId': 'u2',
+    });
+
+    expect(result, false);
+  });
+
+  test('returns false when no user', () {
+    when(() => mockFirebaseAuth.currentUser).thenReturn(null);
+
+    final result = controller.isMessageFromCurrentUser({
+      'senderId': 'u1',
+    });
+
+    expect(result, false);
+  });
+
+
+test('formatTime handles exception', () {
+  // نعمل object يخرب الفرق الزمني
+  final badDate = DateTime(999999999); // ممكن يعمل overflow
+
+  final result = controller.formatTime(badDate);
+
+  expect(result, isA<String>());
+});
+
+test('formatTimeFromMillis handles invalid timestamp', () {
+  final result = controller.formatTimeFromMillis(-999999999999999999);
+
+  expect(result, isA<String>());
+});
+});
+
+
 }

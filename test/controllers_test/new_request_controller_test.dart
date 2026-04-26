@@ -35,10 +35,27 @@ void main() {
     );
   });
 
-  // =====================================================
-  // validateLocation
-  // =====================================================
 
+group( 'validateAuthentication', (){
+test('validateAuthentication returns error when no user', () {
+  when(() => mockAuth.currentUser).thenReturn(null);
+
+  final result = controller.validateAuthentication();
+
+  expect(result, 'You must be logged in to create a request.');
+});
+
+test('validateAuthentication returns null when user exists', () {
+  when(() => mockAuth.currentUser).thenReturn(mockUser);
+  when(() => mockUser.uid).thenReturn('u1');
+
+  final result = controller.validateAuthentication();
+
+  expect(result, null);
+});
+});
+ 
+group( 'validateLocation', (){
   test('validateLocation returns error when location is null', () {
     final result = controller.validateLocation(null);
     expect(result, 'Please select hospital location');
@@ -54,10 +71,9 @@ void main() {
     expect(result, null);
   });
 
-  // =====================================================
-  // validateRequest
-  // =====================================================
+});
 
+group( 'validateRequest', (){
   test('validateRequest returns location error when location missing', () {
     when(() => mockAuth.currentUser).thenReturn(mockUser);
     when(() => mockUser.uid).thenReturn('u1');
@@ -66,10 +82,19 @@ void main() {
     expect(result, 'Please select hospital location');
   });
 
-  // =====================================================
-  // createRequest - validation failures
-  // =====================================================
+  test('validateRequest returns auth error when user not logged in', () {
+  when(() => mockAuth.currentUser).thenReturn(null);
 
+  final result = controller.validateRequest(
+    hospitalLocation: 'Amman',
+  );
+
+  expect(result, 'You must be logged in to create a request.');
+});
+});
+  
+  
+group( 'createRequest', (){
   test('createRequest returns error when location missing', () async {
     when(() => mockAuth.currentUser).thenReturn(mockUser);
     when(() => mockUser.uid).thenReturn('u1');
@@ -86,9 +111,63 @@ void main() {
     expect(result['errorMessage'], 'Please select hospital location');
   });
 
-  // =====================================================
-  // createRequest - success
-  // =====================================================
+  test('createRequest returns error when user not logged in', () async {
+  when(() => mockAuth.currentUser).thenReturn(null);
+
+  final result = await controller.createRequest(
+    bloodBankName: 'Hospital',
+    bloodType: 'A+',
+    units: 1,
+    isUrgent: false,
+    hospitalLocation: 'Amman',
+  );
+
+  expect(result['success'], false);
+  expect(result['errorMessage'],
+      'You must be logged in to create a request.');
+});
+
+  test('createRequest trims details and location', () async {
+  when(() => mockAuth.currentUser).thenReturn(mockUser);
+  when(() => mockUser.uid).thenReturn('u1');
+
+  BloodRequest? captured;
+
+  when(() => mockRequestsService.addRequest(any()))
+      .thenAnswer((invocation) async {
+    captured = invocation.positionalArguments.first as BloodRequest;
+  });
+
+  await controller.createRequest(
+    bloodBankName: 'Hospital',
+    bloodType: 'A+',
+    units: 1,
+    isUrgent: false,
+    hospitalLocation: '  Amman  ',
+    details: '  test details  ',
+  );
+
+  expect(captured!.hospitalLocation, 'Amman');
+  expect(captured!.details, 'test details');
+});
+
+ test('createRequest handles unauthenticated error', () async {
+  when(() => mockAuth.currentUser).thenReturn(mockUser);
+  when(() => mockUser.uid).thenReturn('u1');
+
+  when(() => mockRequestsService.addRequest(any()))
+      .thenThrow(Exception('unauthenticated'));
+
+  final result = await controller.createRequest(
+    bloodBankName: 'Hospital',
+    bloodType: 'A+',
+    units: 1,
+    isUrgent: false,
+    hospitalLocation: 'Amman',
+  );
+
+  expect(result['errorMessage'], 'Please log in to create a request.');
+});
 
   test('createRequest succeeds when all data valid', () async {
     when(() => mockAuth.currentUser).thenReturn(mockUser);
@@ -111,10 +190,26 @@ void main() {
     verify(() => mockRequestsService.addRequest(any())).called(1);
   });
 
-  // =====================================================
-  // Error handling
-  // =====================================================
+  test('createRequest returns raw error message when not exception format', () async {
+  when(() => mockAuth.currentUser).thenReturn(mockUser);
+  when(() => mockUser.uid).thenReturn('u1');
 
+  when(() => mockRequestsService.addRequest(any()))
+      .thenThrow('Custom error message');
+
+  final result = await controller.createRequest(
+    bloodBankName: 'Hospital',
+    bloodType: 'A+',
+    units: 1,
+    isUrgent: false,
+    hospitalLocation: 'Amman',
+  );
+
+  expect(result['errorMessage'], 'Custom error message');
+});
+});
+
+group( 'Error handling', (){
   test('createRequest handles permission error correctly', () async {
     when(() => mockAuth.currentUser).thenReturn(mockUser);
     when(() => mockUser.uid).thenReturn('u1');
@@ -219,4 +314,6 @@ void main() {
     expect(result['success'], false);
     expect(result['errorMessage'], contains('Failed to create request. Please try again.'));
   });
+});
+
 }

@@ -34,9 +34,44 @@ void main() {
     );
   });
 
-  // --------------------------------------------------
-  // calculateStatistics
-  // --------------------------------------------------
+
+group('Auth helpers', () {
+  test('getCurrentUser returns user', () {
+    when(() => mockAuth.currentUser).thenReturn(mockUser);
+
+    final result = controller.getCurrentUser();
+
+    expect(result, mockUser);
+  });
+
+  test('getCurrentUserId returns uid', () {
+    when(() => mockAuth.currentUser).thenReturn(mockUser);
+    when(() => mockUser.uid).thenReturn('u1');
+
+    final result = controller.getCurrentUserId();
+
+    expect(result, 'u1');
+  });
+
+  test('getCurrentUserId returns null when no user', () {
+    when(() => mockAuth.currentUser).thenReturn(null);
+
+    final result = controller.getCurrentUserId();
+
+    expect(result, null);
+  });
+
+  test('logout calls signOut', () async {
+    when(() => mockAuth.signOut()).thenAnswer((_) async {});
+
+    await controller.logout();
+
+    verify(() => mockAuth.signOut()).called(1);
+  });
+});
+
+ 
+group('calculateStatistics', () {
   test('calculateStatistics returns correct values', () {
     final requests = [
       BloodRequest.fromMap
@@ -65,9 +100,16 @@ void main() {
     expect(stats['normalCount'], 1);
   });
 
-  // --------------------------------------------------
-  // extractDonorName
-  // --------------------------------------------------
+  test('calculateStatistics empty list', () {
+  final stats = controller.calculateStatistics([]);
+
+  expect(stats['totalCount'], 0);
+  expect(stats['urgentCount'], 0);
+  expect(stats['normalCount'], 0);
+});
+});
+  
+group('extractDonorName', () {
   test('extractDonorName returns name from userData.name', () {
     final result = controller.extractDonorName(
       {'name': 'Ali'},
@@ -97,9 +139,35 @@ void main() {
     expect(result, 'Donor');
   });
 
-  // --------------------------------------------------
-  // getUnreadNotificationsCount
-  // --------------------------------------------------
+test('extractDonorName trims values', () {
+  final result = controller.extractDonorName(
+    {'name': '   Ali   '},
+    null,
+  );
+
+  expect(result, 'Ali');
+});
+
+test('extractDonorName uses fullName when name null', () {
+  final result = controller.extractDonorName(
+    {'fullName': 'Omar'},
+    null,
+  );
+
+  expect(result, 'Omar');
+});
+
+test('extractDonorName trims authDisplayName', () {
+  final result = controller.extractDonorName(
+    null,
+    '   Sami   ',
+  );
+
+  expect(result, 'Sami');
+});
+});
+
+group('getUnreadNotificationsCount', () {
   test('getUnreadNotificationsCount counts unread notifications', () async {
     when(() => mockCloud.getNotifications()).thenAnswer((_) async => {
           'notifications': [
@@ -123,9 +191,30 @@ void main() {
     expect(count, 0);
   });
 
-  // --------------------------------------------------
-  // fetchRequests
-  // --------------------------------------------------
+test('getUnreadNotificationsCount handles empty list', () async {
+  when(() => mockCloud.getNotifications())
+      .thenAnswer((_) async => {'notifications': []});
+
+  final count = await controller.getUnreadNotificationsCount();
+
+  expect(count, 0);
+});
+
+test('getUnreadNotificationsCount treats missing flags as unread', () async {
+  when(() => mockCloud.getNotifications()).thenAnswer((_) async => {
+        'notifications': [
+          {}, // no read/isRead
+        ],
+      });
+
+  final count = await controller.getUnreadNotificationsCount();
+
+  expect(count, 1);
+});
+});
+
+  
+  group('fetchRequests', () {
   test('fetchRequests returns list of BloodRequest', () async {
     when(() => mockCloud.getRequests(limit: 100)).thenAnswer((_) async => {
           'requests': [
@@ -154,9 +243,17 @@ void main() {
     );
   });
 
-  // --------------------------------------------------
-  // fetchUserProfile
-  // --------------------------------------------------
+test('fetchRequests returns empty list when no data', () async {
+  when(() => mockCloud.getRequests(limit: 100))
+      .thenAnswer((_) async => {});
+
+  final result = await controller.fetchRequests();
+
+  expect(result, []);
+});
+  });
+ 
+   group('fetchUserProfile', () {
   test('fetchUserProfile returns user data map', () async {
     when(() => mockAuth.currentUser).thenReturn(mockUser);
     when(() => mockUser.uid).thenReturn('u1');
@@ -185,4 +282,44 @@ void main() {
 
     expect(result, isNull);
   });
+
+
+test('fetchUserProfile returns null when userData null', () async {
+  when(() => mockAuth.currentUser).thenReturn(mockUser);
+  when(() => mockUser.uid).thenReturn('u1');
+
+  when(() => mockAuthService.getUserData('u1'))
+      .thenAnswer((_) async => null);
+
+  final result = await controller.fetchUserProfile();
+
+  expect(result, null);
+});
+
+test('fetchUserProfile returns null on exception', () async {
+  when(() => mockAuth.currentUser).thenReturn(mockUser);
+  when(() => mockUser.uid).thenReturn('u1');
+
+  when(() => mockAuthService.getUserData('u1'))
+      .thenThrow(Exception());
+
+  final result = await controller.fetchUserProfile();
+
+  expect(result, null);
+});
+
+   });
+group('submitDonorResponse', () {
+    test('throws on invalid response', () {
+    expect(
+      () => controller.submitDonorResponse(
+        requestId: 'r1',
+        response: 'maybe',
+      ),
+      throwsException,
+    );
+  });
+});
+
+
 }

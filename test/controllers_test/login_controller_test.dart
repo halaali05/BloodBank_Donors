@@ -20,9 +20,6 @@ void main() {
     controller = LoginController(authService: mockAuth);
   });
 
-  // =========================================================
-  // validateInput
-  // =========================================================
   group('validateInput', () {
     test('valid input returns true', () {
       expect(controller.validateInput('a@test.com', '123456'), true);
@@ -41,10 +38,8 @@ void main() {
     });
   });
 
-  // =========================================================
-  // login — negative flows
-  // =========================================================
-  group('login - negative cases', () {
+
+  group('login ', () {
     test('email not verified', () async {
       when(() => mockAuth.login(
               email: any(named: 'email'),
@@ -105,12 +100,6 @@ void main() {
       expect(r.errorType, LoginErrorType.profileNotReady);
     });
   
-  });
-
-  // =========================================================
-  // login — success flows
-  // =========================================================
-  group('login - success cases', () {
     test('donor login success', () async {
       final user = MockUser();
 
@@ -170,12 +159,7 @@ void main() {
       expect(r.success, true);
       expect(r.navigationRoute, isNotNull);
     });
-  });
-
-  // =========================================================
-  // login — FirebaseAuthException mapping
-  // =========================================================
-  group('login - auth exceptions', () {
+  
     test('wrong-password → authException', () async {
       when(() => mockAuth.login(
               email: any(named: 'email'),
@@ -222,12 +206,7 @@ void main() {
       expect(r.errorType, LoginErrorType.authException);
       expect(r.errorTitle, 'Account disabled');
     });
-  });
-
-  // =========================================================
-  // login — generic exception paths
-  // =========================================================
-  group('login - generic exceptions', () {
+  
     test('network error → genericError with Connection title', () async {
       when(() => mockAuth.login(
               email: any(named: 'email'),
@@ -260,9 +239,7 @@ void main() {
     });
   });
 
-  // =========================================================
-  // resendVerification
-  // =========================================================
+
   group('resendVerification', () {
     test('success path', () async {
       when(() => mockAuth.login(
@@ -312,58 +289,47 @@ void main() {
       expect(r.errorTitle, 'Error');
     });
 
-
-  });
-
-test('network error message mapping', () async {
-  when(() => mockAuth.login(
-        email: any(named: 'email'),
-        password: any(named: 'password'),
-      )).thenThrow(Exception('Exception: network failure'));
-
-  final r = await controller.login(email: 'a', password: 'b');
-
-  expect(r.errorTitle, 'Connection error');
-});
-
-test('email only spaces returns false', () {
-  expect(controller.validateInput('   ', '123'), false);
-});
-
-test('getUserData succeeds on retry', () async {
-  final user = MockUser();
-
+    test('resendVerification fails in resendEmailVerification', () async {
   when(() => mockAuth.login(
         email: any(named: 'email'),
         password: any(named: 'password'),
       )).thenAnswer((_) async {});
 
-  when(() => mockAuth.isEmailVerified()).thenAnswer((_) async => true);
-  when(() => mockAuth.currentUser).thenReturn(user);
-  when(() => user.uid).thenReturn('u5');
+  when(() => mockAuth.resendEmailVerification())
+      .thenThrow(Exception());
 
-  when(() => mockAuth.completeProfileAfterVerification())
-      .thenAnswer((_) async => {});
-
-  int callCount = 0;
-  when(() => mockAuth.getUserData('u5')).thenAnswer((_) async {
-    callCount++;
-    if (callCount == 1) return null;
-    return models.User(
-      uid: 'u5',
-      email: 'a@test.com',
-      role: models.UserRole.donor,
-    );
-  });
-
-  final r = await controller.login(
+  final r = await controller.resendVerification(
     email: 'a@test.com',
     password: '123',
   );
 
-  expect(r.success, true);
+  expect(r.success, false);
 });
 
+    test('resendVerification fails in logout', () async {
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenAnswer((_) async {});
+
+  when(() => mockAuth.resendEmailVerification())
+      .thenAnswer((_) async {});
+
+  when(() => mockAuth.logout()).thenThrow(Exception());
+
+  final r = await controller.resendVerification(
+    email: 'a@test.com',
+    password: '123',
+  );
+
+  expect(r.success, false);
+});
+
+ 
+  });
+
+
+group('Exception', () {
 test('Exception prefix parsing - network', () async {
   when(() => mockAuth.login(
         email: any(named: 'email'),
@@ -411,17 +377,85 @@ test('Exception prefix parsing - default branch', () async {
   expect(r.errorTitle, 'Login error');
 });
 
-test('non Exception format → connection error', () async {
+test('profileCompleteFuture handles exception silently', () async {
+  final user = MockUser();
+
   when(() => mockAuth.login(
         email: any(named: 'email'),
         password: any(named: 'password'),
-      )).thenThrow(Exception('random error'));
+      )).thenAnswer((_) async {});
 
-  final r = await controller.login(email: 'a', password: 'b');
+  when(() => mockAuth.isEmailVerified()).thenAnswer((_) async => true);
+  when(() => mockAuth.currentUser).thenReturn(user);
+  when(() => user.uid).thenReturn('u1');
 
-  expect(r.errorTitle, 'Login error');
+  // ✅ FIX
+  when(() => mockAuth.completeProfileAfterVerification())
+      .thenAnswer((_) => Future.error(Exception()));
+
+  when(() => mockAuth.getUserData('u1')).thenAnswer((_) async {
+    return models.User(
+      uid: 'u1',
+      email: 'a@test.com',
+      role: models.UserRole.donor,
+    );
+  });
+
+  final r = await controller.login(email: 'a', password: '1');
+
+  expect(r.success, true);
 });
 
+});
+
+test('hospital fallback values for name and location', () async {
+  final user = MockUser();
+
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenAnswer((_) async {});
+
+  when(() => mockAuth.isEmailVerified()).thenAnswer((_) async => true);
+  when(() => mockAuth.currentUser).thenReturn(user);
+  when(() => user.uid).thenReturn('u2');
+
+  when(() => mockAuth.completeProfileAfterVerification())
+      .thenAnswer((_) async => {});
+
+  when(() => mockAuth.getUserData('u2')).thenAnswer((_) async {
+    return models.User(
+      uid: 'u2',
+      email: 'h@test.com',
+      role: models.UserRole.hospital,
+      bloodBankName: null, // fallback
+      location: null, // fallback
+    );
+  });
+
+  final r = await controller.login(email: 'h', password: '1');
+
+  expect(r.success, true);
+});
+
+test('email only spaces returns false', () {
+  expect(controller.validateInput('   ', '123'), false);
+});
+
+test('isEmailVerified throws → genericError', () async {
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenAnswer((_) async {});
+
+  when(() => mockAuth.isEmailVerified())
+      .thenThrow(Exception('network'));
+
+  final r = await controller.login(email: 'a', password: '1');
+
+  expect(r.success, false);
+  expect(r.errorType, LoginErrorType.genericError);
+});
 
 test('unknown firebase error → default mapping', () async {
   when(() => mockAuth.login(
@@ -434,5 +468,189 @@ test('unknown firebase error → default mapping', () async {
   expect(r.errorTitle, 'Login failed');
 });
 
+test('too-many-requests → mapped title', () async {
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenThrow(FirebaseAuthException(code: 'too-many-requests'));
+
+  final r = await controller.login(email: 'a', password: 'b');
+
+  expect(r.errorTitle, 'Too many attempts');
+});
+
+test('operation-not-allowed → mapped title', () async {
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenThrow(FirebaseAuthException(code: 'operation-not-allowed'));
+
+  final r = await controller.login(email: 'a', password: 'b');
+
+  expect(r.errorTitle, 'Login disabled');
+});
+test('profileCompleteFuture handles failure (no timeout needed)', () async {
+  final user = MockUser();
+
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenAnswer((_) async {});
+
+  when(() => mockAuth.isEmailVerified()).thenAnswer((_) async => true);
+  when(() => mockAuth.currentUser).thenReturn(user);
+  when(() => user.uid).thenReturn('u1');
+
+  when(() => mockAuth.completeProfileAfterVerification())
+      .thenAnswer((_) => Future.error(Exception()));
+
+  when(() => mockAuth.getUserData('u1')).thenAnswer((_) async {
+    return models.User(
+      uid: 'u1',
+      email: 'a@test.com',
+      role: models.UserRole.donor,
+    );
+  });
+
+  final r = await controller.login(email: 'a', password: '1');
+
+  expect(r.success, true);
+});
+test('network-request-failed → mapped title', () async {
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenThrow(FirebaseAuthException(code: 'network-request-failed'));
+
+  final r = await controller.login(email: 'a', password: 'b');
+
+  expect(r.errorTitle, 'Network error');
+});
+
+test('invalid-credential → mapped title', () async {
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenThrow(FirebaseAuthException(code: 'invalid-credential'));
+
+  final r = await controller.login(email: 'a', password: 'b');
+
+  expect(r.errorTitle, 'Invalid credentials');
+});
+
+group('getUserData', () {
+test('getUserData fails twice → profileNotReady', () async {
+  final user = MockUser();
+
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenAnswer((_) async {});
+
+  when(() => mockAuth.isEmailVerified()).thenAnswer((_) async => true);
+  when(() => mockAuth.currentUser).thenReturn(user);
+  when(() => user.uid).thenReturn('u9');
+
+  when(() => mockAuth.completeProfileAfterVerification())
+      .thenAnswer((_) async => {});
+
+  when(() => mockAuth.getUserData('u9'))
+      .thenAnswer((_) async => null);
+
+  when(() => mockAuth.logout()).thenAnswer((_) async {});
+
+  final r = await controller.login(email: 'a', password: 'b');
+
+  expect(r.success, false);
+  expect(r.errorType, LoginErrorType.profileNotReady);
+});
+
+test('getUserData succeeds on retry', () async {
+  final user = MockUser();
+
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenAnswer((_) async {});
+
+  when(() => mockAuth.isEmailVerified()).thenAnswer((_) async => true);
+  when(() => mockAuth.currentUser).thenReturn(user);
+  when(() => user.uid).thenReturn('u5');
+
+  when(() => mockAuth.completeProfileAfterVerification())
+      .thenAnswer((_) async => {});
+
+  int callCount = 0;
+  when(() => mockAuth.getUserData('u5')).thenAnswer((_) async {
+    callCount++;
+    if (callCount == 1) return null;
+    return models.User(
+      uid: 'u5',
+      email: 'a@test.com',
+      role: models.UserRole.donor,
+    );
+  });
+
+  final r = await controller.login(
+    email: 'a@test.com',
+    password: '123',
+  );
+
+  expect(r.success, true);
+});
+test('getUserData succeeds on retry (null first)', () async {
+  final user = MockUser();
+
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenAnswer((_) async {});
+
+  when(() => mockAuth.isEmailVerified()).thenAnswer((_) async => true);
+  when(() => mockAuth.currentUser).thenReturn(user);
+  when(() => user.uid).thenReturn('u7');
+
+  when(() => mockAuth.completeProfileAfterVerification())
+      .thenAnswer((_) async => {});
+
+  int calls = 0;
+  when(() => mockAuth.getUserData('u7')).thenAnswer((_) async {
+    calls++;
+    if (calls == 1) return null; // ✅ بدل throw
+    return models.User(
+      uid: 'u7',
+      email: 'a@test.com',
+      role: models.UserRole.donor,
+    );
+  });
+
+  final r = await controller.login(email: 'a', password: '1');
+
+  expect(r.success, true);
+});
+test('getUserData throws twice → genericError', () async {
+  final user = MockUser();
+
+  when(() => mockAuth.login(
+        email: any(named: 'email'),
+        password: any(named: 'password'),
+      )).thenAnswer((_) async {});
+
+  when(() => mockAuth.isEmailVerified()).thenAnswer((_) async => true);
+  when(() => mockAuth.currentUser).thenReturn(user);
+  when(() => user.uid).thenReturn('u8');
+
+  when(() => mockAuth.completeProfileAfterVerification())
+      .thenAnswer((_) async => {});
+
+  when(() => mockAuth.getUserData('u8'))
+      .thenThrow(Exception('db down'));
+
+  final r = await controller.login(email: 'a', password: '1');
+
+  expect(r.success, false);
+  expect(r.errorType, LoginErrorType.genericError);
+});
+});
 
 }
