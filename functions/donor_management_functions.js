@@ -507,6 +507,11 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
       );
     }
 
+    // For Other Reasons: always create a report entry and send a notification
+    // so the donor sees the outcome in history. reportFileUrl is stored only
+    // when a file was actually uploaded (controls visibility in reports page).
+    const otherReasonsHasFile = isOtherReasons && fileTrim.length > 0;
+
     const confirmedNorm = normalizeStandardBloodType(confirmedBloodType);
     if (!confirmedNorm && !isOtherReasons) {
       throw new HttpsError(
@@ -578,7 +583,9 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
 
     const isPermanentBlockBool =
       normalizedStatus === "restricted" && isPermanentBlock === true;
-    const shouldCreateReport = !isOtherReasons;
+    // Other Reasons: always create the report entry (for history + notification),
+    // even when no file was uploaded. donated/permanentBlock unchanged.
+    const shouldCreateReport = !isOtherReasons || true; // always true
 
     const batch = db.batch();
     let reportRef = null;
@@ -597,7 +604,11 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
         restrictionReason:
           normalizedStatus === "restricted" ? restrictionReason.trim() : null,
         notes: notes && String(notes).trim() ? String(notes).trim() : null,
-        reportFileUrl: fileTrim,
+        reportFileUrl: isOtherReasons
+          ? otherReasonsHasFile
+            ? fileTrim
+            : null
+          : fileTrim,
         canDonateAgainAt: reportCanDonateTs,
         appointmentAt: appointmentAtForReport,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -693,7 +704,9 @@ exports.saveMedicalReport = onCall(publicCallableOpts, async (request) => {
           const body =
             normalizedStatus === "donated"
               ? `${req.bloodBankName || "The blood bank"} confirmed your ${confirmedNorm} donation. Your report is now available.`
-              : `${req.bloodBankName || "The blood bank"} updated your donation status. Check your profile.`;
+              : isOtherReasons && !otherReasonsHasFile
+                ? `${req.bloodBankName || "The blood bank"} updated your donation status.`
+                : `${req.bloodBankName || "The blood bank"} updated your donation status. Check your profile.`;
 
           // ✅ احفظ الإشعار داخل التطبيق
           const notifRef = db

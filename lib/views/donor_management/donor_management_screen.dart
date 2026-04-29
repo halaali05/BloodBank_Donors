@@ -306,6 +306,13 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
               final isPermanentBlock =
                   rejectionSubType == RejectionSubType.permanentBlock;
 
+              // reportFileUrl is empty string ('') when Other Reasons
+              // and the hospital chose not to attach a file.
+              // We only pass it to the Cloud Function when a real URL exists,
+              // so the backend knows whether to send a "report uploaded"
+              // notification and whether to show the report in history/reports.
+              final hasReport = reportFileUrl.isNotEmpty;
+
               try {
                 await _cloudFunctions.saveMedicalReport(
                   requestId: widget.request.id,
@@ -313,7 +320,7 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                   status: donorProcessStatusToString(status),
                   restrictionReason: reason,
                   notes: notes,
-                  reportFileUrl: reportFileUrl,
+                  reportFileUrl: hasReport ? reportFileUrl : '',
                   confirmedBloodType: confirmedBloodType,
                   isPermanentBlock: isPermanentBlock,
                 );
@@ -323,8 +330,11 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                 if (_tabController.length > 2) {
                   _tabController.animateTo(2);
                 }
+                // Only show "report uploaded" snack when file was actually attached
                 final msg = status == DonorProcessStatus.donated
                     ? '🩸 ${donor.fullName} donation recorded!'
+                    : hasReport
+                    ? '⚠️ ${donor.fullName} marked as restricted — report sent'
                     : '⚠️ ${donor.fullName} marked as restricted';
                 _showSnack(
                   msg,
