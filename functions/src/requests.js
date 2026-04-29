@@ -569,7 +569,7 @@ exports.getDonors = onCall(publicCallableOpts, async (request) => {
     }
 
     const userData = userSnap.data() || {};
-    if (userData.role !== "hospital") {
+    if (userData.role !== "hospital" && userData.role !== "admin") {
       throw new HttpsError(
         "permission-denied",
         "Only hospitals can view donor lists.",
@@ -1758,3 +1758,52 @@ exports.createAndBroadcastFollowUpRequest = async ({
   await notifyDonorsForNewRequest(requestId, payload);
   return { requestId };
 };
+
+/**
+ * getAdminRequests - Get ALL requests for admin (no expiry filter, no donor response).
+ */
+exports.getAdminRequests = onCall(publicCallableOpts, async (request) => {
+  try {
+    const uid = requireAuth(request);
+
+    const userSnap = await db.collection("users").doc(uid).get();
+    if (!userSnap.exists) {
+      throw new HttpsError("not-found", "User profile not found.");
+    }
+    const userData = userSnap.data() || {};
+    if (userData.role !== "admin") {
+      throw new HttpsError("permission-denied", "Admin access required.");
+    }
+
+    const data = request.data || {};
+    const limit =
+      typeof data.limit === "number" ? Math.min(data.limit, 200) : 200;
+
+    const snapshot = await db
+      .collection("requests")
+      .orderBy("createdAt", "desc")
+      .limit(limit)
+      .get();
+
+    const requests = snapshot.docs.map((doc) => {
+      const d = doc.data() || {};
+      return {
+        id: doc.id,
+        ...d,
+        acceptedCount:
+          typeof d.acceptedCount === "number" ? d.acceptedCount : 0,
+        rejectedCount:
+          typeof d.rejectedCount === "number" ? d.rejectedCount : 0,
+        createdAt:
+          d.createdAt && typeof d.createdAt.toMillis === "function"
+            ? d.createdAt.toMillis()
+            : null,
+      };
+    });
+
+    return { requests, count: requests.length };
+  } catch (err) {
+    console.error("[getAdminRequests] ERROR:", err);
+    throw toHttpsError(err, "Failed to load requests.");
+  }
+});

@@ -216,6 +216,16 @@ class CloudFunctionsService {
     }
   }
 
+  Future<Map<String, dynamic>> getAdminRequests({int limit = 200}) async {
+    try {
+      final callable = _functions.httpsCallable('getAdminRequests');
+      final result = await callable.call({'limit': limit});
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    }
+  }
+
   Future<Map<String, dynamic>> getRequests({
     int limit = 50,
     String? lastRequestId,

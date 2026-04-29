@@ -7,6 +7,9 @@ enum UserRole {
 
   /// A blood bank/hospital user
   hospital,
+
+  /// System administrator
+  admin,
 }
 
 /// Safely parse date values coming from Cloud Functions / Firestore.
@@ -121,7 +124,11 @@ class User {
   /// Factory constructor to create a [User] from Firestore/Functions data
   factory User.fromMap(Map<String, dynamic> data, String uid) {
     final roleString = (data['role'] ?? '') as String;
-    final role = roleString == 'hospital' ? UserRole.hospital : UserRole.donor;
+    final role = roleString == 'hospital'
+        ? UserRole.hospital
+        : roleString == 'admin'
+        ? UserRole.admin
+        : UserRole.donor;
 
     // Parse latitude/longitude - may come as int or double from Firestore
     double? parseDouble(dynamic v) {

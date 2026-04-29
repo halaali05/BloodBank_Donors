@@ -4,6 +4,7 @@ import '../models/user_model.dart' as models;
 import '../models/login_models.dart';
 import '../views/donor_dashboard_screen.dart';
 import '../views/blood_bank_dashboard_screen.dart';
+import '../views/admin/admin_dashboard_screen.dart';
 
 /// Controller for handling login business logic
 /// Separates business logic from UI for better maintainability
@@ -113,6 +114,11 @@ class LoginController {
             bloodBankName: bloodBankName,
             location: location,
           ),
+        );
+      } else if (userData.role == models.UserRole.admin) {
+        return LoginResult(
+          success: true,
+          navigationRoute: const AdminDashboardScreen(),
         );
       } else {
         await _authService.logout();
