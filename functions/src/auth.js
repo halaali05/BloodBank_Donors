@@ -6,6 +6,7 @@ const {
   nonEmptyString,
   toHttpsError,
   normalizeJordanMobile,
+  jordanMobileFirestoreLookupVariants,
   parseDonorGender,
 } = require("./utils");
 const { publicCallableOpts } = require("../callable_config");
@@ -15,6 +16,77 @@ const {
 } = require("../donation_schedule");
 
 const db = admin.firestore();
+
+/**
+ * Prefer Firestore email; fallback to Firebase Auth (`users.email` can be stale/missing).
+ * @param {string} uid
+ * @param {FirebaseFirestore.DocumentData} data
+ * @return {Promise<string>}
+ */
+async function donorEmailFromUserDoc(uid, data) {
+  const fromFs = typeof data.email === "string" ? data.email.trim() : "";
+  if (fromFs) return fromFs;
+  try {
+    const rec = await admin.auth().getUser(uid);
+    return typeof rec.email === "string" ? rec.email.trim() : "";
+  } catch (_) {
+    return "";
+  }
+}
+
+/**
+ * Same mobile may be stored as +962…, 962…, or 07… — merge without double-counting.
+ *
+ * @param {FirebaseFirestore.CollectionReference} colRef
+ * @param {string} normalized
+ * @return {Promise<FirebaseFirestore.QueryDocumentSnapshot[]>}
+ */
+async function snapshotsForPhoneVariants(colRef, normalized) {
+  const variants = jordanMobileFirestoreLookupVariants(normalized);
+  /** @type {Map<string, FirebaseFirestore.QueryDocumentSnapshot>} */
+  const byId = new Map();
+  for (const variant of variants) {
+    const snap = await colRef.where("phoneNumber", "==", variant).limit(25).get();
+    for (const doc of snap.docs) {
+      if (!byId.has(doc.id)) byId.set(doc.id, doc);
+    }
+  }
+  return Array.from(byId.values());
+}
+
+/**
+ * When Firestore has no `phoneNumber` match but the user linked this mobile in
+ * Firebase Auth (donor SMS step), resolve sign-in email from Auth + profile role.
+ *
+ * @param {string} normalized E.164
+ * @return {Promise<string|null>}
+ */
+async function resolveDonorEmailViaAuthLinkedPhone(normalized) {
+  let userRecord;
+  try {
+    userRecord = await admin.auth().getUserByPhoneNumber(normalized);
+  } catch (e) {
+    const code = e && (e.code || (e.errorInfo && e.errorInfo.code));
+    if (code === "auth/user-not-found") return null;
+    throw e;
+  }
+
+  const email =
+      typeof userRecord.email === "string" ? userRecord.email.trim() : "";
+  if (!email) return null;
+
+  return email;
+}
+
+/**
+ * User has verified / linked SMS phone on Auth (linked phone numbers include E.164).
+ */
+function authUserHasVerifiedPhoneLinked(userRecord) {
+  return (
+    typeof userRecord.phoneNumber === "string" &&
+    userRecord.phoneNumber.trim() !== ""
+  );
+}
 
 /**
  * createPendingProfile
@@ -95,17 +167,18 @@ exports.createPendingProfile = onCall(publicCallableOpts, async (request) => {
 
 /**
  * completeProfileAfterVerification
- * Moves pending_profiles/{uid} -> users/{uid} only if email verified.
+ * Moves pending_profiles/{uid} -> users/{uid} when verification rules pass.
+ *
+ * - Donors: BOTH verified email AND SMS-linked phone (single signup path via client).
+ * - Hospitals: verified email only.
  */
 exports.completeProfileAfterVerification = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
 
     const userRecord = await admin.auth().getUser(uid);
-    if (!userRecord.emailVerified) {
-      throw new HttpsError("failed-precondition", "Email is not verified yet.");
-    }
-
+    const emailVerified = userRecord.emailVerified === true;
+    const phoneVerified = authUserHasVerifiedPhoneLinked(userRecord);
     const pendingRef = db.collection("pending_profiles").doc(uid);
     const userRef = db.collection("users").doc(uid);
     const pendingSnap = await pendingRef.get();
@@ -119,6 +192,28 @@ exports.completeProfileAfterVerification = onCall(publicCallableOpts, async (req
     }
 
     const pendingData = pendingSnap.data() || {};
+    const role = pendingData.role;
+
+    if (role === "donor") {
+      if (!emailVerified || !phoneVerified) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Verify both your email (inbox link) and your phone number (SMS) before continuing.",
+        );
+      }
+    } else if (role === "hospital") {
+      if (!emailVerified) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Email is not verified yet.",
+        );
+      }
+    } else {
+      throw new HttpsError(
+        "failed-precondition",
+        "Unknown profile role; cannot complete verification.",
+      );
+    }
 
     await db.runTransaction(async (tx) => {
       tx.set(
@@ -126,8 +221,16 @@ exports.completeProfileAfterVerification = onCall(publicCallableOpts, async (req
         {
           ...pendingData,
           email: userRecord.email || null,
-          emailVerified: true,
-          emailVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+          phoneNumber: pendingData.phoneNumber || userRecord.phoneNumber || null,
+          emailVerified,
+          phoneVerified,
+          verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+          ...(emailVerified
+            ? {emailVerifiedAt: admin.firestore.FieldValue.serverTimestamp()}
+            : {}),
+          ...(phoneVerified
+            ? {phoneVerifiedAt: admin.firestore.FieldValue.serverTimestamp()}
+            : {}),
           activatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
         { merge: true },
@@ -292,6 +395,172 @@ exports.updateFcmToken = onCall(publicCallableOpts, async (request) => {
   }
 });
 
+/**
+ * Resolve the account email from a normalized Jordan mobile.
+ * Allows phone + password login (same Firebase credential as email sign-in).
+ *
+ * Lookup order:
+ * 1) Firestore `users` (+ stored-format variants),
+ * 2) Firestore `pending_profiles`,
+ * 3) Firebase Auth phone index (`phoneNumber` on the Auth user record, e.g. after SMS link).
+ *
+ * No caller authentication — returns not-found when nothing matches.
+ */
+exports.resolveDonorEmailForPhoneLogin = onCall(
+    publicCallableOpts,
+    async (request) => {
+      try {
+        const data = request.data || {};
+        const raw =
+            typeof data.phoneNumber === "string" ? data.phoneNumber : "";
+        const normalized = normalizeJordanMobile(raw);
+        if (!normalized) {
+          throw new HttpsError(
+              "invalid-argument",
+              "Enter a valid Jordan mobile (079, 078, 077, or 962…).",
+          );
+        }
+
+        const userSnaps =
+            await snapshotsForPhoneVariants(db.collection("users"), normalized);
+        const matchingUserDocs = userSnaps;
+
+        if (matchingUserDocs.length === 1) {
+          const doc = matchingUserDocs[0];
+          const email =
+              await donorEmailFromUserDoc(doc.id, doc.data() || {});
+          if (!email) {
+            throw new HttpsError(
+                "not-found",
+                "No account uses this phone number.",
+            );
+          }
+          return { ok: true, email };
+        }
+
+        if (matchingUserDocs.length > 1) {
+          /** @type {{ id: string, email: string }[]} */
+          const withEmail = [];
+          for (const doc of matchingUserDocs) {
+            const email =
+                await donorEmailFromUserDoc(doc.id, doc.data() || {});
+            if (email) withEmail.push({ id: doc.id, email });
+          }
+          const distinctLower =
+              [...new Set(withEmail.map((x) => x.email.toLowerCase()))];
+
+          const everyDocHasEmail =
+              withEmail.length === matchingUserDocs.length;
+
+          if (everyDocHasEmail && distinctLower.length === 1) {
+            return {
+              ok: true,
+              email: withEmail[0].email,
+            };
+          }
+
+          console.error(
+              "[resolveDonorEmailForPhoneLogin] duplicate phone users",
+              normalized,
+              {
+                uidCount: matchingUserDocs.length,
+                resolvedEmails: distinctLower.length,
+              },
+          );
+          throw new HttpsError(
+              "failed-precondition",
+              "Several accounts share this mobile. Please sign in with "
+                  + "your email or contact support to tidy duplicate profiles.",
+          );
+        }
+
+        // Still onboarding: phone is on pending_profiles only until activation.
+        const pendingSnaps =
+            await snapshotsForPhoneVariants(
+                db.collection("pending_profiles"),
+                normalized,
+            );
+
+        const pendingMatchingDocs = pendingSnaps;
+
+        if (pendingMatchingDocs.length === 1) {
+          const uid = pendingMatchingDocs[0].id;
+          try {
+            const userRecord = await admin.auth().getUser(uid);
+            const authEmail =
+                typeof userRecord.email === "string" ?
+                    userRecord.email.trim() :
+                    "";
+            if (!authEmail) {
+              throw new HttpsError(
+                  "not-found",
+                  "No account uses this phone number.",
+              );
+            }
+            return { ok: true, email: authEmail };
+          } catch (err) {
+            if (err instanceof HttpsError) throw err;
+            console.error("[resolveDonorEmailForPhoneLogin] Auth lookup:", err);
+            throw new HttpsError(
+                "not-found",
+                "No account uses this phone number.",
+            );
+          }
+        }
+
+        if (pendingMatchingDocs.length > 1) {
+          /** @type {{ id: string, email: string }[]} */
+          const withEmail = [];
+          for (const doc of pendingMatchingDocs) {
+            try {
+              const rec = await admin.auth().getUser(doc.id);
+              const authEmail =
+                  typeof rec.email === "string" ? rec.email.trim() : "";
+              if (authEmail) withEmail.push({ id: doc.id, email: authEmail });
+            } catch (_) {
+              // orphaned pending_profiles doc
+            }
+          }
+          const distinctLower =
+              [...new Set(withEmail.map((x) => x.email.toLowerCase()))];
+
+          if (withEmail.length === pendingMatchingDocs.length &&
+              distinctLower.length === 1) {
+            return {
+              ok: true,
+              email: withEmail[0].email,
+            };
+          }
+
+          console.error(
+              "[resolveDonorEmailForPhoneLogin] duplicate phone pending",
+              normalized,
+              { count: pendingMatchingDocs.length },
+          );
+          throw new HttpsError(
+              "failed-precondition",
+              "Several onboarding accounts share this mobile. Sign in with "
+                  + "your email or contact support.",
+          );
+        }
+
+        const emailFromAuthPhone =
+            await resolveDonorEmailViaAuthLinkedPhone(normalized);
+        if (emailFromAuthPhone) {
+          return { ok: true, email: emailFromAuthPhone };
+        }
+
+        throw new HttpsError(
+            "not-found",
+            "No account uses this phone number.",
+        );
+      } catch (err) {
+        console.error("[resolveDonorEmailForPhoneLogin] ERROR:", err);
+        throw toHttpsError(err, "Could not resolve account.");
+      }
+    },
+);
+
 exports.updateUserProfile = onCall(publicCallableOpts, async (request) => {
   try {
     const uid = requireAuth(request);
@@ -355,6 +624,9 @@ exports.cleanupUnverifiedUsers = onSchedule(
       for (const user of res.users) {
         scanned++;
         if (user.emailVerified) continue;
+        if (typeof user.phoneNumber === "string" && user.phoneNumber !== "") {
+          continue;
+        }
         const createdStr =
           user.metadata && user.metadata.creationTime
             ? user.metadata.creationTime

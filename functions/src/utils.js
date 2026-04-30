@@ -43,24 +43,56 @@ function toHttpsError(err, fallbackMessage) {
 }
 
 /**
- * Normalize donor mobile to E.164 +9627xxxxxxxx (Jordan).
- * Accepts 07XXXXXXXX, +9627XXXXXXXX, 9627XXXXXXXX, 00962…, optional spaces/dashes.
+ * Normalize Jordan **mobile** to E.164 +9627xxxxxxxx.
+ * Mirrors Flutter `JordanPhone` rules: digits only after stripping non-digits;
+ * allowed forms 07[789] + 7 digits, or 9627[789] + 7 digits; 00962… → 962….
  * @param {*} input
  * @return {string|null}
  */
 function normalizeJordanMobile(input) {
   if (typeof input !== "string") return null;
-  let s = input.replace(/[\s\-.]/g, "");
-  if (s === "") return null;
-  if (s.startsWith("00962")) s = "+962" + s.slice(5);
-  if (s.startsWith("962") && !s.startsWith("+962")) s = "+962" + s.slice(3);
-  if (s.startsWith("+962")) {
-    const rest = s.slice(4);
-    return /^7\d{8}$/.test(rest) ? "+962" + rest : null;
+  let digits = input.replace(/\D/g, "");
+  if (!digits.length) return null;
+  if (digits.startsWith("00962")) digits = digits.slice(2);
+
+  // Local mobile without leading 0: `79…`, `77…`, `78…` (9 digits → `+96279…`).
+  if (/^7[789]\d{7}$/.test(digits)) {
+    return "+962" + digits;
   }
-  if (/^07\d{8}$/.test(s)) return "+962" + s.slice(1);
-  if (/^7\d{8}$/.test(s)) return "+962" + s;
+
+  const strict = /^(07[789]\d{7}|9627[789]\d{7})$/;
+  if (!strict.test(digits)) return null;
+  if (digits.startsWith("07")) return "+962" + digits.slice(1);
+  if (digits.startsWith("962")) return "+" + digits;
   return null;
+}
+
+/**
+ * Variants historically stored on `pending_profiles.phoneNumber` / `users.phoneNumber`.
+ * Queries use exact-match `==`; older rows may omit `+` or use leading `07…`.
+ *
+ * @param {string|null} canonical E.164 e.g. +962791234567
+ * @return {string[]}
+ */
+function jordanMobileFirestoreLookupVariants(canonical) {
+  if (typeof canonical !== "string" || !canonical.startsWith("+962")) {
+    return canonical ? [canonical.trim()] : [];
+  }
+  const t = canonical.trim();
+  /** @type {Set<string>} */
+  const uniq = new Set();
+
+  uniq.add(t);
+
+  const noPlus = t.slice(1); // 962791234567
+  uniq.add(noPlus);
+
+  const afterCountry = t.slice(4); // 791234567 for +962XXXXXXXXX
+  if (/^7[789]\d{7}$/.test(afterCountry)) {
+    uniq.add(`0${afterCountry}`);
+  }
+
+  return Array.from(uniq);
 }
 
 /**
@@ -79,5 +111,6 @@ module.exports = {
   nonEmptyString,
   toHttpsError,
   normalizeJordanMobile,
+  jordanMobileFirestoreLookupVariants,
   parseDonorGender,
 };

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../controllers/donor_profile_controller.dart';
-import '../../theme/app_theme.dart';
-import '../../utils/donor_eligibility.dart';
+import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/donor_eligibility.dart';
 
 /// Shows eligibility end date, countdown, and a day-by-day timeline after last donation.
 class DonorEligibilityScreen extends StatefulWidget {

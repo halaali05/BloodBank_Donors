@@ -1,16 +1,7 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'dart:convert';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../main.dart';
-import '../views/welcome_screen.dart';
-import '../views/notifications_screen.dart';
-import '../views/donor_dashboard_screen.dart';
-import '../views/blood_bank_dashboard_screen.dart';
-import '../views/chat_screen.dart';
-import '../services/auth_service.dart';
-import '../models/user_model.dart' as models;
+
+import 'notification_navigation_service.dart';
 
 class LocalNotifService {
   LocalNotifService._();
@@ -84,13 +75,13 @@ class LocalNotifService {
       await _plugin.initialize(
         settings: initSettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
-          if (response.payload != null && response.payload!.isNotEmpty) {
-            // Only handle click if app is running
+          final payload = response.payload;
+          if (payload != null && payload.isNotEmpty) {
             try {
-              _handleNotificationClick(response.payload!);
-            } catch (e) {
-              // Could not handle notification click
-            }
+              NotificationNavigationService.instance.openFromPayloadJson(
+                payload,
+              );
+            } catch (_) {}
           }
         },
       );
@@ -180,218 +171,5 @@ class LocalNotifService {
       ),
       payload: payload,
     );
-  }
-
-  /// Handle notification click and navigate based on authentication state
-  /// - If authenticated: Navigate to appropriate dashboard (donor or blood bank)
-  /// - If not authenticated: Navigate to welcome screen
-  void _handleNotificationClick(String payload) async {
-    String requestId = '';
-    String type = 'request';
-    String senderId = '';
-    String recipientId = '';
-    try {
-      final decoded = jsonDecode(payload);
-      if (decoded is Map<String, dynamic>) {
-        requestId = decoded['requestId']?.toString() ?? '';
-        type = decoded['type']?.toString() ?? 'request';
-        senderId = decoded['senderId']?.toString() ?? '';
-        recipientId = decoded['recipientId']?.toString() ?? '';
-      } else {
-        requestId = payload;
-      }
-    } catch (_) {
-      requestId = payload;
-    }
-
-    final context = navigatorKey.currentContext;
-    if (context == null) {
-      // Navigator context not available yet - retry after a short delay
-      Future.delayed(const Duration(milliseconds: 500), () {
-        _handleNotificationClick(requestId);
-      });
-      return;
-    }
-
-    // Verify user is actually authenticated by checking if we can get a valid ID token
-    // This is more reliable than just checking currentUser or reloading
-    bool isAuthenticated = false;
-    User? user;
-
-    try {
-      // First check immediately
-      user = FirebaseAuth.instance.currentUser;
-
-      // If user exists, verify we can get a valid ID token
-      if (user != null) {
-        try {
-          // Try to get ID token - this will fail if user is not authenticated
-          await user.getIdToken();
-          isAuthenticated = true;
-        } catch (e) {
-          // Can't get token - user is not authenticated
-          isAuthenticated = false;
-          user = null;
-        }
-      }
-
-      // If no user found, wait briefly for auth state (with timeout)
-      if (!isAuthenticated && user == null) {
-        try {
-          // Wait for auth state changes with timeout
-          user = await FirebaseAuth.instance
-              .authStateChanges()
-              .timeout(const Duration(seconds: 1))
-              .first;
-
-          // If we got a user from the stream, verify we can get a token
-          if (user != null) {
-            try {
-              await user.getIdToken();
-              isAuthenticated = true;
-            } catch (e) {
-              isAuthenticated = false;
-              user = null;
-            }
-          }
-        } catch (e) {
-          isAuthenticated = false;
-          user = null;
-        }
-      }
-    } catch (e) {
-      isAuthenticated = false;
-      user = null;
-    }
-
-    if (!context.mounted) return;
-
-    // If not authenticated, navigate to welcome screen
-    if (!isAuthenticated || user == null) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
-        (route) => false,
-      );
-      return;
-    }
-
-    // If authenticated, navigate to notifications screen with Unread tab selected
-    try {
-      final authService = AuthService();
-      final userData = await authService.getUserData(user.uid);
-
-      if (!context.mounted) return;
-
-      if (userData == null) {
-        // If user data not found, go to welcome screen
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const WelcomeScreen()),
-          (route) => false,
-        );
-        return;
-      }
-
-      // Chat notifications open chat directly; request notifications open list.
-      if (type == 'chat' && requestId.isNotEmpty) {
-        if (userData.role == models.UserRole.donor) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const DonorDashboardScreen()),
-            (route) => false,
-          );
-          Future.delayed(const Duration(milliseconds: 100), () {
-            if (context.mounted) {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      ChatScreen(requestId: requestId, initialMessage: ''),
-                ),
-              );
-            }
-          });
-          return;
-        }
-        if (userData.role == models.UserRole.hospital) {
-          final bloodBankName = userData.bloodBankName ?? 'Blood Bank';
-          final location = userData.location ?? 'Unknown';
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (_) => BloodBankDashboardScreen(
-                bloodBankName: bloodBankName,
-                location: location,
-              ),
-            ),
-            (route) => false,
-          );
-          Future.delayed(const Duration(milliseconds: 100), () {
-            if (context.mounted) {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => ChatScreen(
-                    requestId: requestId,
-                    initialMessage: '',
-                    recipientId: senderId.isNotEmpty
-                        ? senderId
-                        : (recipientId.isNotEmpty ? recipientId : null),
-                  ),
-                ),
-              );
-            }
-          });
-          return;
-        }
-      }
-
-      if (userData.role == models.UserRole.donor) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const DonorDashboardScreen()),
-          (route) => false,
-        );
-        // Push notifications screen on top after a short delay to ensure dashboard is built
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (context.mounted) {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const NotificationsScreen(initialTabIndex: 1),
-              ),
-            );
-          }
-        });
-      } else if (userData.role == models.UserRole.hospital) {
-        final bloodBankName = userData.bloodBankName ?? 'Blood Bank';
-        final location = userData.location ?? 'Unknown';
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) => BloodBankDashboardScreen(
-              bloodBankName: bloodBankName,
-              location: location,
-            ),
-          ),
-          (route) => false,
-        );
-        // Push notifications screen on top after a short delay to ensure dashboard is built
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (context.mounted) {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const NotificationsScreen(initialTabIndex: 1),
-              ),
-            );
-          }
-        });
-      } else {
-        // Unknown role, go to welcome screen
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const WelcomeScreen()),
-          (route) => false,
-        );
-      }
-    } catch (e) {
-      // Failed to get user role - navigate to welcome screen
-      if (!context.mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
-        (route) => false,
-      );
-    }
   }
 }

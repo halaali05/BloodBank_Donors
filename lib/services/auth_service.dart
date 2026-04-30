@@ -1,6 +1,33 @@
 import 'package:firebase_auth/firebase_auth.dart';
+
 import '../models/user_model.dart' as models;
 import 'cloud_functions_service.dart';
+
+/// Thrown when a donor has not satisfied both Firebase email verification and
+/// linked phone (SMS provider) yet.
+class DonorOnboardingIncomplete implements Exception {
+  DonorOnboardingIncomplete(this.dialogTitle, this.message);
+
+  final String dialogTitle;
+  final String message;
+
+  /// User must open the Firebase verification email and tap the link.
+  factory DonorOnboardingIncomplete.needsEmailInbox() => DonorOnboardingIncomplete(
+        'Email verification still needed',
+        'We activate your account after inbox and SMS are both done. '
+        'Open the link in your verification email first.',
+      );
+
+  /// User must finish SMS OTP and link the phone to this account.
+  factory DonorOnboardingIncomplete.needsPhoneSms() => DonorOnboardingIncomplete(
+        'SMS verification still needed',
+        'Your email looks good. Enter the SMS code we sent to link your phone '
+        'to this login.',
+      );
+
+  @override
+  String toString() => message;
+}
 
 /// Custom exception for signup failures
 class SignupException implements Exception {
@@ -141,6 +168,11 @@ class AuthService {
     }
   }
 
+  /// Looks up the donor account email for [phoneNumberE164] (e.g. +962791234567).
+  /// Used for phone + password login (same credentials as email sign-in).
+  Future<String?> resolveDonorEmailForPhoneLogin(String phoneNumberE164) =>
+      _cloudFunctions.resolveDonorEmailForPhoneLogin(phoneNumberE164);
+
   /// Logs in a user with email and password
   ///
   /// Security: All database operations go through Cloud Functions
@@ -151,22 +183,18 @@ class AuthService {
       password: password,
     );
 
-    // Update last login time via Cloud Function (server-side, non-blocking)
-    // This is used to filter notifications to only logged-in users
-    // Only updates if user document already exists in users collection
-    // Run asynchronously to not block login
+    await refreshLastLoginTelemetry();
+  }
+
+  /// Fire-and-forget last-login update after any successful sign-in
+  /// (including [FirebaseAuth.signInWithCredential]). Safe to skip errors.
+  Future<void> refreshLastLoginTelemetry() async {
     final user = _auth.currentUser;
-    if (user != null) {
-      // Fire and forget - don't wait for this to complete
-      _cloudFunctions
-          .updateLastLoginAt()
-          .then((_) {
-            // Success - ignore result
-          })
-          .catchError((e) {
-            // Failed to update last login time - non-critical, ignore
-          });
-    }
+    if (user == null) return;
+    _cloudFunctions
+        .updateLastLoginAt()
+        .then((_) {})
+        .catchError((_) {});
   }
 
   /// Logs out the current user
@@ -226,6 +254,39 @@ class AuthService {
       throw Exception(
         'Email is not verified yet. Please verify your email first.',
       );
+    }
+
+    return await _cloudFunctions.completeProfileAfterVerification();
+  }
+
+  /// Donor onboarding: reloads Firebase user and activates only when BOTH
+  /// [User.emailVerified] is true AND a **`phone`** entry exists in
+  /// [User.providerData] (SMS linked to this same Firebase user).
+  ///
+  /// Then calls **[completeProfileAfterVerification]** callable. Order of
+  /// completing inbox vs SMS does not matter; both must pass before activation.
+  ///
+  /// Throws [DonorOnboardingIncomplete] if either check fails.
+  Future<Map<String, dynamic>> completeDonorOnboardingWhenReady() async {
+    final raw = _auth.currentUser;
+    if (raw == null) {
+      throw StateError('Not signed in. Please sign up again or log in.');
+    }
+    await raw.reload();
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw StateError('Not signed in. Please sign up again or log in.');
+    }
+
+    if (!user.emailVerified) {
+      throw DonorOnboardingIncomplete.needsEmailInbox();
+    }
+
+    final hasPhoneProvider =
+        user.providerData.any((p) => p.providerId == PhoneAuthProvider.PROVIDER_ID);
+
+    if (!hasPhoneProvider) {
+      throw DonorOnboardingIncomplete.needsPhoneSms();
     }
 
     return await _cloudFunctions.completeProfileAfterVerification();

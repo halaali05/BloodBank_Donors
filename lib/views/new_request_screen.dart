@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
-import '../controllers/new_request_controller.dart';
 
-/// Screen for blood banks to create new blood requests
-/// Allows selecting blood type, units, urgency, location, and details
+import '../controllers/new_request_controller.dart';
+import '../shared/theme/app_theme.dart';
+import '../shared/widgets/common/async_button.dart';
+import '../shared/utils/snack_bar_helper.dart';
+
+/// Blood banks publish a live request (`bloodBankName` + optional `initialHospitalLocation` pre-fill).
+
 class NewRequestScreen extends StatefulWidget {
-  /// Name of the blood bank creating the request
+  /// Logged-in bank label stored on the request.
   final String bloodBankName;
 
-  /// Pre-filled hospital location (from blood bank profile)
+  /// Preferred governorate pulled from profile when it matches the fixed list.
   final String initialHospitalLocation;
 
   const NewRequestScreen({
@@ -22,25 +25,22 @@ class NewRequestScreen extends StatefulWidget {
 }
 
 class _NewRequestScreenState extends State<NewRequestScreen> {
-  // Controller for business logic
   final NewRequestController _controller = NewRequestController();
 
-  // Form state
-  String _bloodType = 'A+'; // Selected blood type
-  int _units = 1; // Number of units needed
-  bool _isUrgent = false; // Whether request is urgent
-  bool _isLoading = false; // Show loading during submission
+  String _bloodType = 'A+';
+  int _units = 1;
+  bool _isUrgent = false;
+  bool _isLoading = false;
 
-  // Text field controllers
   final TextEditingController _detailsController = TextEditingController();
 
-  // Location dropdown state (replaces text field)
+  /// Governorate dropdown; optional free text replaced by predefined list + map pin upstream.
   String? _selectedHospitalLocation;
 
   @override
   void initState() {
     super.initState();
-    // Pre-fill location from blood bank profile if it's a valid governorate
+    // If the saved profile hospital matches our governorate list, select it automatically.
     final initialLocation = widget.initialHospitalLocation.trim();
     if (initialLocation.isNotEmpty &&
         AppTheme.jordanianGovernorates.contains(initialLocation)) {
@@ -54,14 +54,11 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
     super.dispose();
   }
 
-  /// Submits the blood request to Firebase
-  /// Move business logic to NewRequestController for better maintainability
-  /// Screen → Controller → Service → CloudFunctionsService → Firebase Functions
   Future<void> _submit() async {
     setState(() => _isLoading = true);
 
     try {
-      // Move business logic to NewRequestController for better maintainability
+      // Delegate creation + validation errors to controller → Cloud Functions.
       final result = await _controller.createRequest(
         bloodBankName: widget.bloodBankName,
         bloodType: _bloodType,
@@ -78,41 +75,29 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
       if (!mounted) return;
 
       if (result['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Request created successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        SnackBarHelper.success(context, 'Request created successfully');
 
-        // Return success so the dashboard refreshes immediately.
+        // Pop `true` so the caller screen can refresh lists.
         Navigator.of(context).pop(true);
       } else {
-        // Show validation or error message from controller
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['errorMessage'] ?? 'Failed to create request'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
+        SnackBarHelper.failure(
+          context,
+          result['errorMessage']?.toString() ?? 'Failed to create request',
         );
       }
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('An unexpected error occurred: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
+      SnackBarHelper.failure(
+        context,
+        'An unexpected error occurred: '
+        '${SnackBarHelper.stripExceptionPrefix(e.toString())}',
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  /// Creates input decoration for form fields
   InputDecoration _decoration({required String label, IconData? icon}) {
     return AppTheme.outlinedInputDecoration(label: label, icon: icon);
   }
@@ -138,7 +123,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Image.asset(
-                'images/logoBLOOD.png',
+                'assets/docs/images/logoBLOOD.png',
                 height: 34,
                 fit: BoxFit.contain,
               ),
@@ -393,27 +378,12 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                       SizedBox(
                         width: double.infinity,
                         height: 48,
-                        child: ElevatedButton(
-                          onPressed: _isLoading ? null : _submit,
+                        child: AsyncElevatedButton(
+                          label: 'Create request',
+                          isBusy: _isLoading,
+                          onPressed: _submit,
                           style: AppTheme.primaryButtonStyle(),
-                          child: _isLoading
-                              ? const SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
-                                    ),
-                                  ),
-                                )
-                              : const Text(
-                                  'Create request',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 15,
-                                  ),
-                                ),
+                          minimumSize: const Size.fromHeight(48),
                         ),
                       ),
                     ],

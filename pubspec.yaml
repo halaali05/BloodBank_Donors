@@ -17,8 +17,8 @@ dependencies:
   http: ^1.6.0
 
   # Firebase
-  firebase_core: ^4.2.1
-  firebase_auth: ^6.1.2
+  firebase_core: ^4.7.0
+  firebase_auth: ^6.4.0
   cloud_firestore: ^6.1.0
   cloud_functions: ^6.0.4
   firebase_storage: ^13.3.0
@@ -31,7 +31,6 @@ dependencies:
   # Maps
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
-  image_cropper: ^12.2.1
 
 dev_dependencies:
   flutter_test:
@@ -47,7 +46,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - images/logoBLOOD.png
+    - assets/docs/images/logoBLOOD.png
     - assets/docs/restriction_page_01.png
     - assets/docs/restriction_page_02.png
     - assets/docs/restriction_page_03.png
@@ -60,7 +59,7 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: images/logoBLOOD.png
+  image_path: assets/docs/images/logoBLOOD.png
   adaptive_icon_background: "#E60012"
-  adaptive_icon_foreground: images/logoBLOOD.png
+  adaptive_icon_foreground: assets/docs/images/logoBLOOD.png
   remove_alpha_ios: true

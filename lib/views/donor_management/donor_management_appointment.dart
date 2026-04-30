@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../shared/utils/snack_bar_helper.dart';
+
 /// Picks a future date + time for scheduling a donation appointment.
 Future<DateTime?> pickDonorAppointmentDateTime(BuildContext context) async {
   final now = DateTime.now();
@@ -31,12 +33,7 @@ Future<DateTime?> pickDonorAppointmentDateTime(BuildContext context) async {
     time.minute,
   );
   if (!combined.isAfter(now)) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Choose a date and time in the future.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    SnackBarHelper.notice(context, 'Choose a date and time in the future.');
     return null;
   }
   return combined;

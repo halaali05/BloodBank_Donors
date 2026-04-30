@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../common/donor_cooldown_blocked_message.dart';
 import '../../theme/app_theme.dart';
-import '../../models/blood_request_model.dart';
+import '../../../models/blood_request_model.dart';
 import '../common/urgent_badge.dart';
 
 /// Card widget that displays a blood request in the donor dashboard

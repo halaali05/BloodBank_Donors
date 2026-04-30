@@ -2,8 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/cloud_functions_service.dart';
 import '../models/blood_request_model.dart';
 
-/// Controller for blood bank dashboard business logic
-/// Separates business logic from UI for better maintainability
+/// Blood bank dashboard: own requests, delete/update rules, headline stats.
 class BloodBankDashboardController {
   final CloudFunctionsService _cloudFunctions;
   final FirebaseAuth _auth;
@@ -14,35 +13,20 @@ class BloodBankDashboardController {
   }) : _cloudFunctions = cloudFunctions ?? CloudFunctionsService(),
        _auth = auth ?? FirebaseAuth.instance;
 
-  // ------------------ Authentication ------------------
-  /// Gets the current authenticated user ID
+  // --- Auth ---
+
   String? getCurrentUserId() {
     return _auth.currentUser?.uid;
   }
 
-  /// Verifies that the current user owns the request
-  /// Returns true if user owns the request, false otherwise
+  /// True when this login created the listed request (`requestBloodBankId` equals current uid).
   bool verifyRequestOwnership(String requestBloodBankId) {
     final currentUid = getCurrentUserId();
     return currentUid != null && requestBloodBankId == currentUid;
   }
 
-  // ------------------ Request Operations ------------------
-  /// Deletes a blood request using Cloud Functions
-  ///
-  /// Security Architecture:
-  /// - All delete operations go through Cloud Functions (server-side)
-  /// - Server validates user permissions and request ownership
-  /// - Server handles cleanup of related notifications and messages
-  ///
-  /// Parameters:
-  /// - [requestId]: The ID of the request to delete
-  ///
-  /// Returns:
-  /// - Map with success status and message
-  ///
-  /// Throws:
-  /// - FirebaseFunctionsException with error details
+  // --- Write ---
+
   Future<Map<String, dynamic>> deleteRequest({
     required String requestId,
   }) async {
@@ -54,8 +38,7 @@ class BloodBankDashboardController {
       final result = await _cloudFunctions.deleteRequest(requestId: requestId);
       return result;
     } catch (e) {
-      // Service layer converts FirebaseFunctionsException to Exception
-      // Re-throw as-is to preserve the error message from service layer
+      // Preserve the readable message produced in [CloudFunctionsService].
       if (e is Exception) {
         rethrow;
       }
@@ -101,19 +84,8 @@ class BloodBankDashboardController {
     }
   }
 
-  // ------------------ Data Fetching ------------------
-  /// Fetches all requests for the current blood bank via Cloud Functions
-  ///
-  /// Security Architecture:
-  /// - All reads go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  /// - Server ensures only hospitals can view their own requests
-  ///
-  /// Returns:
-  /// - List of BloodRequest objects
-  ///
-  /// Throws:
-  /// - Exception if fetch fails
+  // --- Load ---
+
   Future<List<BloodRequest>> fetchRequests() async {
     try {
       final result = await _cloudFunctions.getRequestsByBloodBankId();
@@ -135,14 +107,9 @@ class BloodBankDashboardController {
     }
   }
 
-  // ------------------ Statistics Calculation ------------------
-  /// Calculates dashboard statistics from a list of requests
-  ///
-  /// Returns a map with:
-  /// - totalUnits: Sum of all units from all requests
-  /// - activeCount: Total number of requests
-  /// - urgentCount: Number of urgent requests
-  /// - normalCount: Number of non-urgent requests
+  // --- Stats ---
+
+  /// Header numbers: totals, urgency split, responder counts.
   Map<String, int> calculateStatistics(List<BloodRequest> requests) {
     final totalUnits = requests.fold<int>(0, (sum, r) => sum + r.units);
     final activeRequests = requests.where((r) => !r.isCompleted).toList();

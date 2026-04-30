@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../controllers/reset_password_controller.dart';
-import '../../utils/dialog_helper.dart';
+import '../../../controllers/reset_password_controller.dart';
+import '../../../shared/utils/dialog_helper.dart';
 
 /// Reset Password Screen
 ///

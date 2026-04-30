@@ -3,13 +3,9 @@ import '../models/blood_request_model.dart';
 import '../services/cloud_functions_service.dart';
 import '../services/auth_service.dart';
 
-/// Controller for donor dashboard business logic
-/// Separates business logic from UI for better maintainability
+/// Donor home screen data: requests, responses, notification count, profile fetch.
 ///
-/// SECURITY ARCHITECTURE:
-/// - All reads go through Cloud Functions (server-side)
-/// - Server validates user authentication
-/// - Server ensures proper data access
+/// Everything hits the backend through Cloud Functions.
 class DonorDashboardController {
   final FirebaseAuth _auth;
   final CloudFunctionsService _cloudFunctions;
@@ -23,29 +19,23 @@ class DonorDashboardController {
        _cloudFunctions = cloudFunctions ?? CloudFunctionsService(),
        _authService = authService ?? AuthService();
 
-  // ------------------ Authentication ------------------
-  /// Gets the current authenticated user
+  // --- Auth ---
+
   User? getCurrentUser() {
     return _auth.currentUser;
   }
 
-  /// Gets the current authenticated user ID
   String? getCurrentUserId() {
     return _auth.currentUser?.uid;
   }
 
-  /// Logs out the current user
   Future<void> logout() async {
     await _auth.signOut();
   }
 
-  // ------------------ Statistics Calculation ------------------
-  /// Calculates dashboard statistics from a list of requests
-  ///
-  /// Returns a map with:
-  /// - totalCount: Total number of requests
-  /// - urgentCount: Number of urgent requests
-  /// - normalCount: Number of non-urgent requests
+  // --- Stats ---
+
+  /// Counts total / urgent / normal for header chips.
   Map<String, int> calculateStatistics(List<BloodRequest> requests) {
     final urgentCount = requests.where((r) => r.isUrgent == true).length;
     final normalCount = requests.length - urgentCount;
@@ -57,18 +47,9 @@ class DonorDashboardController {
     };
   }
 
-  // ------------------ Data Fetching ------------------
-  /// Fetches all blood requests via Cloud Functions
-  ///
-  /// Security Architecture:
-  /// - All reads go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  ///
-  /// Returns:
-  /// - List of BloodRequest objects
-  ///
-  /// Throws:
-  /// - Exception if fetch fails
+  // --- Requests ---
+
+  /// Pulls the latest request list from the server.
   Future<List<BloodRequest>> fetchRequests() async {
     try {
       final result = await _cloudFunctions.getRequests(limit: 100);
@@ -99,14 +80,7 @@ class DonorDashboardController {
     );
   }
 
-  /// Fetches unread notifications count via Cloud Functions
-  ///
-  /// Security Architecture:
-  /// - All reads go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  ///
-  /// Returns:
-  /// - Number of unread notifications
+  /// How many notification rows are still unread.
   Future<int> getUnreadNotificationsCount() async {
     try {
       final result = await _cloudFunctions.getNotifications();
@@ -125,15 +99,9 @@ class DonorDashboardController {
     }
   }
 
-  // ------------------ User Data Processing ------------------
-  /// Fetches user profile data via Cloud Functions
-  ///
-  /// Security Architecture:
-  /// - All reads go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  ///
-  /// Returns:
-  /// - User data map, or null if fetch fails
+  // --- Profile ---
+
+  /// Donor-facing fields merged from Auth + Cloud Function profile.
   Future<Map<String, dynamic>?> fetchUserProfile() async {
     try {
       final user = getCurrentUser();
@@ -145,7 +113,7 @@ class DonorDashboardController {
       return {
         'fullName': userData.fullName ?? '',
         'name':
-            userData.fullName ?? '', // Use fullName as name for compatibility
+            userData.fullName ?? '', // Keep `name` in sync with `fullName` for older UI.
         'email': userData.email,
         'location': userData.location ?? '',
         'latitude': userData.latitude,
@@ -161,19 +129,7 @@ class DonorDashboardController {
     }
   }
 
-  /// Extracts donor name from user data
-  ///
-  /// Tries multiple sources in order:
-  /// 1. User data 'name' field
-  /// 2. User data 'fullName' field
-  /// 3. Auth displayName
-  /// 4. Default: 'Donor'
-  ///
-  /// Parameters:
-  /// - [userData]: User data map from Cloud Functions
-  /// - [authDisplayName]: Display name from Firebase Auth
-  ///
-  /// Returns: The best available name
+  /// Best-effort display name (`userData`, then Firebase displayName, then "Donor").
   String extractDonorName(
     Map<String, dynamic>? userData,
     String? authDisplayName,

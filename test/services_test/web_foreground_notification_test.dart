@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:bloodbank_donors/services/web_foreground_notification.dart';
+import 'package:bloodbank_donors/notifications/web_foreground_notification.dart';
 void main() {
   test('calling notification does not throw', () {
     expect(

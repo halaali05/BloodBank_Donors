@@ -5,7 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'firebase_options.dart';
-import 'views/welcome_screen.dart';
+import 'views/onboarding/welcome_screen.dart';
 import 'services/fcm_service.dart';
 import 'services/local_notif_service.dart';
 
@@ -15,82 +15,66 @@ import 'services/local_notif_service.dart';
 /// outside of a BuildContext
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-// ------------------ Background Message Handler ------------------
-/// Handles Firebase Cloud Messaging (FCM) messages when app is in background/terminated
-///
-/// This handler runs in a separate isolate and MUST be a top-level function.
-/// It cannot access app state or use any instance methods.
-///
-/// Flow:
-/// 1. Initialize Firebase in the background isolate
-/// 2. Extract notification data from message payload
-/// 3. Initialize local notification service
-/// 4. Display local notification to user
+/// FCM when the app is in the background or fully closed.
+/// Must stay a top-level function (Firebase runs it in its own isolate).
+String _fcmNotificationPayloadJson(Map<String, dynamic> data) {
+  return jsonEncode({
+    'type': data['type']?.toString() ?? 'request',
+    'requestId': data['requestId']?.toString() ?? '',
+    'senderId': data['senderId']?.toString() ?? '',
+    'recipientId': data['recipientId']?.toString() ?? '',
+  });
+}
+
+Future<void> _showFcmBackgroundLocalNotification(
+  RemoteMessage message, {
+  String? titleOverride,
+  String? bodyOverride,
+}) async {
+  final data = message.data;
+  final type = data['type']?.toString() ?? 'request';
+  final isUrgent = (data['isUrgent']?.toString().toLowerCase() ?? '') == 'true';
+  final title =
+      titleOverride ??
+      data['title']?.toString() ??
+      message.notification?.title ??
+      'Blood Request';
+  final body =
+      bodyOverride ??
+      data['body']?.toString() ??
+      message.notification?.body ??
+      'New blood request available';
+
+  await LocalNotifService.instance.show(
+    title: title,
+    body: body,
+    isUrgent: type == 'request' && isUrgent,
+    payload: _fcmNotificationPayloadJson(data),
+  );
+}
+
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
-    // Initialize Firebase in the background isolate
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    final requestId = message.data['requestId']?.toString() ?? '';
-    final bool isUrgent =
-        (message.data['isUrgent']?.toString().toLowerCase() ?? '') == 'true';
-    final String type = message.data['type']?.toString() ?? 'request';
-    final title =
-        message.data['title']?.toString() ??
-        message.notification?.title ??
-        'Blood Request';
-    final body =
-        message.data['body']?.toString() ??
-        message.notification?.body ??
-        'New blood request available';
-
-    // Initialize local notification service
-    // This must be done in the background handler to ensure channel exists
     await LocalNotifService.instance.init();
-
-    // Show local notification - this will appear in system tray
-    await LocalNotifService.instance.show(
-      title: title,
-      body: body,
-      isUrgent: type == 'request' && isUrgent,
-      payload: jsonEncode({
-        'type': type,
-        'requestId': requestId,
-        'senderId': message.data['senderId']?.toString() ?? '',
-        'recipientId': message.data['recipientId']?.toString() ?? '',
-      }),
-    );
+    await _showFcmBackgroundLocalNotification(message);
   } catch (e) {
-    // Error handling: Try to show a basic notification even if initialization fails
-    // This ensures users still receive notifications even if there's a configuration issue
     try {
       await LocalNotifService.instance.init();
-      await LocalNotifService.instance.show(
-        title: 'Blood Request',
-        body: 'New blood request available',
-        isUrgent:
-            (message.data['type']?.toString() ?? 'request') == 'request' &&
-            (message.data['isUrgent']?.toString().toLowerCase() ?? '') ==
-                'true',
-        payload: jsonEncode({
-          'type': message.data['type']?.toString() ?? 'request',
-          'requestId': message.data['requestId']?.toString() ?? '',
-          'senderId': message.data['senderId']?.toString() ?? '',
-          'recipientId': message.data['recipientId']?.toString() ?? '',
-        }),
+      await _showFcmBackgroundLocalNotification(
+        message,
+        titleOverride: 'Blood Request',
+        bodyOverride: 'New blood request available',
       );
-    } catch (_) {
-      // Failed to show fallback notification - silently fail
-      // Background handler should not throw exceptions
-    }
+    } catch (_) {}
   }
 }
 
-/// Web-only FCM startup; use try/catch instead of [Future.catchError] so the
-/// error handler return type cannot trip `Future<void>` / JS interop.
+/// Web-only FCM setup (wrapped in try/catch so web builds stay stable).
 Future<void> _initFcmForWeb() async {
   try {
     await FCMService.instance.initFCM();
@@ -100,17 +84,7 @@ Future<void> _initFcmForWeb() async {
   }
 }
 
-// ------------------ App Initialization ------------------
-/// **Single entry point** for every platform Flutter supports here
-/// (Android, iOS, Web, Windows, Linux, macOS). Do not add a separate
-/// `main` for web; `flutter run` / `flutter build` use this file by default.
-///
-/// Initialization flow:
-/// 1. Ensure Flutter bindings are initialized
-/// 2. Initialize Firebase
-/// 3. Register background message handler (mobile only)
-/// 4. Initialize FCM service
-/// 5. Run the app
+/// App entry for all platforms. Same `main()` is used for mobile and web builds.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   FlutterError.onError = (FlutterErrorDetails details) {
@@ -133,12 +107,14 @@ Future<void> _bootstrapApp() async {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
-  if (!kIsWeb) {
-    await LocalNotifService.instance.init();
-    await FCMService.instance.initFCM();
-  }
-
+  // Draw the first screen first; push setup runs on the next frame (mobile).
   runApp(const HayatApp());
+
+  if (!kIsWeb) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_initMobilePushAfterFirstFrame());
+    });
+  }
 
   if (kIsWeb) {
     unawaited(_initFcmForWeb());
@@ -159,7 +135,17 @@ Future<void> _bootstrapApp() async {
   }
 }
 
-/// Shown if Firebase/bootstrap throws before [HayatApp] can run (helps debug web).
+Future<void> _initMobilePushAfterFirstFrame() async {
+  try {
+    await LocalNotifService.instance.init();
+    await FCMService.instance.initFCM();
+  } catch (e, st) {
+    debugPrint('Push init after first frame: $e');
+    debugPrint('$st');
+  }
+}
+
+/// Fallback UI if Firebase or startup crashes (useful on web during setup).
 class _StartupFailureApp extends StatelessWidget {
   final String message;
 
@@ -183,19 +169,27 @@ class _StartupFailureApp extends StatelessWidget {
   }
 }
 
-// ------------------ App Widget ------------------
-/// Root widget of the application
-///
-/// Configures:
-/// - Global navigation key
-/// - App theme and styling
-/// - Initial route (WelcomeScreen)
+/// Root [MaterialApp]: theme, navigator key, and first screen ([WelcomeScreen]).
 class HayatApp extends StatelessWidget {
   const HayatApp({super.key});
 
-  // Theme colors
   static const _primaryColor = Color(0xffe60012);
   static const _bgColor = Color(0xfff5f6fb);
+
+  /// Built once — avoids rebuilding heavy [ThemeData] every frame.
+  static final ThemeData theme = ThemeData(
+    useMaterial3: true,
+    primaryColor: _primaryColor,
+    scaffoldBackgroundColor: _bgColor,
+    colorScheme: ColorScheme.fromSeed(seedColor: _primaryColor),
+    fontFamily: kIsWeb ? null : 'Roboto',
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -203,28 +197,8 @@ class HayatApp extends StatelessWidget {
       navigatorKey: navigatorKey,
       title: 'HAYAH',
       debugShowCheckedModeBanner: false,
-      theme: _buildTheme(),
+      theme: theme,
       home: const WelcomeScreen(),
-    );
-  }
-
-  /// Builds the app theme configuration
-  ThemeData _buildTheme() {
-    return ThemeData(
-      useMaterial3: true,
-      primaryColor: _primaryColor,
-      scaffoldBackgroundColor: _bgColor,
-      colorScheme: ColorScheme.fromSeed(seedColor: _primaryColor),
-      // Web: bundled "Roboto" is not included; unspecified uses a good system UI font.
-      fontFamily: kIsWeb ? null : 'Roboto',
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-      ),
     );
   }
 }

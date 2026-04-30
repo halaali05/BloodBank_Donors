@@ -119,7 +119,7 @@ void main() {
         donorPhoneRaw: '123',
         location: 'Amman',
       );
-      expect(r, contains('Jordan mobile'));
+      expect(r, contains('079'));
     });
 
     test('donor missing location', () {
@@ -177,6 +177,45 @@ void main() {
     });
   });
 
+  group('SMS OTP helper', () {
+    test('empty code', () {
+      expect(
+        controller.validationErrorForSmsOtp(''),
+        'Please enter the SMS verification code.',
+      );
+    });
+
+    test('non-empty clears error', () {
+      expect(controller.validationErrorForSmsOtp('123456'), null);
+      expect(controller.validationErrorForSmsOtp('   42  '), null);
+    });
+  });
+
+  group('SUBMIT REGISTRATION', () {
+    test('validation failure skips auth service', () async {
+      final r = await controller.submitRegistration(
+        userType: UserType.donor,
+        email: '',
+        password: '123456',
+        confirmPassword: '123456',
+      );
+      expect(r.success, false);
+      expect(r.errorTitle, 'Missing information');
+      verifyNever(
+        () => mockAuth.signUpDonor(
+          fullName: any(named: 'fullName'),
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+          location: any(named: 'location'),
+          gender: any(named: 'gender'),
+          phoneNumber: any(named: 'phoneNumber'),
+          latitude: any(named: 'latitude'),
+          longitude: any(named: 'longitude'),
+        ),
+      );
+    });
+  });
+
   // =========================================================
   // REGISTER SUCCESS
   // =========================================================
@@ -193,14 +232,15 @@ void main() {
             longitude: any(named: 'longitude'),
           )).thenAnswer((_) async => {'emailVerified': true});
 
-      final r = await controller.register(
+      final r = await controller.submitRegistration(
         userType: UserType.donor,
         email: 'a@test.com',
         password: '123456',
-        name: 'Ali',
+        confirmPassword: '123456',
+        donorFullName: 'Ali',
         donorGender: 'male',
         donorPhoneRaw: '0791234567',
-        location: 'Amman',
+        locationGovernorateLabel: 'Amman',
       );
 
       expect(r.success, true);
@@ -219,14 +259,15 @@ void main() {
             longitude: any(named: 'longitude'),
           )).thenAnswer((_) async => {});
 
-      final r = await controller.register(
+      final r = await controller.submitRegistration(
         userType: UserType.donor,
         email: 'a@test.com',
         password: '123456',
-        name: 'Ali',
+        confirmPassword: '123456',
+        donorFullName: 'Ali',
         donorGender: 'male',
         donorPhoneRaw: '0791234567',
-        location: 'Amman',
+        locationGovernorateLabel: 'Amman',
       );
 
       expect(r.emailVerified, false);
@@ -249,14 +290,15 @@ void main() {
             longitude: any(named: 'longitude'),
           )).thenThrow(FirebaseAuthException(code: 'email-already-in-use'));
 
-      final r = await controller.register(
+      final r = await controller.submitRegistration(
         userType: UserType.donor,
         email: 'a@test.com',
         password: '123456',
-        name: 'Ali',
+        confirmPassword: '123456',
+        donorFullName: 'Ali',
         donorGender: 'male',
         donorPhoneRaw: '0791234567',
-        location: 'Amman',
+        locationGovernorateLabel: 'Amman',
       );
 
       expect(r.errorTitle, 'Email already in use');
@@ -274,14 +316,15 @@ void main() {
             longitude: any(named: 'longitude'),
           )).thenThrow(FirebaseAuthException(code: 'unknown'));
 
-      final r = await controller.register(
+      final r = await controller.submitRegistration(
         userType: UserType.donor,
         email: 'a@test.com',
         password: '123456',
-        name: 'Ali',
+        confirmPassword: '123456',
+        donorFullName: 'Ali',
         donorGender: 'male',
         donorPhoneRaw: '0791234567',
-        location: 'Amman',
+        locationGovernorateLabel: 'Amman',
       );
 
       expect(r.errorTitle, 'Registration failed');
@@ -304,14 +347,15 @@ void main() {
             longitude: any(named: 'longitude'),
           )).thenThrow(Exception('location is required'));
 
-      final r = await controller.register(
+      final r = await controller.submitRegistration(
         userType: UserType.donor,
         email: 'a@test.com',
         password: '123456',
-        name: 'Ali',
+        confirmPassword: '123456',
+        donorFullName: 'Ali',
         donorGender: 'male',
         donorPhoneRaw: '0791234567',
-        location: 'Amman',
+        locationGovernorateLabel: 'Amman',
       );
 
       expect(r.errorTitle, 'Missing information');
@@ -329,14 +373,15 @@ void main() {
             longitude: any(named: 'longitude'),
           )).thenThrow(Exception('phoneNumber must be'));
 
-      final r = await controller.register(
+      final r = await controller.submitRegistration(
         userType: UserType.donor,
         email: 'a@test.com',
         password: '123456',
-        name: 'Ali',
+        confirmPassword: '123456',
+        donorFullName: 'Ali',
         donorGender: 'male',
         donorPhoneRaw: '0791234567',
-        location: 'Amman',
+        locationGovernorateLabel: 'Amman',
       );
 
       expect(r.errorTitle, 'Invalid information');
@@ -354,17 +399,18 @@ void main() {
             longitude: any(named: 'longitude'),
           )).thenThrow(Exception('invalid-argument'));
 
-      final r = await controller.register(
+      final r = await controller.submitRegistration(
         userType: UserType.donor,
         email: 'a@test.com',
         password: '123456',
-        name: 'Ali',
+        confirmPassword: '123456',
+        donorFullName: 'Ali',
         donorGender: 'male',
         donorPhoneRaw: '0791234567',
-        location: 'Amman',
+        locationGovernorateLabel: 'Amman',
       );
 
-      expect(r.errorTitle, 'Sign up failed');
+      expect(r.errorTitle, 'Invalid information');
     });
 
     test('fallback generic error', () async {
@@ -379,14 +425,15 @@ void main() {
             longitude: any(named: 'longitude'),
           )).thenThrow(Exception('random'));
 
-      final r = await controller.register(
+      final r = await controller.submitRegistration(
         userType: UserType.donor,
         email: 'a@test.com',
         password: '123456',
-        name: 'Ali',
+        confirmPassword: '123456',
+        donorFullName: 'Ali',
         donorGender: 'male',
         donorPhoneRaw: '0791234567',
-        location: 'Amman',
+        locationGovernorateLabel: 'Amman',
       );
 
       expect(r.errorTitle, 'Sign up failed');

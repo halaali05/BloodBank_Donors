@@ -43,7 +43,7 @@ class AppBarWithLogo extends StatelessWidget implements PreferredSizeWidget {
         children: [
           if (leading == null)
             Image.asset(
-              'images/logoBLOOD.png',
+              'assets/docs/images/logoBLOOD.png',
               height: 34,
               fit: BoxFit.contain,
             ),

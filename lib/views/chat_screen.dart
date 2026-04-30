@@ -1,33 +1,28 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
-import '../controllers/chat_controller.dart';
-import '../widgets/common/error_box.dart';
-import '../widgets/chat/message_bubble.dart';
-import '../widgets/chat/chat_input_field.dart';
 
-/// Chat screen for messaging between blood banks and donors
-/// Supports both general messages (to all donors) and personalized messages (to specific donor)
+import 'package:flutter/material.dart';
+
+import '../controllers/chat_controller.dart';
+import '../shared/utils/snack_bar_helper.dart';
+import '../shared/widgets/common/error_box.dart';
+import '../shared/widgets/chat/message_bubble.dart';
+import '../shared/widgets/chat/chat_input_field.dart';
+
+/// Chat between blood bank and donors for one request.
+/// Can be a group thread or a one-to-one thread when [recipientId] is set.
 ///
-/// SECURITY ARCHITECTURE:
-/// - Read operations: All go through Cloud Functions (server-side)
-///   - Messages: Read via getMessages Cloud Function
-/// - Write operations: All go through Cloud Functions (server-side)
-///   - Messages: Sent via sendMessage Cloud Function
-///
-/// NOTE: Real-time updates are achieved through periodic polling (every 5 seconds)
-/// since Cloud Functions cannot return real-time streams.
+/// Data uses Cloud Functions. New messages appear when the app reloads the list (timer ~10s).
 class ChatScreen extends StatefulWidget {
-  /// ID of the blood request this chat is associated with
+  /// Blood request this thread belongs to.
   final String requestId;
 
-  /// Reserved for callers (e.g. notification body); chat content loads from the server.
+  /// Hint text for notifications; real content still comes from the server.
   final String initialMessage;
 
-  /// Optional: If provided, filters messages to show only those for this specific donor
-  /// Used when blood bank wants to chat with a specific donor
+  /// When set, only that donor’s side of the conversation is shown.
   final String? recipientId;
 
-  /// When true, sends [initialMessage] automatically once on open.
+  /// If true, send [initialMessage] once right after open.
   final bool autoSendInitialMessage;
 
   const ChatScreen({
@@ -58,8 +53,8 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _error;
   bool _didAutoSendInitialMessage = false;
 
-  // Request and user info
-  String? _requestOwnerId; // ID of the blood bank that created the request
+  /// Blood bank user id for routing outgoing messages.
+  String? _requestOwnerId;
 
   @override
   void initState() {
@@ -91,18 +86,18 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       role = await _controller.getUserRole();
     } catch (_) {
-      // Role optional for loading messages
+      // OK if role can’t be read; messages can still load.
     }
     if (role == 'donor') {
       try {
         await _controller.ensureDonorWelcomeMessage(widget.requestId);
       } catch (_) {
-        // Non-fatal: trigger may have already created the message
+        // Welcome line may already exist.
       }
     }
     _loadMessages();
 
-    // Silent polling keeps chat responsive without flashing a loading state.
+    // Poll so new messages show up without live Firestore listeners.
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (mounted) {
         _loadMessages(showLoading: false);
@@ -123,7 +118,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     try {
-      // Pass recipientId to filter messages when blood bank chats with specific donor
+      // Bank talking to one donor: server filters by recipient.
       final snapshot = await _controller.fetchMessages(
         widget.requestId,
         filterRecipientId: widget.recipientId,
@@ -178,28 +173,22 @@ class _ChatScreenState extends State<ChatScreen> {
       await _loadMessages(showLoading: false);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Message sent'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 1),
-          ),
+        SnackBarHelper.success(
+          context,
+          'Message sent',
+          duration: const Duration(seconds: 1),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to send message: ${e.toString().replaceFirst('Exception: ', '')}',
-            ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'Retry',
-              textColor: Colors.white,
-              onPressed: _sendMessage,
-            ),
+        SnackBarHelper.failure(
+          context,
+          'Failed to send message: '
+          '${SnackBarHelper.stripExceptionPrefix(e.toString())}',
+          action: SnackBarAction(
+            label: 'Retry',
+            textColor: Colors.white,
+            onPressed: _sendMessage,
           ),
         );
       }

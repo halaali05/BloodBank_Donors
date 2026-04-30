@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../theme/app_theme.dart';
+import '../../shared/theme/app_theme.dart';
 
 /// Row on the main donor profile hub (Account, History, etc.).
 class DonorProfileMenuTile extends StatelessWidget {

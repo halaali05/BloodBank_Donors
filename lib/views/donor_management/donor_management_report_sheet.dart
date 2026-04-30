@@ -4,8 +4,9 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../models/donor_medical_report.dart';
-import '../../theme/app_theme.dart';
-import '../../utils/platform_file_reader.dart';
+import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/platform_file_reader.dart';
+import '../../shared/utils/snack_bar_helper.dart';
 import 'donor_management_models.dart';
 
 /// Sub-type when outcome is rejected.
@@ -113,13 +114,9 @@ class _DonorManagementReportSheetState
 
       if (bytes == null || bytes.isEmpty) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Could not read this file. Try another PDF/image or pick from Downloads.',
-            ),
-            backgroundColor: Colors.red,
-          ),
+        SnackBarHelper.failure(
+          context,
+          'Could not read this file. Try another PDF/image or pick from Downloads.',
         );
         return;
       }
@@ -185,12 +182,7 @@ class _DonorManagementReportSheetState
 
       debugPrint('UPLOAD SUCCESS URL: $downloadUrl');
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('File uploaded successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      SnackBarHelper.success(context, 'File uploaded successfully');
     } catch (e, st) {
       debugPrint('UPLOAD ERROR: $e');
       debugPrint('$st');
@@ -201,12 +193,7 @@ class _DonorManagementReportSheetState
         _pickedFileName = null;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Upload failed: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      SnackBarHelper.failureFrom(context, e);
     }
   }
 
@@ -228,17 +215,13 @@ class _DonorManagementReportSheetState
 
     if (hasReasonError || hasSubTypeError || hasFileError || hasBloodError) {
       setState(() => _showValidationErrors = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            hasBloodError
-                ? 'Select the confirmed blood type from the list.'
-                : hasSubTypeError
-                ? 'Please select a rejection type.'
-                : 'Please fill all required fields marked with *',
-          ),
-          backgroundColor: Colors.red,
-        ),
+      SnackBarHelper.failure(
+        context,
+        hasBloodError
+            ? 'Select the confirmed blood type from the list.'
+            : hasSubTypeError
+            ? 'Please select a rejection type.'
+            : 'Please fill all required fields marked with *',
       );
       return;
     }

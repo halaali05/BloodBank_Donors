@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'chat_screen.dart';
 import '../services/cloud_functions_service.dart';
-import '../theme/app_theme.dart';
+import '../shared/theme/app_theme.dart';
+import '../shared/utils/snack_bar_helper.dart';
 import '../controllers/chat_controller.dart';
 
 class ContactsScreen extends StatefulWidget {
@@ -200,11 +201,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                   ClipboardData(text: donorPhone),
                                 );
                                 if (!context.mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Number copied'),
-                                    duration: Duration(seconds: 1),
-                                  ),
+                                SnackBarHelper.success(
+                                  context,
+                                  'Number copied',
+                                  duration:
+                                      const Duration(seconds: 1),
                                 );
                               },
                               icon: const Icon(Icons.copy_rounded),

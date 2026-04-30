@@ -9,6 +9,7 @@ import 'package:bloodbank_donors/models/user_model.dart' as models;
 
 // ------------------ Mocks ------------------
 class MockAuthService extends Mock implements AuthService {}
+
 class MockUser extends Mock implements User {}
 
 void main() {
@@ -20,21 +21,67 @@ void main() {
     controller = LoginController(authService: mockAuth);
   });
 
-  group('validateInput', () {
-    test('valid input returns true', () {
-      expect(controller.validateInput('a@test.com', '123456'), true);
+  group('hasIdentifierAndPassword', () {
+    test('valid email + password returns true', () {
+      expect(
+        controller.hasIdentifierAndPassword(
+          identifier: 'a@test.com',
+          password: '123456',
+        ),
+        true,
+      );
     });
 
-    test('empty email returns false', () {
-      expect(controller.validateInput('', '123456'), false);
+    test('empty identifier returns false', () {
+      expect(
+        controller.hasIdentifierAndPassword(
+          identifier: '',
+          password: '123456',
+        ),
+        false,
+      );
     });
 
-    test('empty password returns false', () {
-      expect(controller.validateInput('a@test.com', ''), false);
+    test('email with empty password returns false', () {
+      expect(
+        controller.hasIdentifierAndPassword(
+          identifier: 'a@test.com',
+          password: '',
+        ),
+        false,
+      );
     });
 
-    test('email with spaces is accepted', () {
-      expect(controller.validateInput('   a@test.com   ', '123456'), true);
+    test('identifier with spaces trims for email branch', () {
+      expect(
+        controller.hasIdentifierAndPassword(
+          identifier: '   a@test.com   ',
+          password: '123456',
+        ),
+        true,
+      );
+    });
+
+    test('Jordan phone requires password too', () {
+      expect(
+        controller.hasIdentifierAndPassword(
+          identifier: '0791234567',
+          password: '',
+        ),
+        false,
+      );
+      expect(
+        controller.hasIdentifierAndPassword(
+          identifier: '0791234567',
+          password: 'x',
+        ),
+        true,
+      );
+    });
+
+    test('identifier only spaces returns false', () {
+      expect(controller.hasIdentifierAndPassword(identifier: '   ', password: '123'),
+          false);
     });
   });
 
@@ -49,7 +96,7 @@ void main() {
       when(() => mockAuth.logout()).thenAnswer((_) async {});
 
       final r = await controller.login(
-        email: 'a@test.com',
+        identifier: 'a@test.com',
         password: '123456',
       );
 
@@ -67,7 +114,7 @@ void main() {
       when(() => mockAuth.logout()).thenAnswer((_) async {});
 
       final r = await controller.login(
-        email: 'a@test.com',
+        identifier: 'a@test.com',
         password: '123456',
       );
 
@@ -92,7 +139,7 @@ void main() {
       when(() => mockAuth.logout()).thenAnswer((_) async {});
 
       final r = await controller.login(
-        email: 'a@test.com',
+        identifier: 'a@test.com',
         password: '123456',
       );
 
@@ -121,7 +168,7 @@ void main() {
               ));
 
       final r = await controller.login(
-        email: 'a@test.com',
+        identifier: 'a@test.com',
         password: '123456',
       );
 
@@ -152,14 +199,65 @@ void main() {
               ));
 
       final r = await controller.login(
-        email: 'h@test.com',
+        identifier: 'h@test.com',
         password: '123456',
       );
 
       expect(r.success, true);
       expect(r.navigationRoute, isNotNull);
     });
-  
+
+    test('donor login via Jordan phone resolves email then password auth',
+        () async {
+      final user = MockUser();
+      when(
+        () => mockAuth.resolveDonorEmailForPhoneLogin('+962791234567'),
+      ).thenAnswer((_) async => 'donor@test.com');
+      when(
+        () => mockAuth.login(
+          email: 'donor@test.com',
+          password: any(named: 'password'),
+        ),
+      ).thenAnswer((_) async {});
+      when(() => mockAuth.isEmailVerified()).thenAnswer((_) async => true);
+      when(() => mockAuth.currentUser).thenReturn(user);
+      when(() => user.uid).thenReturn('u-phone');
+
+      when(() => mockAuth.completeProfileAfterVerification())
+          .thenAnswer((_) async => {});
+      when(() => mockAuth.getUserData('u-phone')).thenAnswer(
+        (_) async => models.User(
+          uid: 'u-phone',
+          email: 'donor@test.com',
+          role: models.UserRole.donor,
+        ),
+      );
+
+      final r = await controller.login(
+        identifier: '0791234567',
+        password: 'pw',
+      );
+
+      expect(r.success, true);
+      verify(
+        () => mockAuth.resolveDonorEmailForPhoneLogin('+962791234567'),
+      ).called(1);
+    });
+
+    test('Jordan phone unknown yields userNotFound', () async {
+      when(
+        () => mockAuth.resolveDonorEmailForPhoneLogin('+962791234567'),
+      ).thenAnswer((_) async => null);
+
+      final r = await controller.login(
+        identifier: '0791234567',
+        password: 'pw',
+      );
+
+      expect(r.success, false);
+      expect(r.errorType, LoginErrorType.userNotFound);
+    });
+
     test('wrong-password → authException', () async {
       when(() => mockAuth.login(
               email: any(named: 'email'),
@@ -167,7 +265,7 @@ void main() {
           .thenThrow(FirebaseAuthException(code: 'wrong-password'));
 
       final r = await controller.login(
-        email: 'a@test.com',
+        identifier: 'a@test.com',
         password: 'wrong',
       );
 
@@ -182,7 +280,7 @@ void main() {
           .thenThrow(FirebaseAuthException(code: 'invalid-email'));
 
       final r = await controller.login(
-        email: 'bad',
+        identifier: 'x@test.com',
         password: '123',
       );
 
@@ -198,7 +296,7 @@ void main() {
           .thenThrow(FirebaseAuthException(code: 'user-disabled'));
 
       final r = await controller.login(
-        email: 'a@test.com',
+        identifier: 'a@test.com',
         password: '123456',
       );
 
@@ -214,7 +312,7 @@ void main() {
           .thenThrow(Exception('network timeout'));
 
       final r = await controller.login(
-        email: 'a@test.com',
+        identifier: 'a@test.com',
         password: '123456',
       );
 
@@ -230,7 +328,7 @@ void main() {
           .thenThrow(Exception('boom'));
 
       final r = await controller.login(
-        email: 'a@test.com',
+        identifier: 'a@test.com',
         password: '123456',
       );
 
@@ -251,12 +349,37 @@ void main() {
       when(() => mockAuth.logout()).thenAnswer((_) async {});
 
       final r = await controller.resendVerification(
-        email: 'a@test.com',
+        identifier: 'a@test.com',
         password: '123456',
       );
 
       expect(r.success, true);
       expect(r.message, isNotNull);
+    });
+
+    test('Jordan phone resolves donor email then resends verification', () async {
+      when(
+        () => mockAuth.resolveDonorEmailForPhoneLogin('+962791234567'),
+      ).thenAnswer((_) async => 'donor@test.com');
+      when(
+        () => mockAuth.login(
+          email: 'donor@test.com',
+          password: any(named: 'password'),
+        ),
+      ).thenAnswer((_) async {});
+      when(() => mockAuth.resendEmailVerification())
+          .thenAnswer((_) async {});
+      when(() => mockAuth.logout()).thenAnswer((_) async {});
+
+      final r = await controller.resendVerification(
+        identifier: '0791234567',
+        password: 'pw',
+      );
+
+      expect(r.success, true);
+      verify(
+        () => mockAuth.resolveDonorEmailForPhoneLogin('+962791234567'),
+      ).called(1);
     });
 
     test('FirebaseAuthException mapped', () async {
@@ -266,7 +389,7 @@ void main() {
           .thenThrow(FirebaseAuthException(code: 'user-not-found'));
 
       final r = await controller.resendVerification(
-        email: 'a@test.com',
+        identifier: 'a@test.com',
         password: '123456',
       );
 
@@ -281,7 +404,7 @@ void main() {
           .thenThrow(Exception('boom'));
 
       final r = await controller.resendVerification(
-        email: 'a@test.com',
+        identifier: 'a@test.com',
         password: '123456',
       );
 
@@ -299,7 +422,7 @@ void main() {
       .thenThrow(Exception());
 
   final r = await controller.resendVerification(
-    email: 'a@test.com',
+    identifier: 'a@test.com',
     password: '123',
   );
 
@@ -318,7 +441,7 @@ void main() {
   when(() => mockAuth.logout()).thenThrow(Exception());
 
   final r = await controller.resendVerification(
-    email: 'a@test.com',
+    identifier: 'a@test.com',
     password: '123',
   );
 
@@ -336,7 +459,7 @@ test('Exception prefix parsing - network', () async {
         password: any(named: 'password'),
       )).thenThrow(Exception('Exception: network failure'));
 
-  final r = await controller.login(email: 'a', password: 'b');
+  final r = await controller.login(identifier: 'a@test.com', password: 'b');
 
   expect(r.errorType, LoginErrorType.genericError);
   expect(r.errorTitle, 'Connection error');
@@ -348,7 +471,7 @@ test('Exception prefix parsing - permission', () async {
         password: any(named: 'password'),
       )).thenThrow(Exception('Exception: permission denied'));
 
-  final r = await controller.login(email: 'a', password: 'b');
+  final r = await controller.login(identifier: 'a@test.com', password: 'b');
 
   expect(r.errorTitle, 'Permission denied');
 });
@@ -360,7 +483,7 @@ test('Exception prefix parsing - profile', () async {
         password: any(named: 'password'),
       )).thenThrow(Exception('Exception: profile not found'));
 
-  final r = await controller.login(email: 'a', password: 'b');
+  final r = await controller.login(identifier: 'a@test.com', password: 'b');
 
   expect(r.errorTitle, 'Profile not found');
 });
@@ -372,7 +495,7 @@ test('Exception prefix parsing - default branch', () async {
         password: any(named: 'password'),
       )).thenThrow(Exception('Exception: something weird'));
 
-  final r = await controller.login(email: 'a', password: 'b');
+  final r = await controller.login(identifier: 'a@test.com', password: 'b');
 
   expect(r.errorTitle, 'Login error');
 });
@@ -401,7 +524,7 @@ test('profileCompleteFuture handles exception silently', () async {
     );
   });
 
-  final r = await controller.login(email: 'a', password: '1');
+  final r = await controller.login(identifier: 'a@test.com', password: '1');
 
   expect(r.success, true);
 });
@@ -433,14 +556,11 @@ test('hospital fallback values for name and location', () async {
     );
   });
 
-  final r = await controller.login(email: 'h', password: '1');
+  final r = await controller.login(identifier: 'h@test.com', password: '1');
 
   expect(r.success, true);
 });
 
-test('email only spaces returns false', () {
-  expect(controller.validateInput('   ', '123'), false);
-});
 
 test('isEmailVerified throws → genericError', () async {
   when(() => mockAuth.login(
@@ -451,7 +571,7 @@ test('isEmailVerified throws → genericError', () async {
   when(() => mockAuth.isEmailVerified())
       .thenThrow(Exception('network'));
 
-  final r = await controller.login(email: 'a', password: '1');
+  final r = await controller.login(identifier: 'a@test.com', password: '1');
 
   expect(r.success, false);
   expect(r.errorType, LoginErrorType.genericError);
@@ -463,7 +583,7 @@ test('unknown firebase error → default mapping', () async {
         password: any(named: 'password'),
       )).thenThrow(FirebaseAuthException(code: 'some-random-code'));
 
-  final r = await controller.login(email: 'a', password: 'b');
+  final r = await controller.login(identifier: 'a@test.com', password: 'b');
 
   expect(r.errorTitle, 'Login failed');
 });
@@ -474,7 +594,7 @@ test('too-many-requests → mapped title', () async {
         password: any(named: 'password'),
       )).thenThrow(FirebaseAuthException(code: 'too-many-requests'));
 
-  final r = await controller.login(email: 'a', password: 'b');
+  final r = await controller.login(identifier: 'a@test.com', password: 'b');
 
   expect(r.errorTitle, 'Too many attempts');
 });
@@ -485,7 +605,7 @@ test('operation-not-allowed → mapped title', () async {
         password: any(named: 'password'),
       )).thenThrow(FirebaseAuthException(code: 'operation-not-allowed'));
 
-  final r = await controller.login(email: 'a', password: 'b');
+  final r = await controller.login(identifier: 'a@test.com', password: 'b');
 
   expect(r.errorTitle, 'Login disabled');
 });
@@ -512,7 +632,7 @@ test('profileCompleteFuture handles failure (no timeout needed)', () async {
     );
   });
 
-  final r = await controller.login(email: 'a', password: '1');
+  final r = await controller.login(identifier: 'a@test.com', password: '1');
 
   expect(r.success, true);
 });
@@ -522,7 +642,7 @@ test('network-request-failed → mapped title', () async {
         password: any(named: 'password'),
       )).thenThrow(FirebaseAuthException(code: 'network-request-failed'));
 
-  final r = await controller.login(email: 'a', password: 'b');
+  final r = await controller.login(identifier: 'a@test.com', password: 'b');
 
   expect(r.errorTitle, 'Network error');
 });
@@ -533,7 +653,7 @@ test('invalid-credential → mapped title', () async {
         password: any(named: 'password'),
       )).thenThrow(FirebaseAuthException(code: 'invalid-credential'));
 
-  final r = await controller.login(email: 'a', password: 'b');
+  final r = await controller.login(identifier: 'a@test.com', password: 'b');
 
   expect(r.errorTitle, 'Invalid credentials');
 });
@@ -559,7 +679,7 @@ test('getUserData fails twice → profileNotReady', () async {
 
   when(() => mockAuth.logout()).thenAnswer((_) async {});
 
-  final r = await controller.login(email: 'a', password: 'b');
+  final r = await controller.login(identifier: 'a@test.com', password: 'b');
 
   expect(r.success, false);
   expect(r.errorType, LoginErrorType.profileNotReady);
@@ -592,7 +712,7 @@ test('getUserData succeeds on retry', () async {
   });
 
   final r = await controller.login(
-    email: 'a@test.com',
+    identifier: 'a@test.com',
     password: '123',
   );
 
@@ -624,7 +744,7 @@ test('getUserData succeeds on retry (null first)', () async {
     );
   });
 
-  final r = await controller.login(email: 'a', password: '1');
+  final r = await controller.login(identifier: 'a@test.com', password: '1');
 
   expect(r.success, true);
 });
@@ -646,7 +766,7 @@ test('getUserData throws twice → genericError', () async {
   when(() => mockAuth.getUserData('u8'))
       .thenThrow(Exception('db down'));
 
-  final r = await controller.login(email: 'a', password: '1');
+  final r = await controller.login(identifier: 'a@test.com', password: '1');
 
   expect(r.success, false);
   expect(r.errorType, LoginErrorType.genericError);

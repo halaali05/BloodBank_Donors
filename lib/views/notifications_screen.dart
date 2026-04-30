@@ -2,24 +2,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../controllers/notifications_controller.dart';
-import '../theme/app_theme.dart';
-import '../widgets/common/app_bar_with_logo.dart';
-import '../widgets/common/loading_indicator.dart';
-import '../widgets/common/error_box.dart';
-import '../widgets/notifications/notification_item_cloud.dart';
+import '../shared/theme/app_theme.dart';
+import '../shared/widgets/common/app_bar_with_logo.dart';
+import '../shared/widgets/common/loading_indicator.dart';
+import '../shared/widgets/common/error_box.dart';
+import '../shared/widgets/notifications/notification_item_cloud.dart';
+import '../shared/utils/error_message_helper.dart';
+import '../shared/utils/snack_bar_helper.dart';
 
-/// Screen that displays all user notifications
-/// Has two tabs: "All" and "Unread" notifications
-///
-/// SECURITY ARCHITECTURE:
-/// - Read operations: All go through Cloud Functions (server-side)
-///   - Notifications: Read via getNotifications Cloud Function
-/// - Write operations: All go through Cloud Functions (server-side)
-///
-/// NOTE: Updates are refreshed periodically through Cloud Functions.
-/// since Cloud Functions cannot return real-time streams.
+/// In-app alerts (all / unread). Loads through Cloud Functions and refreshes on a timer.
 class NotificationsScreen extends StatefulWidget {
-  /// Initial tab index (0 = All, 1 = Unread)
+  /// 0 = All, 1 = Unread.
   final int initialTabIndex;
 
   const NotificationsScreen({super.key, this.initialTabIndex = 0});
@@ -115,7 +108,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString().replaceFirst('Exception: ', '');
+          _error = ErrorMessageHelper.humanize(e);
           if (showLoading) _isLoading = false;
         });
       }
@@ -148,23 +141,11 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       unawaited(_loadNotifications(showLoading: false));
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('All notifications marked as read'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      SnackBarHelper.success(context, 'All notifications marked as read');
     } catch (e) {
       if (!mounted) return;
       setState(() => _notifications = previous);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Failed to mark as read: ${e.toString().replaceFirst('Exception: ', '')}',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
+      SnackBarHelper.failureFrom(context, e);
     } finally {
       if (mounted) setState(() => _isMarkingAll = false);
     }
@@ -191,7 +172,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       _controller
           .markAsRead(notificationId)
           .then((_) => _loadNotifications(showLoading: false))
-          .catchError((_) {
+          .catchError((Object err) {
             if (!mounted) return;
             setState(() {
               _notifications = _notifications.map((n) {
@@ -203,6 +184,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 return {...n, 'read': false, 'isRead': false};
               }).toList();
             });
+            SnackBarHelper.failureFrom(context, err);
           }),
     );
   }
@@ -272,7 +254,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: Image.asset(
-                'images/logoBLOOD.png',
+                'assets/docs/images/logoBLOOD.png',
                 height: 34,
                 fit: BoxFit.contain,
               ),

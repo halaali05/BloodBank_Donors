@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/donor_medical_report.dart';
-import '../../theme/app_theme.dart';
+import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/error_message_helper.dart';
+import '../../shared/utils/snack_bar_helper.dart';
 import 'donor_management_models.dart';
 
 void _showRescheduleRequestDialog(
@@ -133,9 +135,10 @@ Future<void> _openLatestReport(
     await launchUrl(url, mode: LaunchMode.inAppBrowserView);
   } catch (e) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(
+    SnackBarHelper.failure(
       context,
-    ).showSnackBar(SnackBar(content: Text('Could not open report: $e')));
+      'Could not open this report. ${ErrorMessageHelper.humanize(e)}',
+    );
   }
 }
 

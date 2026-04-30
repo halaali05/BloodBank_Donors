@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../views/password_reset/reset_password_screen.dart';
+import '../../views/auth/password_reset/reset_password_screen.dart';
 
 /// Utility class for handling password reset email links
 ///

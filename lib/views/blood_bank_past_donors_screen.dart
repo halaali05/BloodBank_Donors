@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../models/blood_bank_past_donor.dart';
 import '../services/cloud_functions_service.dart';
-import '../theme/app_theme.dart';
-import '../widgets/common/app_bar_with_logo.dart';
-import '../widgets/common/empty_state.dart';
-import '../widgets/common/error_box.dart';
-import '../widgets/common/loading_indicator.dart';
+import '../shared/theme/app_theme.dart';
+import '../shared/utils/snack_bar_helper.dart';
+import '../shared/widgets/common/app_bar_with_logo.dart';
+import '../shared/widgets/common/empty_state.dart';
+import '../shared/widgets/common/error_box.dart';
+import '../shared/widgets/common/loading_indicator.dart';
 import 'blood_bank_donor_detail_screen.dart';
 import 'chat_screen.dart';
 
@@ -65,13 +66,10 @@ class _BloodBankPastDonorsScreenState extends State<BloodBankPastDonorsScreen> {
   void _openMessage(BuildContext context, BloodBankPastDonorSummary d) {
     final rid = d.messageRequestId;
     if (rid == null || rid.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'No open blood request is linked for in-app chat with this donor. '
-            'Open their profile to call or email.',
-          ),
-        ),
+      SnackBarHelper.notice(
+        context,
+        'No open blood request is linked for in-app chat with this donor. '
+        'Open their profile to call or email.',
       );
       return;
     }

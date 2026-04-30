@@ -1,15 +1,17 @@
 ﻿import 'dart:async';
 import 'dart:io';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import '../../controllers/donor_profile_controller.dart';
 import '../../models/donor_medical_report.dart';
-import '../../theme/app_theme.dart';
-import '../../utils/platform_file_reader.dart';
+import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/error_message_helper.dart';
+import '../../shared/utils/platform_file_reader.dart';
+import '../../shared/utils/snack_bar_helper.dart';
 import 'donor_eligibility_screen.dart';
 import 'donor_profile_account_page.dart';
 import 'donor_profile_donation_history_page.dart';
@@ -17,16 +19,9 @@ import 'donor_profile_menu_tile.dart';
 import 'donor_profile_reports_page.dart';
 import 'donor_profile_donation_restrictions_page.dart';
 
-/// Screen where donors can view and edit their profile information
+/// Donor profile hub: account, eligibility, history, reports, restrictions.
 ///
-/// SECURITY ARCHITECTURE:
-/// - Read operations: All go through Cloud Functions (server-side)
-///   - Profile data: Read via getUserData Cloud Function
-/// - Write operations: All go through Cloud Functions (server-side)
-///   - Profile updates: Uses updateUserProfile Cloud Function
-///
-/// NOTE: Updates are refreshed periodically through Cloud Functions.
-/// since Cloud Functions cannot return real-time streams.
+/// Reads and writes use Cloud Functions. Some tabs poll or reload when you come back.
 class DonorProfileScreen extends StatefulWidget {
   const DonorProfileScreen({super.key});
 
@@ -124,7 +119,7 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
     } catch (e) {
       if (!mounted) return;
       _scheduleSetState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = ErrorMessageHelper.humanize(e);
         _isLoading = false;
       });
     }
@@ -261,11 +256,9 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
       final picked = result.files.first;
       if (picked.size > 6 * 1024 * 1024) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Image is too large. Please choose one under 6 MB.'),
-            backgroundColor: Colors.red,
-          ),
+        SnackBarHelper.failure(
+          context,
+          'Image is too large. Please choose one under 6 MB.',
         );
         return;
       }
@@ -283,90 +276,25 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
 
       if (bytes == null || bytes.isEmpty) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not read this image. Try another one.'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        SnackBarHelper.failure(context, 'Could not read this image. Try another one.');
         return;
       }
 
       setState(() => _avatarUploading = true);
       final ext = (picked.extension ?? 'jpg').toLowerCase();
-      final contentType = ext == 'png'
-          ? 'image/png'
-          : ext == 'webp'
-          ? 'image/webp'
-          : 'image/jpeg';
 
-      final auth = FirebaseAuth.instance;
-      final currentUser = auth.currentUser;
-      if (currentUser == null) {
-        throw Exception('You are not authenticated. Please login again.');
-      }
-      final uid = currentUser.uid;
-
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('profile_images')
-          .child(uid)
-          .child('avatar_${DateTime.now().millisecondsSinceEpoch}.$ext');
-
-      final snap = await ref.putData(
-        bytes,
-        SettableMetadata(contentType: contentType),
-      );
-      final url = await snap.ref.getDownloadURL();
-
-      await currentUser.updatePhotoURL(url);
+      final url =
+          await _controller.uploadProfileAvatarBytes(bytes: bytes, extension: ext);
 
       if (!mounted) return;
       setState(() {
         _photoUrl = url;
         _profileUpdated = true;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Profile picture updated'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } on FirebaseAuthException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Authentication error while uploading image: ${e.message ?? e.code}',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } on FirebaseException catch (e) {
-      if (!mounted) return;
-      final isAuthError =
-          e.code.toLowerCase().contains('unauth') ||
-          e.code.toLowerCase().contains('permission') ||
-          e.message?.toLowerCase().contains('unauth') == true ||
-          e.message?.toLowerCase().contains('permission') == true;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isAuthError
-                ? 'Upload failed: image permission is blocked by storage rules. Please contact support.'
-                : 'Upload failed: ${e.message ?? e.code}',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
+      SnackBarHelper.success(context, 'Profile picture updated');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to upload profile picture: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      SnackBarHelper.failureFrom(context, e);
     } finally {
       if (mounted) setState(() => _avatarUploading = false);
     }
@@ -386,22 +314,10 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
         _profileUpdated = true;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Profile updated successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      SnackBarHelper.success(context, 'Profile updated successfully');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Failed to update profile: ${e.toString().replaceFirst('Exception: ', '')}',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
+      SnackBarHelper.failureFrom(context, e);
     }
   }
 
@@ -605,13 +521,11 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                                           ClipboardData(text: user.email ?? ''),
                                         );
                                         if (!context.mounted) return;
-                                        ScaffoldMessenger.of(
+                                        SnackBarHelper.success(
                                           context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Email copied'),
-                                            duration: Duration(seconds: 1),
-                                          ),
+                                          'Email copied',
+                                          duration:
+                                              const Duration(seconds: 1),
                                         );
                                       },
                                       visualDensity: VisualDensity.compact,

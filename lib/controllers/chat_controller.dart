@@ -2,25 +2,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/cloud_functions_service.dart';
 import '../services/auth_service.dart';
 
-/// Result of loading messages for a request (includes blood bank id for routing).
+/// Load result for chat: messages plus blood bank id used to route replies.
 class ChatMessagesSnapshot {
   final List<Map<String, dynamic>> messages;
   final String? bloodBankId;
 
-  const ChatMessagesSnapshot({
-    required this.messages,
-    this.bloodBankId,
-  });
+  const ChatMessagesSnapshot({required this.messages, this.bloodBankId});
 }
 
-/// Controller for chat screen business logic
-/// Separates business logic from UI for better maintainability
+/// Chat: fetch/send messages and light formatting helpers.
 ///
-/// SECURITY ARCHITECTURE:
-/// - All reads go through Cloud Functions (server-side)
-/// - All writes go through Cloud Functions (server-side)
-/// - Server validates user authentication
-/// - Server ensures users can only access messages for requests they're authorized to view
+/// Server work is done via [CloudFunctionsService] (not direct database access).
 class ChatController {
   final CloudFunctionsService _cloudFunctions;
   final AuthService _authService;
@@ -34,30 +26,15 @@ class ChatController {
        _authService = authService ?? AuthService(),
        _auth = auth ?? FirebaseAuth.instance;
 
-  // ------------------ Authentication ------------------
-  /// Gets the current authenticated user
-  /// Returns null if user is not authenticated
+  // --- Auth ---
+
   User? getCurrentUser() {
     return _auth.currentUser;
   }
 
-  // ------------------ Data Fetching ------------------
-  /// Fetches all messages for a request via Cloud Functions
-  ///
-  /// Security Architecture:
-  /// - All reads go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  /// - Server ensures users can only view messages for requests they're authorized to view
-  ///
-  /// Parameters:
-  /// - [requestId]: The ID of the blood request
-  /// - [filterRecipientId]: Optional. When provided, filters messages to show only those
-  ///   for this specific recipient (used when blood bank chats with a specific donor)
-  ///
-  /// Returns messages and request owner id (blood bank) when present.
-  ///
-  /// Throws:
-  /// - Exception if fetch fails
+  // --- Load ---
+
+  /// Loads messages; [filterRecipientId] limits to one donor when the bank uses private chat.
   Future<ChatMessagesSnapshot> fetchMessages(
     String requestId, {
     String? filterRecipientId,
@@ -71,7 +48,9 @@ class ChatController {
       final bloodBankId = result['bloodBankId'] as String?;
 
       return ChatMessagesSnapshot(
-        messages: messagesData.map((m) => Map<String, dynamic>.from(m)).toList(),
+        messages: messagesData
+            .map((m) => Map<String, dynamic>.from(m))
+            .toList(),
         bloodBankId: bloodBankId,
       );
     } catch (e) {
@@ -79,16 +58,12 @@ class ChatController {
     }
   }
 
-  /// Creates the same welcome line as the new-request trigger, if missing.
+  /// Ensures donors see an intro line (same wording the backend uses on new requests).
   Future<void> ensureDonorWelcomeMessage(String requestId) async {
     await _cloudFunctions.ensureDonorWelcomeMessage(requestId: requestId);
   }
 
-  /// Gets the current user's role (donor or hospital)
-  ///
-  /// Returns:
-  /// - User role as string ('donor' or 'hospital')
-  /// - null if user is not authenticated or role cannot be determined
+  /// `'donor'` or `'hospital'`, or null if unknown.
   Future<String?> getUserRole() async {
     try {
       final user = getCurrentUser();
@@ -99,31 +74,9 @@ class ChatController {
     }
   }
 
-  // ------------------ Message Operations ------------------
-  /// Sends a message to the chat
-  ///
-  /// Handles message routing:
-  /// - If recipientId is provided: sends personalized message to that donor
-  /// - If donor sends message: automatically routes to blood bank
-  /// - If blood bank sends without recipientId: sends general message to all donors
-  ///
-  /// Security Architecture:
-  /// - All writes go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  /// - Server ensures users can only send messages for requests they're authorized to
-  ///
-  /// Parameters:
-  /// - [requestId]: The ID of the blood request
-  /// - [text]: The message text
-  /// - [recipientId]: Optional recipient ID for personalized messages
-  /// - [requestOwnerId]: Optional request owner ID for automatic routing
-  /// - [currentUserRole]: Optional current user role for routing logic
-  ///
-  /// Returns:
-  /// - void on success
-  ///
-  /// Throws:
-  /// - Exception if send fails
+  // --- Send ---
+
+  /// Sends [text]; [recipientId] targets one donor; otherwise routing uses [requestOwnerId] (bank vs donor).
   Future<void> sendMessage({
     required String requestId,
     required String text,
@@ -159,30 +112,24 @@ class ChatController {
   }) {
     final trimmedRecipientId = recipientId?.trim();
     if (trimmedRecipientId != null && trimmedRecipientId.isNotEmpty) {
-      // Personalized message to a specific recipient.
+      // Directed message to one donor.
       return trimmedRecipientId;
     }
 
     final isRequestOwner =
         requestOwnerId != null && requestOwnerId == currentUserId;
     if (!isRequestOwner && requestOwnerId != null) {
-      // Donor sends to request owner (blood bank) when no explicit recipient is provided.
+      // Donor replying → message goes to the blood bank that owns the request.
       return requestOwnerId;
     }
 
-    // Request owner sends broadcast message.
+    // Bank user: no recipient ⇒ broadcast-style thread.
     return null;
   }
 
-  // ------------------ Data Processing ------------------
-  /// Formats timestamp to readable time string
-  /// Shows "Just now", "5m ago", "2h ago", or time if older than today
-  ///
-  /// Parameters:
-  /// - [dateTime]: The DateTime to format
-  ///
-  /// Returns:
-  /// - Formatted time string
+  // --- Time labels ---
+
+  /// Short relative label ("Just now", "5m ago", …).
   String formatTime(DateTime? dateTime) {
     if (dateTime == null) return '';
     try {
@@ -192,20 +139,13 @@ class ChatController {
       if (difference.inHours < 1) return '${difference.inMinutes}m ago';
       if (difference.inDays < 1) return '${difference.inHours}h ago';
 
-      // For older messages, show time
+      // Same calendar day → clock time only.
       return '${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
     } catch (_) {
       return '';
     }
   }
 
-  /// Formats timestamp from milliseconds to readable time string
-  ///
-  /// Parameters:
-  /// - [timestampMillis]: Timestamp in milliseconds
-  ///
-  /// Returns:
-  /// - Formatted time string
   String formatTimeFromMillis(int? timestampMillis) {
     if (timestampMillis == null) return '';
     try {
@@ -216,61 +156,51 @@ class ChatController {
     }
   }
 
-  /// Checks if a message is from the current user
-  ///
-  /// Parameters:
-  /// - [message]: The message map
-  ///
-  /// Returns:
-  /// - true if message is from current user, false otherwise
   bool isMessageFromCurrentUser(Map<String, dynamic> message) {
     final user = getCurrentUser();
     if (user == null) return false;
     return message['senderId'] == user.uid;
   }
 
+  /// Donor ids who wrote at least once (excluding the bank).
+  Future<List<String>> getChatParticipants(String requestId) async {
+    final snapshot = await fetchMessages(requestId);
 
-/// Gets users who interacted (sent messages) for a request
-Future<List<String>> getChatParticipants(String requestId) async {
-  final snapshot = await fetchMessages(requestId);
+    final messages = snapshot.messages;
+    final bloodBankId = snapshot.bloodBankId;
 
-  final messages = snapshot.messages;
-  final bloodBankId = snapshot.bloodBankId;
+    final userIds = <String>{};
 
-  final userIds = <String>{};
+    for (var msg in messages) {
+      final sender = msg['senderId'];
 
-  for (var msg in messages) {
-    final sender = msg['senderId'];
-
-    if (sender != null && sender != bloodBankId) {
-      userIds.add(sender);
+      if (sender != null && sender != bloodBankId) {
+        userIds.add(sender);
+      }
     }
+
+    return userIds.toList();
   }
 
-  return userIds.toList();
-}
+  /// Simple “unread per donor” map from message shape (bank as receiver).
+  Future<Map<String, int>> getUnreadCountPerUser(String requestId) async {
+    final snapshot = await fetchMessages(requestId);
 
-Future<Map<String, int>> getUnreadCountPerUser(String requestId) async {
-  final snapshot = await fetchMessages(requestId);
+    final messages = snapshot.messages;
+    final bloodBankId = snapshot.bloodBankId;
 
-  final messages = snapshot.messages;
-  final bloodBankId = snapshot.bloodBankId;
+    final unreadCount = <String, int>{};
 
-  final unreadCount = <String, int>{};
+    for (var msg in messages) {
+      final sender = msg['senderId'];
+      final receiver = msg['recipientId'];
 
-  for (var msg in messages) {
-    final sender = msg['senderId'];
-    final receiver = msg['recipientId'];
-
-    //  رسائل جاية للبنك
-    if (receiver == bloodBankId && sender != null) {
-      unreadCount[sender] = (unreadCount[sender] ?? 0) + 1;
+      // Count messages sent to the bank (receiver = bank id).
+      if (receiver == bloodBankId && sender != null) {
+        unreadCount[sender] = (unreadCount[sender] ?? 0) + 1;
+      }
     }
+
+    return unreadCount;
   }
-
-  return unreadCount;
 }
-
-}
-
-

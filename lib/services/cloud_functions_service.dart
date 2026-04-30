@@ -1,6 +1,7 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+/// Calls HTTPS Cloud Functions (`us-central1`). Use this instead of talking to Firestore straight from the app.
 class CloudFunctionsService {
   final FirebaseFunctions _functions;
 
@@ -89,6 +90,26 @@ class CloudFunctionsService {
     }
   }
 
+  /// Phone login: backend turns +962… into the Firebase email tied to that donor. Returns null if unknown.
+  Future<String?> resolveDonorEmailForPhoneLogin(String phoneNumberE164) async {
+    try {
+      final callable = _functions.httpsCallable(
+        'resolveDonorEmailForPhoneLogin',
+      );
+      final result = await callable.call({'phoneNumber': phoneNumberE164});
+      final data = Map<String, dynamic>.from(result.data);
+      final email = data['email'] as String?;
+      final trimmed = email?.trim();
+      if (trimmed == null || trimmed.isEmpty) return null;
+      return trimmed;
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'not-found') return null;
+      throw _handleFunctionsException(e);
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
+
   Future<Map<String, dynamic>> completeProfileAfterVerification() async {
     try {
       final callable = _functions.httpsCallable(
@@ -118,18 +139,7 @@ class CloudFunctionsService {
     }
   }
 
-  /// Updates the FCM token for push notifications
-  ///
-  /// Security Architecture:
-  /// - All FCM token updates go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  /// - Server ensures user document exists before updating
-  ///
-  /// Parameters:
-  /// - [fcmToken]: The Firebase Cloud Messaging token for push notifications
-  ///
-  /// Returns:
-  /// - Map with success status and message
+  /// Saves the push token Firebase gives this device onto the logged-in user.
   Future<Map<String, dynamic>> updateFcmToken({
     required String fcmToken,
   }) async {
@@ -142,19 +152,7 @@ class CloudFunctionsService {
     }
   }
 
-  /// Updates user profile information
-  ///
-  /// Security Architecture:
-  /// - All profile updates go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  /// - Server ensures user can only update their own profile
-  /// - Server updates both Firestore and Firebase Auth display name
-  ///
-  /// Parameters:
-  /// - [name]: The new name to set for the user
-  ///
-  /// Returns:
-  /// - Map with success status and message
+  /// Updates display name (and related fields on the server).
   Future<Map<String, dynamic>> updateUserProfile({required String name}) async {
     try {
       final callable = _functions.httpsCallable('updateUserProfile');
@@ -256,15 +254,7 @@ class CloudFunctionsService {
     }
   }
 
-  /// Get all requests for a specific blood bank
-  ///
-  /// Security Architecture:
-  /// - All reads go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  /// - Server ensures only hospitals can view their own requests
-  ///
-  /// Returns:
-  /// - Map with 'requests' list and 'count'
+  /// Lists requests created by the logged-in blood bank.
   Future<Map<String, dynamic>> getRequestsByBloodBankId({
     int limit = 80,
   }) async {
@@ -330,15 +320,7 @@ class CloudFunctionsService {
     }
   }
 
-  /// Get all notifications for the authenticated user
-  ///
-  /// Security Architecture:
-  /// - All reads go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  /// - Server ensures users can only view their own notifications
-  ///
-  /// Returns:
-  /// - Map with 'notifications' list and 'count'
+  /// Current user’s notification inbox from the server.
   Future<Map<String, dynamic>> getNotifications() async {
     try {
       final callable = _functions.httpsCallable('getNotifications');
@@ -349,20 +331,7 @@ class CloudFunctionsService {
     }
   }
 
-  /// Get all messages for a specific request
-  ///
-  /// Security Architecture:
-  /// - All reads go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  /// - Server filters messages based on user role and recipientId
-  ///
-  /// Parameters:
-  /// - [requestId]: The ID of the request to get messages for
-  /// - [filterRecipientId]: Optional. When provided, filters messages to show only those
-  ///   for this specific recipient (used when blood bank chats with a specific donor)
-  ///
-  /// Returns:
-  /// - Map with 'messages' list and 'count'
+  /// Chat transcript; pass [filterRecipientId] to narrow to one donor’s thread.
   Future<Map<String, dynamic>> getMessages({
     required String requestId,
     String? filterRecipientId,
@@ -581,14 +550,12 @@ class CloudFunctionsService {
         break;
       case 'failed-precondition':
       case 'FAILED_PRECONDITION':
-        // Check if there's a specific message, otherwise use generic message
         if (e.message != null && e.message!.isNotEmpty) {
           if (e.message!.contains('index') || e.message!.contains('Index')) {
             userMessage = 'Database index required. Please contact support.';
-          } else if (e.message!.contains('verify') ||
-              e.message!.contains('email')) {
-            userMessage = 'Please verify your email first';
           } else {
+            // Use the server's message — avoid replacing "duplicate phone "
+            // or other cases with generic "verify email".
             userMessage = e.message!;
           }
         } else {
@@ -614,7 +581,7 @@ class CloudFunctionsService {
           } else if (e.message!.contains('Failed to delete request:')) {
             userMessage = e.message!;
           } else {
-            userMessage = 'Server error: ${e.message}';
+            userMessage = 'Something went wrong. Please try again.';
           }
         } else {
           userMessage = 'Server error occurred. Please try again later.';
@@ -632,11 +599,9 @@ class CloudFunctionsService {
     return Exception(userMessage);
   }
 
-  // ------------------ Donation History ------------------
-  /// Fetches the authenticated donor's donation history (medical reports).
-  ///
-  /// Returns a map with:
-  /// - reports: List of medical report maps
+  // --- Donation history ---
+
+  /// Donor’s past donations / medical report entries (shape: `reports` list in the map).
   Future<Map<String, dynamic>> getDonationHistory({
     bool includeActiveProgress = true,
   }) async {
@@ -671,18 +636,9 @@ class CloudFunctionsService {
     }
   }
 
-  // ------------------ Medical Report (Blood Bank) ------------------
-  /// Saves a medical report for a donor after blood draw.
-  ///
-  /// Parameters:
-  /// - [requestId]: The blood request ID
-  /// - [donorId]: The donor's UID
-  /// - [status]: 'donated' or 'restricted'
-  /// - [restrictionReason]: Required if status == 'restricted'
-  /// - [notes]: Optional notes
-  /// - [reportFileUrl]: Required — uploaded file URL from Storage
-  /// - [confirmedBloodType]: Required — one of A+, A-, B+, B-, AB+, AB-, O+, O-
-  /// - [canDonateAgainAt]: ISO date string, optional
+  // --- Medical report (blood bank) ---
+
+  /// After a donation: status `donated` or `restricted`, file URL, confirmed blood type, optional next eligible date.
   Future<Map<String, dynamic>> saveMedicalReport({
     required String requestId,
     required String donorId,
@@ -715,14 +671,9 @@ class CloudFunctionsService {
     }
   }
 
-  // ------------------ Schedule Donor Appointment ------------------
-  /// Schedules a donation appointment for a donor.
-  ///
-  /// Parameters:
-  /// - [requestId]: The blood request ID
-  /// - [donorId]: The donor's UID
-  /// - [appointmentAtMillis]: [DateTime.millisecondsSinceEpoch] for the chosen
-  ///   local date/time (same absolute instant everywhere; avoids ISO parsing ambiguity).
+  // --- Appointments ---
+
+  /// Blood bank proposes a donation time (`appointmentAtMillis` = Unix ms).
   Future<Map<String, dynamic>> scheduleDonorAppointment({
     required String requestId,
     required String donorId,

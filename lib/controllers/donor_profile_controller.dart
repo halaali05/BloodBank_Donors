@@ -1,12 +1,12 @@
-import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/blood_request_model.dart';
 import '../models/donor_medical_report.dart';
 import '../services/cloud_functions_service.dart';
 
-/// Controller for donor profile business logic
-/// Separates business logic from UI for better maintainability
+/// Loads/saves donor profile slices (Firestore access only through callables).
 class DonorProfileController {
   final CloudFunctionsService _cloudFunctions;
 
@@ -113,5 +113,32 @@ class DonorProfileController {
     } catch (e) {
       debugPrint('Active donation progress fallback failed: $e');
     }
+  }
+
+  /// Upload bytes to Firebase Storage under `profile_images/{uid}` and sync
+  /// [User.photoURL] via Auth.
+  Future<String> uploadProfileAvatarBytes({
+    required Uint8List bytes,
+    required String extension,
+  }) async {
+    final user = await _waitForCurrentUser();
+    if (user == null) {
+      throw Exception('You are not authenticated. Please login again.');
+    }
+    final ext = extension.toLowerCase().replaceFirst(RegExp(r'^\.'), '');
+    final contentType = ext == 'png'
+        ? 'image/png'
+        : ext == 'webp'
+        ? 'image/webp'
+        : 'image/jpeg';
+    final ref = FirebaseStorage.instance
+        .ref()
+        .child('profile_images')
+        .child(user.uid)
+        .child('avatar_${DateTime.now().millisecondsSinceEpoch}.$ext');
+    await ref.putData(bytes, SettableMetadata(contentType: contentType));
+    final url = await ref.getDownloadURL();
+    await user.updatePhotoURL(url);
+    return url;
   }
 }

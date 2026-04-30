@@ -1,41 +1,32 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'chat_screen.dart';
-import 'login_screen.dart';
-import '../models/blood_request_model.dart';
-import '../controllers/donor_dashboard_controller.dart';
-import 'notifications_screen.dart';
-import '../services/fcm_service.dart';
-import 'donor_profile/donor_profile_screen.dart';
-import '../theme/app_theme.dart';
-import '../widgets/common/app_bar_with_logo.dart';
-import '../widgets/common/error_box.dart';
-import '../widgets/common/loading_indicator.dart';
-import '../widgets/common/section_header.dart';
-import '../widgets/common/empty_state.dart';
-import '../widgets/dashboard/donor_header.dart';
-import '../widgets/dashboard/donor_request_card.dart';
-import '../widgets/common/donor_cooldown_blocked_message.dart';
-import '../utils/donor_eligibility.dart';
-import 'donor_map_screen.dart';
+import '../chat_screen.dart';
+import '../auth/login_screen.dart';
+import '../../models/blood_request_model.dart';
+import '../../controllers/donor_dashboard_controller.dart';
+import '../notifications_screen.dart';
+import '../../services/fcm_service.dart';
+import '../donor_profile/donor_profile_screen.dart';
+import '../../shared/theme/app_theme.dart';
+import '../../shared/widgets/common/app_bar_with_logo.dart';
+import '../../shared/widgets/common/error_box.dart';
+import '../../shared/widgets/common/loading_indicator.dart';
+import '../../shared/widgets/common/section_header.dart';
+import '../../shared/widgets/common/empty_state.dart';
+import '../../shared/widgets/dashboard/donor_header.dart';
+import '../../shared/widgets/dashboard/donor_request_card.dart';
+import '../../shared/widgets/common/donor_cooldown_blocked_message.dart';
+import '../../shared/utils/donor_eligibility.dart';
+import '../../shared/utils/error_message_helper.dart';
+import '../../shared/utils/snack_bar_helper.dart';
+import '../donor_map_screen.dart';
 
 enum DonorRequestFilter { all, nearest, completed, urgent, normal }
 
-/// Main dashboard screen for donors
+/// Donor home: browse requests, filters, “I can donate”, chat and map entry points.
 ///
-/// Displays all available blood requests from blood banks
-/// Allows donors to view requests and start conversations
-///
-/// SECURITY ARCHITECTURE:
-/// - Read operations: All go through Cloud Functions (server-side)
-///   - Requests: Read via getRequests Cloud Function
-///   - User data: Read via getUserData Cloud Function
-///   - Notifications: Read via getNotifications Cloud Function
-/// - Write operations: All go through Cloud Functions
-///
-/// NOTE: Updates are refreshed periodically through Cloud Functions.
-/// since Cloud Functions cannot return real-time streams.
+/// Data comes from Cloud Functions. The screen refreshes on a timer (no live DB stream in the client).
 class DonorDashboardScreen extends StatefulWidget {
   const DonorDashboardScreen({super.key});
 
@@ -57,6 +48,35 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
   String? _respondingRequestId;
   DonorRequestFilter _selectedFilter = DonorRequestFilter.all;
 
+  static const TextStyle _cooldownSnackBaseStyle = TextStyle(
+    color: Colors.white,
+    fontSize: 14,
+    height: 1.35,
+  );
+
+  TextStyle get _cooldownSnackLinkStyle => TextStyle(
+        color: Colors.amber.shade100,
+        fontSize: 14,
+        height: 1.35,
+        fontWeight: FontWeight.w800,
+        decoration: TextDecoration.underline,
+      );
+
+  Widget _donorCooldownLinkedSnackContent() {
+    return DonorCooldownBlockedMessage(
+      baseStyle: _cooldownSnackBaseStyle,
+      linkStyle: _cooldownSnackLinkStyle,
+    );
+  }
+
+  void _showCooldownSnack(Widget content) {
+    SnackBarHelper.showContent(
+      context: context,
+      content: content,
+      backgroundColor: Colors.grey.shade900,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -69,8 +89,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
       }
     });
 
-    // Initialize Firebase Cloud Messaging for push notifications
-    // Done after first frame to avoid blocking UI
+    // Push: init after first paint so the tab UI stays smooth.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         await FCMService.instance.initFCM();
@@ -79,7 +98,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
           delay: const Duration(seconds: 2),
         );
       } catch (e) {
-        // Failed to initialize FCM - non-critical, continue
+        debugPrint('FCM init (donor dashboard): $e');
       }
     });
   }
@@ -129,7 +148,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString().replaceFirst('Exception: ', '');
+          _error = ErrorMessageHelper.humanize(e);
           if (showLoading) _isLoading = false;
         });
       }
@@ -369,10 +388,9 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
   Future<void> _submitDonorResponse(BloodRequest request, String status) async {
     if (_respondingRequestId != null) return;
     if (request.isCompleted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('This request is completed. Responses are disabled.'),
-        ),
+      SnackBarHelper.notice(
+        context,
+        'This request is completed. Responses are disabled.',
       );
       return;
     }
@@ -380,30 +398,13 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
         _donationCooldownActive &&
         request.myResponse != 'accepted') {
       final isPermanent = DonorEligibility.isPermanentlyBlocked(_userProfile);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.grey.shade900,
-          content: isPermanent
-              ? const Text(
-                  '🚫 You are permanently blocked from donating due to medical reasons.',
-                  style: TextStyle(color: Colors.white, fontSize: 14),
-                )
-              : DonorCooldownBlockedMessage(
-                  baseStyle: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    height: 1.35,
-                  ),
-                  linkStyle: TextStyle(
-                    color: Colors.amber.shade100,
-                    fontSize: 14,
-                    height: 1.35,
-                    fontWeight: FontWeight.w800,
-                    decoration: TextDecoration.underline,
-                  ),
-                ),
-        ),
+      _showCooldownSnack(
+        isPermanent
+            ? const Text(
+                '🚫 You are permanently blocked from donating due to medical reasons.',
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              )
+            : _donorCooldownLinkedSnackContent(),
       );
       return;
     }
@@ -414,43 +415,23 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
         response: status,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            status == 'accepted'
-                ? 'Marked as "I can donate". The blood bank can now see you.'
-                : 'Removed from "I can donate" list.',
-          ),
-        ),
+      SnackBarHelper.success(
+        context,
+        status == 'accepted'
+            ? 'Marked as "I can donate". The blood bank can now see you.'
+            : 'Removed from "I can donate" list.',
       );
       await _loadDashboardData(showLoading: false);
     } catch (e) {
       if (!mounted) return;
-      final msg = e.toString().replaceFirst('Exception: ', '');
+      final msg = ErrorMessageHelper.humanize(e);
       final showLinked =
           msg.toLowerCase().contains('not eligible') ||
           msg.toLowerCase().contains('when can i donate');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.grey.shade900,
-          content: showLinked
-              ? DonorCooldownBlockedMessage(
-                  baseStyle: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    height: 1.35,
-                  ),
-                  linkStyle: TextStyle(
-                    color: Colors.amber.shade100,
-                    fontSize: 14,
-                    height: 1.35,
-                    fontWeight: FontWeight.w800,
-                    decoration: TextDecoration.underline,
-                  ),
-                )
-              : Text(msg, style: const TextStyle(color: Colors.white)),
-        ),
+      _showCooldownSnack(
+        showLinked
+            ? _donorCooldownLinkedSnackContent()
+            : Text(msg, style: const TextStyle(color: Colors.white)),
       );
     } finally {
       if (mounted) {
@@ -474,7 +455,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
           child: Align(
             alignment: Alignment.centerLeft,
             child: Image.asset(
-              'images/logoBLOOD.png',
+              'assets/docs/images/logoBLOOD.png',
               height: 40,
               fit: BoxFit.contain,
             ),

@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import '../models/blood_bank_past_donor.dart';
 import '../models/donor_medical_report.dart';
 import '../services/cloud_functions_service.dart';
-import '../theme/app_theme.dart';
-import '../widgets/common/app_bar_with_logo.dart';
-import '../widgets/common/error_box.dart';
+import '../shared/theme/app_theme.dart';
+import '../shared/utils/snack_bar_helper.dart';
+import '../shared/widgets/common/app_bar_with_logo.dart';
+import '../shared/widgets/common/error_box.dart';
 import 'donor_profile/donation_history_section.dart';
 import 'chat_screen.dart';
 
@@ -36,13 +37,10 @@ class _BloodBankDonorDetailScreenState
     final d = widget.summary;
     final rid = d.messageRequestId;
     if (rid == null || rid.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'No open blood request is linked for in-app chat. '
-            'Use phone or email below.',
-          ),
-        ),
+      SnackBarHelper.notice(
+        context,
+        'No open blood request is linked for in-app chat. '
+        'Use phone or email below.',
       );
       return;
     }

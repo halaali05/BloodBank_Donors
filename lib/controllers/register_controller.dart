@@ -1,34 +1,27 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import '../models/register_models.dart';
-import '../theme/app_theme.dart';
-import '../utils/jordan_phone.dart';
+import '../shared/theme/app_theme.dart';
+import '../shared/utils/jordan_phone.dart';
 
-/// Controller for handling registration business logic
-/// Separates business logic from UI for better maintainability
+/// Sign-up: form validation ([validateForm]) and donor vs hospital registration.
+///
+/// Use [submitRegistration] from UI so validation and `_authService` calls stay in one place.
+/// [validateForm] remains available for live checks or previews.
 class RegisterController {
   final AuthService _authService;
 
   RegisterController({AuthService? authService})
     : _authService = authService ?? AuthService();
 
-  // ------------------ Validation ------------------
-  /// Validates email format using regex
+  // --- Checks ---
+
   bool isValidEmail(String email) {
     final emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
     return emailRegex.hasMatch(email.trim());
   }
 
-  /// Validates registration form based on user type
-  ///
-  /// Parameters:
-  /// - [name]: Required for donor registration (full name)
-  /// - [donorGender]: Required for donors: `male` or `female`
-  /// - [donorPhoneRaw]: Required for donors; Jordan mobile (e.g. 0791234567)
-  /// - [bloodBankName]: Required for blood bank registration (blood bank name)
-  /// - [location]: Required for both user types
-  ///
-  /// Returns validation error message or null if valid
+  /// Shared rules for donor vs hospital forms. Returns a user-visible error or null when OK.
   String? validateForm({
     required UserType userType,
     required String email,
@@ -83,15 +76,72 @@ class RegisterController {
     return null; // Valid
   }
 
-  // ------------------ Registration Logic ------------------
-  /// Handles user registration
-  ///
-  /// Security Architecture:
-  /// - All database operations go through Cloud Functions (server-side)
-  /// - No direct Firestore access from client
-  ///
-  /// Returns RegisterResult with success status and email verification status
-  Future<RegisterResult> register({
+  /// Donor onboarding: OTP field must be non-empty before [PhoneAuthService.verifyOtpAndLink].
+  String? validationErrorForSmsOtp(String otp) =>
+      otp.trim().isEmpty ? 'Please enter the SMS verification code.' : null;
+
+  // --- Submit (UI entry) ---
+
+  /// Validates, then registers. On validation failure returns
+  /// [RegisterResult.success] == false without calling Firebase.
+  Future<RegisterResult> submitRegistration({
+    required UserType userType,
+    required String email,
+    required String password,
+    required String confirmPassword,
+    String? donorFullName,
+    String? donorGender,
+    String? donorPhoneRaw,
+    String? bloodBankName,
+    String? locationGovernorateLabel,
+    bool bloodBankHasMapPin = false,
+    double? exactLatitude,
+    double? exactLongitude,
+  }) async {
+    final validationError = validateForm(
+      userType: userType,
+      email: email,
+      password: password,
+      confirmPassword: confirmPassword,
+      name: userType == UserType.donor ? donorFullName : null,
+      donorGender: userType == UserType.donor ? donorGender : null,
+      donorPhoneRaw: userType == UserType.donor ? donorPhoneRaw : null,
+      bloodBankName: userType == UserType.bloodBank ? bloodBankName : null,
+      location: locationGovernorateLabel,
+      bloodBankHasMapPin: bloodBankHasMapPin,
+    );
+
+    if (validationError != null) {
+      return RegisterResult(
+        success: false,
+        errorTitle: 'Missing information',
+        errorMessage: validationError,
+      );
+    }
+
+    final donorLocation = userType == UserType.donor
+        ? locationGovernorateLabel!.trim()
+        : (locationGovernorateLabel ?? '').trim();
+
+    return _executeRegistration(
+      userType: userType,
+      email: email.trim(),
+      password: password,
+      name: userType == UserType.donor ? donorFullName!.trim() : null,
+      donorGender: donorGender,
+      donorPhoneRaw: donorPhoneRaw,
+      bloodBankName: userType == UserType.bloodBank
+          ? bloodBankName!.trim()
+          : null,
+      location: donorLocation,
+      exactLatitude: userType == UserType.bloodBank ? exactLatitude : null,
+      exactLongitude: userType == UserType.bloodBank ? exactLongitude : null,
+    );
+  }
+
+  // --- Backend sign-up ([validateForm] must already have passed) ---
+
+  Future<RegisterResult> _executeRegistration({
     required UserType userType,
     required String email,
     required String password,
@@ -106,26 +156,11 @@ class RegisterController {
     try {
       Map<String, dynamic> result;
 
-      // Use exact map coordinates if provided, otherwise fall back to governorate centre
+      // Prefer exact map coordinates; otherwise fall back to governorate centroid.
       final double? lat = exactLatitude ?? AppTheme.getLatitude(location);
       final double? lng = exactLongitude ?? AppTheme.getLongitude(location);
 
       if (userType == UserType.donor) {
-        if (name == null || name.trim().isEmpty) {
-          return RegisterResult(
-            success: false,
-            errorTitle: 'Missing name',
-            errorMessage: 'Please enter your full name.',
-          );
-        }
-        if (donorGender == null ||
-            (donorGender != 'male' && donorGender != 'female')) {
-          return RegisterResult(
-            success: false,
-            errorTitle: 'Missing gender',
-            errorMessage: 'Please select your gender (male or female).',
-          );
-        }
         final phoneNorm = JordanPhone.normalize(donorPhoneRaw?.trim() ?? '');
         if (phoneNorm == null) {
           return RegisterResult(
@@ -137,27 +172,18 @@ class RegisterController {
         }
 
         result = await _authService.signUpDonor(
-          fullName: name.trim(),
+          fullName: name!.trim(),
           email: email.trim(),
           password: password,
           location: location,
-          gender: donorGender,
+          gender: donorGender!,
           phoneNumber: phoneNorm,
           latitude: lat,
           longitude: lng,
         );
       } else {
-        // Blood bank registration
-        if (bloodBankName == null || bloodBankName.trim().isEmpty) {
-          return RegisterResult(
-            success: false,
-            errorTitle: 'Missing blood bank name',
-            errorMessage: 'Please enter the blood bank name.',
-          );
-        }
-
         result = await _authService.signUpBloodBank(
-          bloodBankName: bloodBankName.trim(),
+          bloodBankName: bloodBankName!.trim(),
           email: email.trim(),
           password: password,
           location: location,
@@ -210,12 +236,12 @@ class RegisterController {
         errorTitle = 'Connection error';
         errorMessage =
             'Unable to connect to the server. Please check your internet connection.';
-      } else if (errorStr.contains('Exception: ')) {
-        errorMessage = errorStr.replaceFirst('Exception: ', '').trim();
       } else if (errorStr.contains('invalid-argument')) {
         errorTitle = 'Invalid information';
         errorMessage =
             'Please check that all required fields are filled correctly.';
+      } else if (errorStr.contains('Exception: ')) {
+        errorMessage = errorStr.replaceFirst('Exception: ', '').trim();
       }
 
       return RegisterResult(
@@ -228,6 +254,9 @@ class RegisterController {
 
   // ------------------ Error Message Helpers ------------------
   String _getAuthErrorTitle(FirebaseAuthException e) {
+    if (firebaseAuthIndicatesDeviceThrottle(e)) {
+      return 'Too many verification attempts';
+    }
     switch (e.code) {
       case 'email-already-in-use':
         return 'Email already in use';
@@ -245,6 +274,9 @@ class RegisterController {
   }
 
   String _getAuthErrorMessage(FirebaseAuthException e) {
+    if (firebaseAuthIndicatesDeviceThrottle(e)) {
+      return firebaseAuthDeviceThrottleUserMessage();
+    }
     switch (e.code) {
       case 'email-already-in-use':
         return 'This email address is already registered. Try logging in.';
@@ -255,9 +287,28 @@ class RegisterController {
       case 'network-request-failed':
         return 'Check your internet and try again.';
       case 'too-many-requests':
-        return 'Too many registration attempts. Please wait a few minutes and try again.';
+        return firebaseAuthDeviceThrottleUserMessage();
       default:
         return e.message ?? 'Something went wrong. Please try again.';
     }
   }
+}
+
+/// Firebase anti-abuse: too many SMS or sign-ups from one device/IP.
+bool firebaseAuthIndicatesDeviceThrottle(FirebaseAuthException e) {
+  final msg = e.message?.toLowerCase() ?? '';
+  return e.code == 'too-many-requests' ||
+      (msg.contains('blocked') && msg.contains('device')) ||
+      msg.contains('unusual activity');
+}
+
+/// Plain-language copy for [firebaseAuthIndicatesDeviceThrottle].
+String firebaseAuthDeviceThrottleUserMessage() {
+  return 'Firebase is temporarily blocking more verification requests from this '
+      'phone or network because too many sign-in or SMS attempts happened '
+      'recently. That is automatic protection, not a wrong password.\n\n'
+      'Wait a few hours, try another network (mobile data vs Wi‑Fi), or open '
+      'your email and complete inbox verification first—you can finish SMS '
+      'later. For testing, add numbers under Firebase Console → Authentication '
+      '→ Sign-in method → Phone.';
 }

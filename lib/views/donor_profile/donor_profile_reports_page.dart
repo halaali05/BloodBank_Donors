@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/donor_medical_report.dart';
-import '../../theme/app_theme.dart';
+import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/snack_bar_helper.dart';
 
 class DonorProfileReportsPage extends StatefulWidget {
   final List<DonorMedicalReport> initialReports;
@@ -253,12 +254,7 @@ class _DonorProfileReportsPageState extends State<DonorProfileReportsPage> {
                                     );
                                   } catch (e) {
                                     if (!context.mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Error: $e'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
+                                    SnackBarHelper.failureFrom(context, e);
                                   }
                                 },
                                 style: ElevatedButton.styleFrom(

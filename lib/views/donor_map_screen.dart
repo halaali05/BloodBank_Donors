@@ -2,9 +2,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import '../widgets/common/donor_cooldown_blocked_message.dart';
+import '../shared/widgets/common/donor_cooldown_blocked_message.dart';
 import '../models/blood_request_model.dart';
-import '../theme/app_theme.dart';
+import '../shared/theme/app_theme.dart';
 import 'request_details_screen.dart';
 
 /// Map screen for donors — shows blood requests as pins on a Jordan map.

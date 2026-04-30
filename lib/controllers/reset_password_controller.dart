@@ -1,17 +1,15 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/password_reset_service.dart';
 
-/// Controller for handling password reset business logic
-/// Separates business logic from UI for better maintainability
+/// New password submit after user opens the Firebase email link.
 class ResetPasswordController {
   final PasswordResetService _passwordResetService;
 
   ResetPasswordController({PasswordResetService? passwordResetService})
     : _passwordResetService = passwordResetService ?? PasswordResetService();
 
-  // ------------------ Validation ------------------
-  /// Validates password reset form
-  /// Returns validation error message or null if valid
+  // --- Form ---
+
   String? validateForm({
     required String newPassword,
     required String confirmPassword,
@@ -28,31 +26,14 @@ class ResetPasswordController {
       return 'The passwords do not match. Please try again.';
     }
 
-    return null; // Valid
+    return null; // validation passed
   }
 
-  // ------------------ Password Reset Logic ------------------
-  /// Confirms password reset with oobCode from email link
-  ///
-  /// Flow:
-  /// 1. User requests password reset → receives email with link
-  /// 2. User clicks link in email → app extracts oobCode from URL
-  /// 3. User enters new password → this method is called
-  /// 4. Firebase validates oobCode and updates password server-side
-  ///
-  /// Security Architecture:
-  /// - Uses Firebase Auth's confirmPasswordReset() method
-  /// - oobCode is validated server-side (from email link)
-  /// - Password is updated securely on Firebase servers
-  /// - No code entry required - code comes from email link automatically
-  ///
-  /// Parameters:
-  /// - [code]: The oobCode extracted from the password reset email link
-  /// - [newPassword]: The new password to set
-  ///
-  /// Returns PasswordResetResult with success status and message
+  // --- Server ---
+
+  /// Uses `code` (`oobCode` from the reset email) plus the freshly typed password.
   Future<PasswordResetResult> resetPassword({
-    required String code, // oobCode from email link
+    required String code, // oobCode extracted from Firebase email URL
     required String newPassword,
   }) async {
     try {

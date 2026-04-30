@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/app_theme.dart';
+import '../../shared/theme/app_theme.dart';
 
 class DonorManagementTabBar extends StatelessWidget {
   final TabController controller;

@@ -3,22 +3,19 @@ import 'package:flutter/material.dart';
 
 import '../models/blood_request_model.dart';
 import '../services/requests_service.dart';
-import '../theme/app_theme.dart';
-import '../widgets/common/app_bar_with_logo.dart';
-import '../widgets/common/loading_indicator.dart';
-import '../widgets/common/urgent_badge.dart';
-import '../widgets/common/error_box.dart';
+import '../shared/theme/app_theme.dart';
+import '../shared/widgets/common/app_bar_with_logo.dart';
+import '../shared/widgets/common/loading_indicator.dart';
+import '../shared/widgets/common/urgent_badge.dart';
+import '../shared/widgets/common/error_box.dart';
 import 'chat_screen.dart';
+import '../shared/utils/error_message_helper.dart';
+import '../shared/utils/snack_bar_helper.dart';
 
-/// Screen that displays detailed information about a blood request
-/// Shown when user taps on a notification or request card
+/// Full detail for one request (opened from a card or notification).
 ///
-/// SECURITY ARCHITECTURE:
-/// - Read operations: All go through Cloud Functions (server-side)
-///   - Request data: Read via getRequestById Cloud Function
-/// - No direct Firestore access
+/// Data is read through Cloud Functions only.
 class RequestDetailsScreen extends StatefulWidget {
-  /// ID of the blood request to display
   final String requestId;
 
   const RequestDetailsScreen({super.key, required this.requestId});
@@ -41,17 +38,16 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
     _loadRequest();
   }
 
-  /// Check if user is authenticated, if not navigate back
+  /// If logged out, bail out of this screen safely.
   void _checkAuthentication() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           Navigator.of(context).pop();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please login to view notification details'),
-            ),
+          SnackBarHelper.failure(
+            context,
+            'Please sign in to view this request.',
           );
         }
       });
@@ -79,7 +75,7 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString().replaceFirst('Exception: ', '');
+          _error = ErrorMessageHelper.humanize(e);
           _isLoading = false;
         });
       }

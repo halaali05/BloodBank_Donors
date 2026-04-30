@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/blood_request_model.dart';
-import '../theme/app_theme.dart';
+import '../shared/theme/app_theme.dart';
 
 class StatsScreen extends StatefulWidget {
   final List<BloodRequest> requests;

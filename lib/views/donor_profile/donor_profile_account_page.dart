@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../theme/app_theme.dart';
+import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/snack_bar_helper.dart';
 
 class DonorProfileAccountPage extends StatefulWidget {
   final GlobalKey<FormState> formKey;
@@ -237,11 +238,10 @@ class _DonorProfileAccountPageState extends State<DonorProfileAccountPage> {
                                     ClipboardData(text: widget.email),
                                   );
                                   if (!context.mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Email copied'),
-                                      duration: Duration(seconds: 1),
-                                    ),
+                                  SnackBarHelper.success(
+                                    context,
+                                    'Email copied',
+                                    duration: const Duration(seconds: 1),
                                   );
                                 },
                                 tooltip: 'Copy email',

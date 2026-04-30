@@ -5,7 +5,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import '../theme/app_theme.dart';
+import '../shared/theme/app_theme.dart';
+import '../shared/utils/snack_bar_helper.dart';
 
 /// Result returned from the map location picker
 class LocationPickerResult {
@@ -153,9 +154,7 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
     } catch (_) {}
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Area not found. Try another name.')),
-      );
+      SnackBarHelper.notice(context, 'Area not found. Try another name.');
     }
   }
 
@@ -180,12 +179,9 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
       }
       if (perm == LocationPermission.deniedForever) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Location permission denied. Enable it in device settings.',
-              ),
-            ),
+          SnackBarHelper.notice(
+            context,
+            'Location permission denied. Enable it in device settings.',
           );
         }
         return;
@@ -201,9 +197,7 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
       setState(() => _pickedLocation = latlng);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not get current location.')),
-        );
+        SnackBarHelper.failure(context, 'Could not get current location.');
       }
     } finally {
       if (mounted) setState(() => _locating = false);
@@ -214,10 +208,9 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
 
   void _confirm() {
     if (_pickedLocation == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please tap the map to select the hospital location.'),
-        ),
+      SnackBarHelper.notice(
+        context,
+        'Please tap the map to select the hospital location.',
       );
       return;
     }

@@ -3,14 +3,9 @@ import 'package:flutter/material.dart';
 import '../services/cloud_functions_service.dart';
 import '../services/notification_service.dart';
 
-/// Controller for notifications screen business logic
-/// Separates business logic from UI for better maintainability
+/// In-app notification list + mark-read/delete helpers (all via backend functions).
 ///
-/// SECURITY ARCHITECTURE:
-/// - All reads go through Cloud Functions (server-side)
-/// - All writes go through Cloud Functions (server-side)
-/// - Server validates user authentication
-/// - Server ensures users can only access their own notifications
+/// Logic stays out of widgets.
 class NotificationsController {
   final CloudFunctionsService _cloudFunctions;
   final NotificationService _notificationService;
@@ -25,26 +20,10 @@ class NotificationsController {
            notificationService ?? NotificationService.instance,
        _auth = auth ?? FirebaseAuth.instance;
 
-  // ------------------ Authentication ------------------
-  /// Gets the current authenticated user
-  /// Returns null if user is not authenticated
   User? getCurrentUser() {
     return _auth.currentUser;
   }
 
-  // ------------------ Data Fetching ------------------
-  /// Fetches all notifications for the authenticated user via Cloud Functions
-  ///
-  /// Security Architecture:
-  /// - All reads go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  /// - Server ensures users can only view their own notifications
-  ///
-  /// Returns:
-  /// - List of notification maps
-  ///
-  /// Throws:
-  /// - Exception if fetch fails
   Future<List<Map<String, dynamic>>> fetchNotifications() async {
     try {
       final result = await _cloudFunctions.getNotifications();
@@ -58,15 +37,6 @@ class NotificationsController {
     }
   }
 
-  // ------------------ Notification Operations ------------------
-  /// Marks all unread notifications as read
-  ///
-  /// Security Architecture:
-  /// - All writes go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  ///
-  /// Throws:
-  /// - Exception if operation fails
   Future<void> markAllAsRead() async {
     try {
       await _notificationService.markAllAsRead();
@@ -75,17 +45,6 @@ class NotificationsController {
     }
   }
 
-  /// Marks a single notification as read
-  ///
-  /// Security Architecture:
-  /// - All writes go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  ///
-  /// Parameters:
-  /// - [notificationId]: The ID of the notification to mark as read
-  ///
-  /// Throws:
-  /// - Exception if operation fails
   Future<void> markAsRead(String notificationId) async {
     try {
       await _notificationService.markAsRead(notificationId);
@@ -94,17 +53,6 @@ class NotificationsController {
     }
   }
 
-  /// Deletes a specific notification
-  ///
-  /// Security Architecture:
-  /// - All writes go through Cloud Functions (server-side)
-  /// - Server validates user authentication
-  ///
-  /// Parameters:
-  /// - [notificationId]: The ID of the notification to delete
-  ///
-  /// Throws:
-  /// - Exception if operation fails
   Future<void> deleteNotification(String notificationId) async {
     try {
       await _notificationService.deleteNotification(notificationId);
@@ -113,7 +61,6 @@ class NotificationsController {
     }
   }
 
-  /// Deletes old notifications and returns number of deleted items.
   Future<int> deleteOldNotifications({int days = 30}) async {
     try {
       return await _notificationService.deleteOldNotifications(days: days);
@@ -122,14 +69,6 @@ class NotificationsController {
     }
   }
 
-  // ------------------ Data Processing ------------------
-  /// Filters notifications to get only unread ones
-  ///
-  /// Parameters:
-  /// - [notifications]: List of all notifications
-  ///
-  /// Returns:
-  /// - List of unread notifications
   List<Map<String, dynamic>> getUnreadNotifications(
     List<Map<String, dynamic>> notifications,
   ) {
@@ -139,14 +78,6 @@ class NotificationsController {
     }).toList();
   }
 
-  /// Formats timestamp to readable text (Today, Yesterday, or date)
-  ///
-  /// Parameters:
-  /// - [timestampMillis]: Timestamp in milliseconds
-  /// - [context]: BuildContext for time formatting
-  ///
-  /// Returns:
-  /// - Formatted time string
   String formatTime(BuildContext context, int? timestampMillis) {
     if (timestampMillis == null) return '';
     final dateTime = DateTime.fromMillisecondsSinceEpoch(timestampMillis);

@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:awesome_dialog/awesome_dialog.dart';
-import '../../services/password_reset_service.dart';
-import '../../theme/app_theme.dart';
+import '../../../services/password_reset_service.dart';
+import '../../../shared/theme/app_theme.dart';
 
 /// Screen for users who forgot their password
 /// Sends a password reset email to the provided address
 class ForgotPasswordScreen extends StatefulWidget {
-  const ForgotPasswordScreen({super.key});
+  const ForgotPasswordScreen({super.key, this.initialEmail});
+
+  /// Prefilled inbox (from login screen when identifier was resolved from phone).
+  final String? initialEmail;
 
   @override
   State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
@@ -16,6 +19,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _email = TextEditingController();
   final _passwordResetService = PasswordResetService();
   bool _loading = false; // Show loading state while sending email
+
+  @override
+  void initState() {
+    super.initState();
+    final pre = widget.initialEmail?.trim();
+    if (pre != null && pre.isNotEmpty) {
+      _email.text = pre;
+    }
+  }
 
   /// Sends password reset email to the entered email address
   Future<void> _sendResetEmail() async {

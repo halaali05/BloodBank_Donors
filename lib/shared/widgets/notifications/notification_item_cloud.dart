@@ -1,8 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
-import '../../views/chat_screen.dart';
-import '../../views/request_details_screen.dart';
+import '../../../views/chat_screen.dart';
+import '../../../views/request_details_screen.dart';
 
 /// Widget that displays a single notification in the notifications list
 /// Shows notification details, urgent badge, and allows navigation to request details and chat

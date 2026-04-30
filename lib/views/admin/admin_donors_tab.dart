@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
-import '../../theme/app_theme.dart';
+import '../../shared/theme/app_theme.dart';
 
 /// Tab 2 — Donors overview for Admin
 /// Shows all donors with eligibility status and filter chips

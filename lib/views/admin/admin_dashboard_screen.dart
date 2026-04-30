@@ -3,8 +3,9 @@ import '../../controllers/admin_controller.dart';
 import '../../models/blood_request_model.dart';
 import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
-import '../../theme/app_theme.dart';
-import '../../views/login_screen.dart';
+import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/snack_bar_helper.dart';
+import '../auth/login_screen.dart';
 import 'admin_donors_tab.dart';
 import 'admin_requests_tab.dart';
 import 'admin_stats_tab.dart';
@@ -63,18 +64,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: Colors.red,
-        ),
-      );
+      SnackBarHelper.failureFrom(context, e);
     }
   }
 
   void _applyRequestFilter(String filter) {
     _requestFilter = filter;
-    final now = DateTime.now();
     switch (filter) {
       case 'active':
         _filteredRequests = _requests.where((r) => !r.isCompleted).toList();
@@ -150,20 +145,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       await _controller.deleteRequest(request.id);
       await _loadData();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Request deleted'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      SnackBarHelper.success(context, 'Request deleted');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: Colors.red,
-        ),
-      );
+      SnackBarHelper.failureFrom(context, e);
     }
   }
 
@@ -172,20 +157,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       await _controller.markCompleted(request.id);
       await _loadData();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Request marked as completed'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      SnackBarHelper.success(context, 'Request marked as completed');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: Colors.red,
-        ),
-      );
+      SnackBarHelper.failureFrom(context, e);
     }
   }
 

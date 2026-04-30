@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/donor_medical_report.dart';
 import '../../services/cloud_functions_service.dart';
-import '../../theme/app_theme.dart';
+import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/snack_bar_helper.dart';
 import '../donor_management/donor_management_appointment.dart';
 
 /// Displays the donor's full donation history on their profile.
@@ -472,33 +473,25 @@ class _RescheduleAppointmentSheetState
   Future<void> _onSubmit() async {
     final reason = _reason.text.trim();
     if (reason.length < 3) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a reason (at least 3 characters).'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      SnackBarHelper.notice(
+        context,
+        'Please enter a reason (at least 3 characters).',
       );
       return;
     }
     if (_preferred == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please choose your preferred date and time.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+      SnackBarHelper.notice(
+        context,
+        'Please choose your preferred date and time.',
       );
       return;
     }
 
     final requestId = widget.report.effectiveRequestId;
     if (requestId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Missing request reference. Try reopening Donation History.',
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
+      SnackBarHelper.failure(
+        context,
+        'Missing request reference. Try reopening Donation History.',
       );
       return;
     }
@@ -521,13 +514,9 @@ class _RescheduleAppointmentSheetState
       // "controller used after dispose" / wrong build scope on a 2nd submit.
       await Navigator.of(context).maybePop();
       if (parent.mounted) {
-        ScaffoldMessenger.of(parent).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Your reschedule request was sent to the blood bank.',
-            ),
-            behavior: SnackBarBehavior.floating,
-          ),
+        SnackBarHelper.success(
+          parent,
+          'Your reschedule request was sent to the blood bank.',
         );
       }
       final reload = widget.onRescheduleSubmitted;
@@ -538,25 +527,16 @@ class _RescheduleAppointmentSheetState
         } catch (e, st) {
           debugPrint('Reschedule reload failed: $e\n$st');
           if (!parent.mounted) return;
-          ScaffoldMessenger.maybeOf(parent)?.showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Request saved. Pull to refresh if the list does not update.',
-              ),
-              behavior: SnackBarBehavior.floating,
-            ),
+          SnackBarHelper.notice(
+            parent,
+            'Request saved. Pull to refresh if the list does not update.',
           );
         }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      SnackBarHelper.failureFrom(context, e);
     }
   }
 }
@@ -619,12 +599,7 @@ class _JourneyCardState extends State<_JourneyCard> {
       await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not open report: $e'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      SnackBarHelper.failure(context, 'Could not open report: $e');
     }
   }
 

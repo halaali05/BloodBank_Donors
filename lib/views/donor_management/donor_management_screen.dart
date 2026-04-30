@@ -6,7 +6,9 @@ import '../../models/blood_request_model.dart';
 import '../../models/donor_medical_report.dart';
 import '../../models/donor_response_entry.dart';
 import '../../services/cloud_functions_service.dart';
-import '../../theme/app_theme.dart';
+import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/error_message_helper.dart';
+import '../../shared/utils/snack_bar_helper.dart';
 import 'donor_management_appointment.dart';
 import 'donor_management_donor_list.dart';
 import 'donor_management_models.dart';
@@ -350,8 +352,8 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
                   if (idx != -1) _donors[idx] = donor;
                 });
                 _showSnack(
-                  e.toString().replaceFirst('Exception: ', ''),
-                  Colors.red,
+                  ErrorMessageHelper.humanize(e),
+                  Colors.red.shade800,
                 );
               }
             },
@@ -361,13 +363,10 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
 
   void _showSnack(String msg, Color color) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w600)),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
+    SnackBarHelper.show(
+      context: context,
+      message: msg,
+      backgroundColor: color,
     );
   }
 }

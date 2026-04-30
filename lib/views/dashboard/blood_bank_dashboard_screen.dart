@@ -2,28 +2,30 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-import 'new_request_screen.dart';
-import 'login_screen.dart';
-import 'donor_management/donor_management_screen.dart';
-import 'request_donors_screen.dart';
+import '../new_request_screen.dart';
+import '../auth/login_screen.dart';
+import '../donor_management/donor_management_screen.dart';
+import '../request_donors_screen.dart';
 
-import 'stats_screen.dart';
-import 'blood_bank_past_donors_screen.dart';
+import '../stats_screen.dart';
+import '../blood_bank_past_donors_screen.dart';
 
-import '../models/blood_request_model.dart';
-import '../controllers/blood_bank_dashboard_controller.dart';
-import '../theme/app_theme.dart';
+import '../../models/blood_request_model.dart';
+import '../../controllers/blood_bank_dashboard_controller.dart';
+import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/error_message_helper.dart';
+import '../../shared/utils/snack_bar_helper.dart';
 
-import '../widgets/common/app_bar_with_logo.dart';
-import '../widgets/common/error_box.dart';
-import '../widgets/common/loading_indicator.dart';
-import '../widgets/common/empty_state.dart';
-import '../widgets/common/section_header.dart';
+import '../../shared/widgets/common/app_bar_with_logo.dart';
+import '../../shared/widgets/common/error_box.dart';
+import '../../shared/widgets/common/loading_indicator.dart';
+import '../../shared/widgets/common/empty_state.dart';
+import '../../shared/widgets/common/section_header.dart';
 
-import '../widgets/dashboard/header_card.dart';
-import '../widgets/dashboard/request_card.dart';
+import '../../shared/widgets/dashboard/header_card.dart';
+import '../../shared/widgets/dashboard/request_card.dart';
 
-import '../services/fcm_service.dart';
+import '../../services/fcm_service.dart';
 
 class BloodBankDashboardScreen extends StatefulWidget {
   final String bloodBankName;
@@ -62,7 +64,9 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
           attempts: 5,
           delay: const Duration(seconds: 2),
         );
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('FCM init (blood bank dashboard): $e');
+      }
     });
 
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -100,7 +104,7 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString().replaceFirst('Exception: ', '');
+          _error = ErrorMessageHelper.humanize(e);
           if (showLoading) _isLoading = false;
         });
       }
@@ -148,9 +152,10 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
       if (!context.mounted) return;
       Navigator.pop(context);
       await _loadRequests();
-    } catch (_) {
+    } catch (e) {
       if (!context.mounted) return;
       Navigator.pop(context);
+      SnackBarHelper.failureFrom(context, e);
     }
   }
 
@@ -195,19 +200,14 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
       if (!context.mounted) return;
       Navigator.pop(context);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Request marked as completed.')),
-      );
+      SnackBarHelper.success(context, 'Request marked as completed.');
 
       await _loadRequests();
     } catch (e) {
       if (!context.mounted) return;
       Navigator.pop(context);
 
-      final message = e.toString().replaceFirst('Exception: ', '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message.isEmpty ? 'Failed.' : message)),
-      );
+      SnackBarHelper.failureFrom(context, e);
     }
   }
 
@@ -259,17 +259,12 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
       );
       if (!context.mounted) return;
       Navigator.pop(context);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Request units updated.')));
+      SnackBarHelper.success(context, 'Request units updated.');
       await _loadRequests();
     } catch (e) {
       if (!context.mounted) return;
       Navigator.pop(context);
-      final message = e.toString().replaceFirst('Exception: ', '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message.isEmpty ? 'Failed.' : message)),
-      );
+      SnackBarHelper.failureFrom(context, e);
     }
   }
 

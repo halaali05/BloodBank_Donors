@@ -17,6 +17,8 @@ const donorMgmt = require("./donor_management_functions");
 
 // Export all authentication and user profile functions
 exports.createPendingProfile = authFunctions.createPendingProfile;
+exports.resolveDonorEmailForPhoneLogin =
+  authFunctions.resolveDonorEmailForPhoneLogin;
 exports.completeProfileAfterVerification =
   authFunctions.completeProfileAfterVerification;
 exports.getUserData = authFunctions.getUserData;

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../constants/donor_cooldown_messages.dart';
-import '../../views/donor_profile/donor_eligibility_screen.dart';
+import '../../../views/donor_profile/donor_eligibility_screen.dart';
 import '../../theme/app_theme.dart';
 
 /// "Now, you're not eligible…" with a tappable [DonorCooldownMessages.linkLabel] → [DonorEligibilityScreen].
