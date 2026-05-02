@@ -4,11 +4,16 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'notification_navigation_service.dart';
 
 class LocalNotifService {
-  LocalNotifService._();
+  final FlutterLocalNotificationsPlugin _plugin;
+
+  LocalNotifService._([FlutterLocalNotificationsPlugin? plugin])
+      : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+
   static final LocalNotifService instance = LocalNotifService._();
 
-  final FlutterLocalNotificationsPlugin _plugin =
-      FlutterLocalNotificationsPlugin();
+  factory LocalNotifService.test(FlutterLocalNotificationsPlugin plugin) {
+    return LocalNotifService._(plugin);
+  }
 
   static const String _normalChannelId = 'normal_request_channel';
   // Keep a versioned ID because Android channel vibration settings are immutable

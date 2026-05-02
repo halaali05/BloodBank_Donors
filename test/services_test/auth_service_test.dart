@@ -10,6 +10,8 @@ class MockFirebaseAuth extends Mock implements FirebaseAuth {}
 
 class MockUserCredential extends Mock implements UserCredential {}
 
+class MockUserInfo extends Mock implements UserInfo {}
+
 class MockUser extends Mock implements User {}
 
 class MockCloudFunctionsService extends Mock implements CloudFunctionsService {}
@@ -26,9 +28,8 @@ void main() {
     service = AuthService(auth: mockAuth, cloudFunctions: mockCloud);
   });
 
-  /// --------------------------------------------------
   /// signUpDonor
-  /// --------------------------------------------------
+group('signUpDonor', () {
   test('signUpDonor creates user, calls cloud function, sends verification',
     () async {
       final mockUser = MockUser();
@@ -185,9 +186,10 @@ test('signUpDonor rethrows when cloud function fails', () async {
     throwsException,
   );
 });
-  /// --------------------------------------------------
-  /// signUpBloodBank
-  /// --------------------------------------------------
+  });
+ 
+   /// signUpBloodBank
+group('signUpBloodBank', () {
   test('signUpBloodBank creates hospital user and sends verification email',
     () async {
       final mockUser = MockUser();
@@ -229,7 +231,7 @@ test('signUpDonor rethrows when cloud function fails', () async {
     },
   );
 
-test('signUpBloodBank handles email verification failure', () async {
+  test('signUpBloodBank handles email verification failure', () async {
   final mockUser = MockUser();
   final mockCred = MockUserCredential();
 
@@ -258,15 +260,16 @@ test('signUpBloodBank handles email verification failure', () async {
 
   expect(result['message'], contains('Account created'));
 });
-
-  /// --------------------------------------------------
+  });
+ 
   /// login
-  /// --------------------------------------------------
-  test('login calls FirebaseAuth signIn', () async {
-    when(
-      () => mockAuth.signInWithEmailAndPassword(
-        email: any(named: 'email'),
-        password: any(named: 'password'),
+ 
+ group('login', () {
+    test('login calls FirebaseAuth signIn', () async {
+      when(
+        () => mockAuth.signInWithEmailAndPassword(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
       ),
     ).thenAnswer((_) async => MockUserCredential());
 
@@ -311,9 +314,33 @@ test('signUpBloodBank handles email verification failure', () async {
   verifyNever(() => mockCloud.updateLastLoginAt());
 });
   
-  /// --------------------------------------------------
+  
+  test('refreshLastLoginTelemetry ignores errors', () async {
+  final mockUser = MockUser();
+
+  when(() => mockAuth.currentUser).thenReturn(mockUser);
+
+  when(() => mockCloud.updateLastLoginAt())
+      .thenAnswer((_) => Future.error(Exception('fail')));
+
+  // ما لازم يرمي exception
+  await service.refreshLastLoginTelemetry();
+
+  verify(() => mockCloud.updateLastLoginAt()).called(1);
+});
+
+  test('resolveDonorEmailForPhoneLogin returns email', () async {
+  when(() => mockCloud.resolveDonorEmailForPhoneLogin(any()))
+      .thenAnswer((_) async => 'test@email.com');
+
+  final result =
+      await service.resolveDonorEmailForPhoneLogin('+96279');
+
+  expect(result, 'test@email.com');
+});
+
+  });
   /// logout
-  /// --------------------------------------------------
   test('logout calls FirebaseAuth signOut', () async {
     when(() => mockAuth.signOut()).thenAnswer((_) async {});
 
@@ -322,9 +349,8 @@ test('signUpBloodBank handles email verification failure', () async {
     verify(() => mockAuth.signOut()).called(1);
   });
 
-  /// --------------------------------------------------
   /// getUserRole
-  /// --------------------------------------------------
+ 
   test('getUserRole returns role from cloud functions', () async {
     when(
       () => mockCloud.getUserRole(uid: any(named: 'uid')),
@@ -335,9 +361,9 @@ test('signUpBloodBank handles email verification failure', () async {
     expect(role, 'donor');
   });
 
-  /// --------------------------------------------------
   /// getUserData
-  /// --------------------------------------------------
+  
+group('getUserData', () {
   test('getUserData returns User model when data exists', () async {
     when(() => mockCloud.getUserData(uid: any(named: 'uid'))).thenAnswer((
       _,
@@ -357,7 +383,15 @@ test('signUpBloodBank handles email verification failure', () async {
     expect(user.role, models.UserRole.donor);
   });
 
- 
+ test('getUserData returns null on exception', () async {
+  when(() => mockCloud.getUserData(uid: any(named: 'uid')))
+      .thenThrow(Exception());
+
+  final result = await service.getUserData('uid');
+
+  expect(result, null);
+});
+
  test('getUserData returns null when no uid available', () async {
   when(() => mockAuth.currentUser).thenReturn(null);
 
@@ -376,10 +410,11 @@ test('signUpBloodBank handles email verification failure', () async {
 
   expect(service.currentUser, mockUser);
 });
-
-  /// --------------------------------------------------
-  /// resendEmailVerification
-  /// --------------------------------------------------
+  });
+ 
+   /// resendEmailVerification
+ 
+group('resendEmailVerification', () {
   test('resendEmailVerification sends email if not verified', () async {
     final mockUser = MockUser();
 
@@ -403,6 +438,15 @@ test('signUpBloodBank handles email verification failure', () async {
   verifyNever(() => mockUser.sendEmailVerification());
 });
   
+   test('resendEmailVerification does nothing when user is null', () async {
+  when(() => mockAuth.currentUser).thenReturn(null);
+
+  await service.resendEmailVerification();
+
+  verify(() => mockAuth.currentUser).called(1);
+  verifyNoMoreInteractions(mockAuth);
+});
+ 
   test('isEmailVerified returns false when user is null', () async {
   when(() => mockAuth.currentUser).thenReturn(null);
 
@@ -423,18 +467,13 @@ test('signUpBloodBank handles email verification failure', () async {
   expect(result, true);
   verify(() => mockUser.reload()).called(1);
 });
-  test('resendEmailVerification does nothing when user is null', () async {
-  when(() => mockAuth.currentUser).thenReturn(null);
-
-  await service.resendEmailVerification();
-
-  verify(() => mockAuth.currentUser).called(1);
-  verifyNoMoreInteractions(mockAuth);
-});
-
-  /// --------------------------------------------------
+  
+  
+  });
+ 
   /// completeProfileAfterVerification
-  /// --------------------------------------------------
+ 
+group('completeProfileAfterVerification', () {
   test('completeProfileAfterVerification calls cloud function if verified',
     () async {
       final mockUser = MockUser();
@@ -466,8 +505,6 @@ test('signUpBloodBank handles email verification failure', () async {
   );
 });
 
-
-
 test('completeProfileAfterVerification returns cloud response', () async {
   final mockUser = MockUser();
 
@@ -492,5 +529,84 @@ test('authStateChanges returns stream from FirebaseAuth', () async {
 
   expect(await stream.first, null);
 });
+});
+
+
+group('completeDonorOnboardingWhenReady', () {
+test('completeDonorOnboardingWhenReady throws if user null', () async {
+  when(() => mockAuth.currentUser).thenReturn(null);
+
+  expect(
+    () => service.completeDonorOnboardingWhenReady(),
+    throwsA(isA<StateError>()),
+  );
+});
+
+test('completeDonorOnboardingWhenReady throws if user null after reload', () async {
+  final mockUser = MockUser();
+
+  when(() => mockAuth.currentUser).thenReturn(mockUser);
+
+  when(() => mockUser.reload()).thenAnswer((_) async {
+    when(() => mockAuth.currentUser).thenReturn(null);
+  });
+
+  expect(
+    () => service.completeDonorOnboardingWhenReady(),
+    throwsA(isA<StateError>()),
+  );
+});
+
+test('completeDonorOnboardingWhenReady throws if email not verified', () async {
+  final mockUser = MockUser();
+
+  when(() => mockUser.reload()).thenAnswer((_) async {});
+  when(() => mockUser.emailVerified).thenReturn(false);
+  when(() => mockAuth.currentUser).thenReturn(mockUser);
+
+  expect(
+    () => service.completeDonorOnboardingWhenReady(),
+    throwsA(isA<DonorOnboardingIncomplete>()),
+  );
+});
+
+test('completeDonorOnboardingWhenReady throws if phone not linked', () async {
+  final mockUser = MockUser();
+
+  when(() => mockUser.reload()).thenAnswer((_) async {});
+  when(() => mockUser.emailVerified).thenReturn(true);
+  when(() => mockUser.providerData).thenReturn([]);
+
+  when(() => mockAuth.currentUser).thenReturn(mockUser);
+
+  expect(
+    () => service.completeDonorOnboardingWhenReady(),
+    throwsA(isA<DonorOnboardingIncomplete>()),
+  );
+});
+test('completeDonorOnboardingWhenReady succeeds when all conditions met', () async {
+  final mockUser = MockUser();
+  final mockProvider = MockUserInfo();
+
+  when(() => mockProvider.providerId)
+      .thenReturn(PhoneAuthProvider.PROVIDER_ID);
+
+  when(() => mockUser.reload()).thenAnswer((_) async {});
+  when(() => mockUser.emailVerified).thenReturn(true);
+  when(() => mockUser.providerData).thenReturn([mockProvider]);
+
+  when(() => mockAuth.currentUser).thenReturn(mockUser);
+
+  when(() => mockCloud.completeProfileAfterVerification())
+      .thenAnswer((_) async => {'done': true});
+
+  final result =
+      await service.completeDonorOnboardingWhenReady();
+
+  expect(result['done'], true);
+});
+});
+
+
 
 }

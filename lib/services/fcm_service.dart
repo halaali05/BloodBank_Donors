@@ -19,12 +19,31 @@ class FCMService {
   static final FCMService instance = FCMService._();
   FCMService._();
 
+  FirebaseMessaging Function() messagingFactory = () => FirebaseMessaging.instance;
+  FirebaseAuth Function() authFactory = () => FirebaseAuth.instance;
+
   bool _listenersRegistered = false;
   bool _authStateListenerRegistered = false;
   bool _initialLaunchMessageHandled = false;
 
-  final FcmCloudSyncService _cloudSync = FcmCloudSyncService.instance;
+ FcmCloudSyncService _cloudSync = FcmCloudSyncService.instance;
 
+// For testing: resets internal state to allow re-testing init and listeners.
+void resetForTest() {
+  _bootstrapFuture = null;
+  _listenersRegistered = false;
+  _authStateListenerRegistered = false;
+  _initialLaunchMessageHandled = false;
+}
+
+// For testing: allows injection of a mock cloud sync service.
+Future<void> Function() localNotifInit =
+    () => LocalNotifService.instance.init();
+
+
+ void setCloudSync(FcmCloudSyncService service) {
+  _cloudSync = service;
+}
   /// Ensures startup wiring runs once; repeat callers await the same work and
   /// optionally refresh the server token ([syncTokenToBackend]).
   Future<void>? _bootstrapFuture;
@@ -40,11 +59,11 @@ class FCMService {
   }
 
   Future<void> _bootstrapFcmOnce() async {
-    final FirebaseMessaging messaging = FirebaseMessaging.instance;
+    final messaging = messagingFactory();
     await messaging.setAutoInitEnabled(true);
 
     if (!kIsWeb) {
-      await LocalNotifService.instance.init();
+      await localNotifInit();
     }
 
     if (!_listenersRegistered) {
@@ -64,7 +83,7 @@ class FCMService {
 
     if (!_authStateListenerRegistered) {
       _authStateListenerRegistered = true;
-      FirebaseAuth.instance.authStateChanges().listen((User? user) {
+      authFactory().authStateChanges().listen((User? user) {
         if (user != null) {
           unawaited(_cloudSync.syncTokenToBackend());
         }
@@ -120,7 +139,7 @@ class FCMService {
 
   Future<bool> syncPushTokenWithServer() async {
     if (!kIsWeb) {
-      await LocalNotifService.instance.init();
+      await localNotifInit();
     }
     return _cloudSync.syncPushTokenWithServer();
   }

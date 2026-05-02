@@ -64,6 +64,37 @@ test('markAsRead rethrows on failure', () async {
   );
 });
 
+test('markAsRead completes successfully', () async {
+  when(() => mockCloudFunctions.markNotificationAsRead(
+        notificationId: any(named: 'notificationId'),
+      )).thenAnswer((_) async => {'ok': true});
+
+  await expectLater(
+    notificationService.markAsRead('id'),
+    completes,
+  );
+});
+
+test('markAllAsRead completes successfully', () async {
+  when(() => mockCloudFunctions.markNotificationsAsRead())
+      .thenAnswer((_) async => {'ok': true});
+
+  await expectLater(
+    notificationService.markAllAsRead(),
+    completes,
+  );
+});
+
+test('markAllAsRead only calls correct method', () async {
+  when(() => mockCloudFunctions.markNotificationsAsRead())
+      .thenAnswer((_) async => {'ok': true});
+
+  await notificationService.markAllAsRead();
+
+  verify(() => mockCloudFunctions.markNotificationsAsRead()).called(1);
+  verifyNoMoreInteractions(mockCloudFunctions);
+});
+
 });
   
 group('delete Notification ', () {
@@ -155,6 +186,46 @@ test('deleteOldNotifications handles negative days', () async {
   final result = await notificationService.deleteOldNotifications(days: -5);
 
   expect(result, 0);
+});
+
+test('deleteOldNotifications returns 0 when deletedCount is null', () async {
+  when(() => mockCloudFunctions.deleteOldNotifications(days: any(named: 'days')))
+      .thenAnswer((_) async => {'deletedCount': null});
+
+  final result = await notificationService.deleteOldNotifications();
+
+  expect(result, 0);
+});
+
+test('deleteOldNotifications handles negative count', () async {
+  when(() => mockCloudFunctions.deleteOldNotifications(days: any(named: 'days')))
+      .thenAnswer((_) async => {'deletedCount': -3});
+
+  final result = await notificationService.deleteOldNotifications();
+
+  expect(result, -3);
+});
+
+test('deleteOldNotifications uses default days = 30', () async {
+  when(() => mockCloudFunctions.deleteOldNotifications(days: any(named: 'days')))
+      .thenAnswer((invocation) async {
+    expect(invocation.namedArguments[#days], 30);
+    return {'deletedCount': 1};
+  });
+
+  await notificationService.deleteOldNotifications();
+});
+
+
+test('deleteNotification completes successfully', () async {
+  when(() => mockCloudFunctions.deleteNotification(
+        notificationId: any(named: 'notificationId'),
+      )).thenAnswer((_) async => {'ok': true});
+
+  await expectLater(
+    notificationService.deleteNotification('id'),
+    completes,
+  );
 });
 
 

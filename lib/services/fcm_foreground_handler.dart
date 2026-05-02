@@ -12,10 +12,14 @@ import '../notifications/web_foreground_notification.dart';
 /// Foreground FCM handling: donor blood-type filter, then **local** or **web** display.
 /// Does not call Cloud Functions for token upload (see [FcmCloudSyncService]).
 class FcmForegroundHandler {
+  FirebaseAuth Function() authFactory = () => FirebaseAuth.instance;
+AuthService Function() authServiceFactory = () => AuthService();
+CloudFunctionsService Function() cloudFactory = () => CloudFunctionsService();
+
   FcmForegroundHandler._();
   static final FcmForegroundHandler instance = FcmForegroundHandler._();
 
-  static List<String>? _compatibleBloodTypes(String? donorBloodType) {
+  static List<String>? compatibleBloodTypes(String? donorBloodType) {
     switch (donorBloodType?.trim()) {
       case 'O-':
         return ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'];
@@ -46,9 +50,8 @@ class FcmForegroundHandler {
 
     if (type == 'request') {
       try {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          final authService = AuthService();
+        final user = authFactory().currentUser;        if (user != null) {
+          final authService = authServiceFactory();
           final userData = await authService.getUserData(user.uid);
           final donorBloodType = userData?.bloodType?.trim() ?? '';
 
@@ -57,7 +60,7 @@ class FcmForegroundHandler {
           );
 
           if (donorBloodType.isNotEmpty) {
-            final compatible = _compatibleBloodTypes(donorBloodType);
+            final compatible = FcmForegroundHandler.compatibleBloodTypes(donorBloodType);
             if (compatible != null) {
               String notifBloodType =
                   message.data['bloodType']?.toString().trim() ?? '';
@@ -68,7 +71,7 @@ class FcmForegroundHandler {
 
               if (notifBloodType.isEmpty && requestId.isNotEmpty) {
                 try {
-                  final result = await CloudFunctionsService().getRequests(
+                  final result = await cloudFactory().getRequests(
                     limit: 100,
                   );
                   final requests = result['requests'] as List<dynamic>? ?? [];
@@ -132,11 +135,32 @@ class FcmForegroundHandler {
       return;
     }
 
-    LocalNotifService.instance.show(
-      title: title,
-      body: body,
-      payload: jsonEncode(payload),
-      isUrgent: type == 'request' ? isUrgent : false,
-    );
+   
+  await showNotification(
+  title: title,
+  body: body,
+  payload: jsonEncode(payload),
+  isUrgent: type == 'request' ? isUrgent : false,
+);
   }
+
+   
+Future<void> Function({
+  required String title,
+  required String body,
+  String? payload,
+  bool isUrgent,
+}) showNotification = ({
+  required String title,
+  required String body,
+  String? payload,
+  bool isUrgent = false,
+}) {
+  return LocalNotifService.instance.show(
+    title: title,
+    body: body,
+    payload: payload,
+    isUrgent: isUrgent,
+  );
+};
 }
