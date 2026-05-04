@@ -1,7 +1,13 @@
 const admin = require("firebase-admin");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { requireAuth, nonEmptyString, toHttpsError } = require("./utils");
+const {
+  requireAuth,
+  nonEmptyString,
+  toHttpsError,
+  isRequestExpired,
+  REQUEST_TTL_MS,
+} = require("./utils");
 const { publicCallableOpts } = require("../callable_config");
 const {
   scheduleRef,
@@ -9,8 +15,6 @@ const {
 } = require("../donation_schedule");
 
 const db = admin.firestore();
-
-const REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Callables / JSON may send "true", 1, etc. Urgent FCM + Firestore must stay aligned.
@@ -24,13 +28,6 @@ function coerceUrgent(value) {
   }
   if (typeof value === "number") return value === 1;
   return false;
-}
-
-function isRequestExpired(createdAtValue) {
-  if (!createdAtValue || typeof createdAtValue.toMillis !== "function") {
-    return false;
-  }
-  return Date.now() - createdAtValue.toMillis() > REQUEST_TTL_MS;
 }
 
 /** Parse Firestore Timestamp / Date / epoch ms from user document fields. */

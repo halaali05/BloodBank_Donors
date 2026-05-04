@@ -538,7 +538,11 @@ class CloudFunctionsService {
         userMessage = 'Please log in first';
         break;
       case 'permission-denied':
-        userMessage = 'You do not have permission';
+        if (e.message != null && e.message!.isNotEmpty) {
+          userMessage = e.message!;
+        } else {
+          userMessage = 'You do not have permission';
+        }
         break;
       case 'invalid-argument':
         // Use the specific message from the function if available

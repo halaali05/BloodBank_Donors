@@ -106,6 +106,20 @@ function parseDonorGender(v) {
   return null;
 }
 
+/** Same TTL as `getRequestById` / donor listing (7 days from request creation). */
+const REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * @param {*} createdAtValue Firestore Timestamp or compatible
+ * @return {boolean}
+ */
+function isRequestExpired(createdAtValue) {
+  if (!createdAtValue || typeof createdAtValue.toMillis !== "function") {
+    return false;
+  }
+  return Date.now() - createdAtValue.toMillis() > REQUEST_TTL_MS;
+}
+
 module.exports = {
   requireAuth,
   nonEmptyString,
@@ -113,4 +127,6 @@ module.exports = {
   normalizeJordanMobile,
   jordanMobileFirestoreLookupVariants,
   parseDonorGender,
+  isRequestExpired,
+  REQUEST_TTL_MS,
 };

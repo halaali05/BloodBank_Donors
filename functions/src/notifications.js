@@ -1,7 +1,12 @@
 const admin = require("firebase-admin");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { requireAuth, nonEmptyString, toHttpsError } = require("./utils");
+const {
+  requireAuth,
+  nonEmptyString,
+  toHttpsError,
+  isRequestExpired,
+} = require("./utils");
 const { publicCallableOpts } = require("../callable_config");
 
 const db = admin.firestore();
@@ -79,10 +84,15 @@ async function requireRequestChatAccess(uid, requestId, options = {}) {
       .doc(uid)
       .get();
     if (!responseSnap.exists) {
-      throw new HttpsError(
-        "permission-denied",
-        "You can only access messages for requests you joined.",
-      );
+      // Match getRequestById: donors may view active (non-expired) requests
+      // without a donorResponses row; allow the same users to open Messages.
+      const createdAt = requestData.createdAt;
+      if (isRequestExpired(createdAt)) {
+        throw new HttpsError(
+          "permission-denied",
+          "This request is no longer open for messages.",
+        );
+      }
     }
     return {
       role,

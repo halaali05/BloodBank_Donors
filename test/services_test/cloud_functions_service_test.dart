@@ -430,7 +430,8 @@ group('_callFunction core coverage', () {
   throwsA(
     predicate((e) =>
         e is Exception &&
-        e.toString().contains('permission')),
+        (e.toString().contains('denied') ||
+            e.toString().contains('permission'))),
   ),
 );
   });
