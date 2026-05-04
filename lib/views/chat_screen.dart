@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../controllers/chat_controller.dart';
 import '../shared/utils/snack_bar_helper.dart';
 import '../shared/widgets/common/error_box.dart';
+import '../shared/widgets/common/loading_indicator.dart';
 import '../shared/widgets/chat/message_bubble.dart';
 import '../shared/widgets/chat/chat_input_field.dart';
 
@@ -47,6 +48,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // State
   Timer? _refreshTimer;
+  Timer? _sendWatchdogTimer;
   List<Map<String, dynamic>> _messages = [];
   bool _isLoading = true;
   bool _isSending = false;
@@ -75,6 +77,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _sendWatchdogTimer?.cancel();
     _textController.dispose();
     super.dispose();
   }
@@ -153,6 +156,15 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.isEmpty || currentUser == null || _isSending) return;
 
     setState(() => _isSending = true);
+    _sendWatchdogTimer?.cancel();
+    _sendWatchdogTimer = Timer(const Duration(seconds: 12), () {
+      if (!mounted || !_isSending) return;
+      setState(() => _isSending = false);
+      SnackBarHelper.notice(
+        context,
+        'Message send is taking too long. Please try again.',
+      );
+    });
 
     try {
       // CRITICAL: Ensure recipientId is preserved
@@ -169,8 +181,9 @@ class _ChatScreenState extends State<ChatScreen> {
       _textController.clear();
       FocusScope.of(context).unfocus();
 
-      // Refresh messages after sending
-      await _loadMessages(showLoading: false);
+      // Refresh in background so the send button never feels "stuck"
+      // when network/push delivery is slow.
+      unawaited(_loadMessages(showLoading: false));
 
       if (mounted) {
         SnackBarHelper.success(
@@ -193,6 +206,8 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
     } finally {
+      _sendWatchdogTimer?.cancel();
+      _sendWatchdogTimer = null;
       if (mounted) setState(() => _isSending = false);
     }
   }
@@ -224,7 +239,9 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             Expanded(
               child: _isLoading && _messages.isEmpty
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const LoadingIndicator(
+                      message: 'Loading conversation...',
+                    )
                   : _error != null
                   ? ErrorBox(
                       title: 'Error loading messages',

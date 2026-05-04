@@ -9,7 +9,10 @@ class LoadingIndicator extends StatelessWidget {
   /// Optional custom size (width and height)
   final double? size;
 
-  const LoadingIndicator({super.key, this.color, this.size});
+  /// Optional message shown under the spinner.
+  final String? message;
+
+  const LoadingIndicator({super.key, this.color, this.size, this.message});
 
   @override
   Widget build(BuildContext context) {
@@ -19,10 +22,25 @@ class LoadingIndicator extends StatelessWidget {
           ? AlwaysStoppedAnimation<Color>(color!)
           : null,
     );
+    final shouldShowMessage = (message ?? '').trim().isNotEmpty;
+    final indicatorWidget = size != null
+        ? SizedBox(width: size, height: size, child: indicator)
+        : indicator;
     return Center(
-      child: size != null
-          ? SizedBox(width: size, height: size, child: indicator)
-          : indicator,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          indicatorWidget,
+          if (shouldShowMessage) ...[
+            const SizedBox(height: 10),
+            Text(
+              message!.trim(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.black54, fontSize: 13),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

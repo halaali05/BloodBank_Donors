@@ -80,6 +80,18 @@ class DonorDashboardController {
     );
   }
 
+  Future<void> requestAppointmentReschedule({
+    required String requestId,
+    required String reason,
+    required DateTime preferredAt,
+  }) async {
+    await _cloudFunctions.requestAppointmentReschedule(
+      requestId: requestId,
+      reason: reason,
+      preferredAppointmentAtMillis: preferredAt.millisecondsSinceEpoch,
+    );
+  }
+
   /// How many notification rows are still unread.
   Future<int> getUnreadNotificationsCount() async {
     try {

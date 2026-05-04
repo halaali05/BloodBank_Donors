@@ -454,7 +454,10 @@ class CloudFunctionsService {
     String? recipientId,
   }) async {
     try {
-      final callable = _functions.httpsCallable('sendMessage');
+      final callable = _functions.httpsCallable(
+        'sendMessage',
+        options: HttpsCallableOptions(timeout: const Duration(seconds: 12)),
+      );
       final data = <String, dynamic>{'requestId': requestId, 'text': text};
 
       // CRITICAL: Always include recipientId if provided
@@ -466,6 +469,8 @@ class CloudFunctionsService {
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {
       throw _handleFunctionsException(e);
+    } catch (e) {
+      throw _handleNetworkError(e);
     }
   }
 

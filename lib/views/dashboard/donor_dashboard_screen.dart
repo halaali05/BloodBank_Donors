@@ -21,6 +21,7 @@ import '../../shared/utils/donor_eligibility.dart';
 import '../../shared/utils/error_message_helper.dart';
 import '../../shared/utils/snack_bar_helper.dart';
 import '../donor_map_screen.dart';
+import '../donor_management/donor_management_appointment.dart';
 
 enum DonorRequestFilter { all, nearest, completed, urgent, normal }
 
@@ -440,6 +441,30 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
     }
   }
 
+  Future<void> _openRescheduleSheet(BloodRequest request) async {
+    if (request.id.trim().isEmpty) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _DashboardRescheduleAppointmentSheet(
+        onSubmit: (reason, preferredAt) async {
+          await _controller.requestAppointmentReschedule(
+            requestId: request.id,
+            reason: reason,
+            preferredAt: preferredAt,
+          );
+          if (!mounted) return;
+          SnackBarHelper.success(
+            context,
+            'Your reschedule request was sent to the blood bank.',
+          );
+          await _loadDashboardData(showLoading: false);
+        },
+      ),
+    );
+  }
+
   // ------------------ UI Build ------------------
   @override
   Widget build(BuildContext context) {
@@ -568,6 +593,8 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
                                       _submitDonorResponse(request, 'accepted'),
                                   onUndoDonate: () =>
                                       _submitDonorResponse(request, 'none'),
+                                  onReschedule: () =>
+                                      _openRescheduleSheet(request),
                                   onMessage: () => _navigateToChat(request),
                                 );
                               },
@@ -640,6 +667,176 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
       activeRequests: activeRequests.length,
       activeUnits: activeUnits,
     );
+  }
+}
+
+class _DashboardRescheduleAppointmentSheet extends StatefulWidget {
+  final Future<void> Function(String reason, DateTime preferredAt) onSubmit;
+  const _DashboardRescheduleAppointmentSheet({required this.onSubmit});
+
+  @override
+  State<_DashboardRescheduleAppointmentSheet> createState() =>
+      _DashboardRescheduleAppointmentSheetState();
+}
+
+class _DashboardRescheduleAppointmentSheetState
+    extends State<_DashboardRescheduleAppointmentSheet> {
+  late final TextEditingController _reason;
+  DateTime? _preferredAt;
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _reason = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  static String _formatDateTimeLabel(DateTime dt) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year} · $h:$m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 14),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: AppTheme.cardShadow,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Request a new appointment',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'The blood bank will see your reason and preferred time in Pending.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.black.withValues(alpha: 0.45),
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _reason,
+                  decoration: InputDecoration(
+                    labelText: 'Reason',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  maxLines: 3,
+                  textCapitalization: TextCapitalization.sentences,
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _submitting
+                      ? null
+                      : () async {
+                          final dt = await pickDonorAppointmentDateTime(context);
+                          if (dt != null && mounted) {
+                            setState(() => _preferredAt = dt);
+                          }
+                        },
+                  icon: const Icon(Icons.calendar_month_rounded),
+                  label: Text(
+                    _preferredAt == null
+                        ? 'Choose best date & time'
+                        : _formatDateTimeLabel(_preferredAt!),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.deepRed,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: _submitting ? null : _submit,
+                  child: _submitting
+                      ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Submit',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    final cleanReason = _reason.text.trim();
+    if (cleanReason.length < 3) {
+      SnackBarHelper.notice(
+        context,
+        'Please enter a reason (at least 3 characters).',
+      );
+      return;
+    }
+    if (_preferredAt == null) {
+      SnackBarHelper.notice(context, 'Please choose your preferred date and time.');
+      return;
+    }
+
+    setState(() => _submitting = true);
+    try {
+      await widget.onSubmit(cleanReason, _preferredAt!);
+      if (!mounted) return;
+      await Navigator.of(context).maybePop();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      SnackBarHelper.failureFrom(context, e);
+    }
   }
 }
 

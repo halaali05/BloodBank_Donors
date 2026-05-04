@@ -559,39 +559,6 @@ class _JourneyCard extends StatefulWidget {
 class _JourneyCardState extends State<_JourneyCard> {
   bool _expanded = true;
 
-  bool get _offerReschedule {
-    if (widget.onRescheduleSubmitted == null ||
-        widget.report.effectiveRequestId.isEmpty) {
-      return false;
-    }
-    final apt = widget.report.appointmentAt;
-    if (apt == null) return false;
-    final s = widget.report.status;
-    if (s == DonorProcessStatus.tested ||
-        s == DonorProcessStatus.donated ||
-        s == DonorProcessStatus.restricted) {
-      return false;
-    }
-    // Match Cloud Function: donor may still be `accepted` in Firestore while the
-    // app shows an appointment (same as BloodRequest merge / legacy rows).
-    return s == DonorProcessStatus.scheduled ||
-        s == DonorProcessStatus.accepted;
-  }
-
-  Future<void> _openRescheduleSheet() async {
-    if (!_offerReschedule) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _RescheduleAppointmentSheet(
-        report: widget.report,
-        parentContext: context,
-        onRescheduleSubmitted: widget.onRescheduleSubmitted!,
-      ),
-    );
-  }
-
   Future<void> _openReportFile() async {
     final url = widget.report.reportFileUrl?.trim() ?? '';
     if (url.isEmpty) return;
@@ -842,32 +809,6 @@ class _JourneyCardState extends State<_JourneyCard> {
                 children: [
                   for (var i = 0; i < _steps.length; i++) ...[
                     _TimelineStepRow(step: _steps[i]),
-                    if (i == 1 && _offerReschedule)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 44, bottom: 4),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton.icon(
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppTheme.deepRed,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            onPressed: _openRescheduleSheet,
-                            icon: const Icon(
-                              Icons.event_repeat_rounded,
-                              size: 18,
-                            ),
-                            label: const Text(
-                              'Reschedule',
-                              style: TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                          ),
-                        ),
-                      ),
                   ],
                   if (isRestricted &&
                       widget.report.canDonateAgainAt != null) ...[
@@ -966,6 +907,7 @@ class _JourneyCardState extends State<_JourneyCard> {
     final m = dt.minute.toString().padLeft(2, '0');
     return '$h:$m';
   }
+
 }
 
 class _JourneyStep {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../controllers/donor_profile_controller.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/donor_eligibility.dart';
+import '../../shared/widgets/common/loading_indicator.dart';
 
 /// Shows eligibility end date, countdown, and a day-by-day timeline after last donation.
 class DonorEligibilityScreen extends StatefulWidget {
@@ -90,7 +91,9 @@ class _DonorEligibilityScreenState extends State<DonorEligibilityScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: const [
                   SizedBox(height: 120),
-                  Center(child: CircularProgressIndicator()),
+                  LoadingIndicator(
+                    message: 'Checking your donation eligibility...',
+                  ),
                 ],
               )
             : _error != null

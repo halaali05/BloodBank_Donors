@@ -11,6 +11,7 @@ class DonorRequestCard extends StatelessWidget {
   final VoidCallback? onMessage;
   final VoidCallback? onDonate;
   final VoidCallback? onUndoDonate;
+  final VoidCallback? onReschedule;
   final bool isSubmittingResponse;
 
   /// When true, new "I can donate" taps are blocked (post-donation cooldown).
@@ -25,6 +26,7 @@ class DonorRequestCard extends StatelessWidget {
     this.onMessage,
     this.onDonate,
     this.onUndoDonate,
+    this.onReschedule,
     this.isSubmittingResponse = false,
     this.acceptBlockedByCooldown = false,
     this.permanentlyBlocked = false,
@@ -37,9 +39,23 @@ class DonorRequestCard extends StatelessWidget {
     final process = request.donorProcessStatus?.toLowerCase();
     final isRestrictedProcess = process == 'restricted';
     final isDonationFinal = process == 'donated' || process == 'restricted';
+    final my = request.myResponse;
+    final acceptedFlow =
+        my == 'accepted' ||
+        process == 'accepted' ||
+        process == 'scheduled' ||
+        process == 'tested' ||
+        process == 'donated' ||
+        process == 'restricted';
+    final canReschedule =
+        onReschedule != null &&
+        request.appointmentAt != null &&
+        !isDonationFinal &&
+        !isCompleted &&
+        (my == 'accepted' || process == 'accepted' || process == 'scheduled');
+    final showStatusRow = my != null || acceptedFlow || canReschedule;
     final cardBg = isUrgent ? AppTheme.urgentCardBg : Colors.white;
     final border = isUrgent ? const Color(0xFFFFCDD2) : const Color(0xFFE6EAF2);
-    final my = request.myResponse;
     final isDonating = my == 'accepted';
     final showResponseRow = onDonate != null;
     final blocksAccept =
@@ -121,10 +137,45 @@ class DonorRequestCard extends StatelessWidget {
                   style: const TextStyle(fontSize: 13, color: Colors.black54),
                 ),
                 const SizedBox(height: 6),
-                if (request.myResponse != null) ...[
-                  ResponseStatusPill(
-                    status: request.myResponse ?? 'pending',
-                    appointmentAt: request.appointmentAt,
+                if (showStatusRow) ...[
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      ResponseStatusPill(
+                        status: my ?? (acceptedFlow ? 'accepted' : 'pending'),
+                        appointmentAt: request.appointmentAt,
+                      ),
+                      if (canReschedule)
+                        TextButton.icon(
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppTheme.deepRed,
+                            backgroundColor: AppTheme.deepRed.withValues(
+                              alpha: 0.08,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            minimumSize: const Size(0, 28),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                          onPressed: onReschedule,
+                          icon: const Icon(Icons.event_repeat_rounded, size: 14),
+                          label: const Text(
+                            'Reschedule',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ],
                 if (isRestrictedProcess) ...[

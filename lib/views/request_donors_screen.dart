@@ -5,6 +5,7 @@ import '../controllers/chat_controller.dart';
 import '../services/cloud_functions_service.dart';
 import '../shared/theme/app_theme.dart';
 import '../shared/utils/snack_bar_helper.dart';
+import '../shared/widgets/common/loading_indicator.dart';
 import 'chat_screen.dart';
 
 /// Shows all registered donors and allows blood bank to start chat
@@ -99,7 +100,7 @@ class _RequestDonorsScreenState extends State<RequestDonorsScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingIndicator(message: 'Loading donors...')
           : _error != null
           ? Center(
               child: Padding(

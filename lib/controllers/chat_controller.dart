@@ -99,6 +99,10 @@ class ChatController {
         requestId: requestId,
         text: text,
         recipientId: messageRecipientId,
+      ).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () =>
+            throw Exception('Message send timed out. Please try again.'),
       );
     } catch (e) {
       throw Exception('Failed to send message: $e');

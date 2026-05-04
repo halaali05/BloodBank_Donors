@@ -102,7 +102,7 @@ class _DonorManagementReportSheetState
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+        allowedExtensions: ['pdf'],
         withData: kIsWeb,
         withReadStream: !kIsWeb,
       );
@@ -116,7 +116,7 @@ class _DonorManagementReportSheetState
         if (!mounted) return;
         SnackBarHelper.failure(
           context,
-          'Could not read this file. Try another PDF/image or pick from Downloads.',
+          'Could not read this file. Try another PDF or pick from Downloads.',
         );
         return;
       }
@@ -131,14 +131,16 @@ class _DonorManagementReportSheetState
 
       final ext = (picked.extension ?? '').toLowerCase();
 
-      var contentType = 'application/octet-stream';
-      if (ext == 'pdf') {
-        contentType = 'application/pdf';
-      } else if (ext == 'jpg' || ext == 'jpeg') {
-        contentType = 'image/jpeg';
-      } else if (ext == 'png') {
-        contentType = 'image/png';
+      if (ext != 'pdf') {
+        if (!mounted) return;
+        setState(() {
+          _isUploading = false;
+          _pickedFileName = null;
+        });
+        SnackBarHelper.failure(context, 'Only PDF files are allowed.');
+        return;
       }
+      const contentType = 'application/pdf';
 
       final fileName =
           '${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
@@ -605,7 +607,7 @@ class _DonorManagementReportSheetState
                             child: Text(
                               _uploadedFileUrl != null
                                   ? _pickedFileName ?? 'File uploaded ✓'
-                                  : 'Attach Medical Report (PDF / Image)',
+                                  : 'Attach Medical Report (PDF)',
                               style: TextStyle(
                                 color: _uploadedFileUrl != null
                                     ? Colors.green[700]
@@ -635,7 +637,7 @@ class _DonorManagementReportSheetState
             ),
             const SizedBox(height: 4),
             Text(
-              hasFileError ? 'Attach PDF, JPG, or PNG' : 'PDF, JPG, or PNG',
+              hasFileError ? 'Attach PDF file only' : 'PDF only',
               style: TextStyle(
                 color: hasFileError ? Colors.red : Colors.black45,
                 fontSize: 11,

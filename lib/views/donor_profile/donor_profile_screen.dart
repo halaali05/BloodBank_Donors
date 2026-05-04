@@ -12,6 +12,7 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/error_message_helper.dart';
 import '../../shared/utils/platform_file_reader.dart';
 import '../../shared/utils/snack_bar_helper.dart';
+import '../../shared/widgets/common/loading_indicator.dart';
 import 'donor_eligibility_screen.dart';
 import 'donor_profile_account_page.dart';
 import 'donor_profile_donation_history_page.dart';
@@ -342,7 +343,7 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
         ),
       ),
       body: _isLoading && _userData == null
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingIndicator(message: 'Loading your profile...')
           : _error != null
           ? Center(
               child: Padding(

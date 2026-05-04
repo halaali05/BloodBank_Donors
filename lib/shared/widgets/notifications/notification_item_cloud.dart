@@ -1,8 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../../services/notification_navigation_service.dart';
 import '../../theme/app_theme.dart';
 import '../../../views/chat_screen.dart';
-import '../../../views/request_details_screen.dart';
 
 /// Widget that displays a single notification in the notifications list
 /// Shows notification details, urgent badge, and allows navigation to request details and chat
@@ -34,6 +34,7 @@ class NotificationItemCloud extends StatelessWidget {
         (data['id'] as String?) ?? (data['notificationId'] as String?) ?? '';
     final isRead = (data['isRead'] == true) || (data['read'] == true);
     final requestId = (data['requestId'] as String?) ?? '';
+    final type = (data['type'] as String?)?.trim().toLowerCase() ?? 'request';
     final createdAt = data['createdAt'] as int?;
     final createdAtText = formatTime(context, createdAt);
     final isUrgent =
@@ -46,33 +47,26 @@ class NotificationItemCloud extends StatelessWidget {
     final title = data['title'] as String? ?? 'Blood Request';
     final body = data['body'] as String? ?? '';
 
-    // Handle tap to open request details
+    Future<void> _markReadIfNeeded() async {
+      if (isRead || notificationId.isEmpty || onMarkAsRead == null) return;
+      try {
+        await onMarkAsRead!(notificationId);
+        if (onRefresh != null) onRefresh!();
+      } catch (_) {
+        // Do not block navigation if mark-as-read fails.
+      }
+    }
+
+    // Handle tap to open the feature related to notification type.
     Future<void> handleCardTap() async {
-      if (requestId.isEmpty) return;
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
-
-      // Mark notification as read if not already read (FIRST - before navigation)
-      if (!isRead && notificationId.isNotEmpty && onMarkAsRead != null) {
-        try {
-          await onMarkAsRead!(notificationId);
-          // Refresh notifications list to update UI
-          if (onRefresh != null) {
-            onRefresh!();
-          }
-        } catch (e) {
-          // Silently fail - don't block navigation
-        }
-      }
-
-      if (context.mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => RequestDetailsScreen(requestId: requestId),
-          ),
-        );
-      }
+      await _markReadIfNeeded();
+      NotificationNavigationService.instance.openFromData({
+        ...data,
+        'type': type,
+        'requestId': requestId,
+      }, fromNotificationTap: false);
     }
 
     // Handle message button tap
@@ -81,28 +75,14 @@ class NotificationItemCloud extends StatelessWidget {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      // Mark notification as read if not already read (FIRST - before navigation)
-      if (!isRead && notificationId.isNotEmpty && onMarkAsRead != null) {
-        try {
-          await onMarkAsRead!(notificationId);
-          // Refresh notifications list to update UI
-          if (onRefresh != null) {
-            onRefresh!();
-          }
-        } catch (e) {
-          // Silently fail - don't block navigation
-        }
-      }
-
-      if (context.mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) =>
-                ChatScreen(requestId: requestId, initialMessage: body),
-          ),
-        );
-      }
+      await _markReadIfNeeded();
+      if (!context.mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(requestId: requestId, initialMessage: body),
+        ),
+      );
     }
 
     return Container(
@@ -203,9 +183,14 @@ class NotificationItemCloud extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: ElevatedButton.icon(
-              onPressed: handleMessageTap,
-              icon: const Icon(Icons.chat_bubble_outline, size: 18),
-              label: const Text('Messages'),
+              onPressed: type == 'chat' ? handleMessageTap : handleCardTap,
+              icon: Icon(
+                type == 'chat'
+                    ? Icons.chat_bubble_outline
+                    : Icons.open_in_new_rounded,
+                size: 18,
+              ),
+              label: Text(type == 'chat' ? 'Messages' : 'Open'),
               style: AppTheme.primaryButtonStyle(
                 borderRadius: 24,
                 padding: const EdgeInsets.symmetric(

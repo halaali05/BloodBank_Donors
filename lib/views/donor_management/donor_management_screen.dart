@@ -239,7 +239,9 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
   }
 
   Future<void> _onSchedule(DonorPipelineRow donor) async {
-    final picked = await pickDonorAppointmentDateTime(context);
+    final picked =
+        donor.reschedulePreferredAt ??
+        await pickDonorAppointmentDateTime(context);
     if (picked == null) return;
 
     final idx = _donors.indexWhere((d) => d.donorId == donor.donorId);
@@ -263,7 +265,9 @@ class _DonorManagementScreenState extends State<DonorManagementScreen>
       await _loadDonors(showSpinner: false);
       if (!mounted) return;
       _showSnack(
-        '📅 Appointment saved for ${donor.fullName}',
+        donor.reschedulePreferredAt != null
+            ? '📅 Appointment confirmed from donor preferred time for ${donor.fullName}'
+            : '📅 Appointment saved for ${donor.fullName}',
         Colors.blue[700]!,
       );
     } catch (e) {

@@ -14,6 +14,8 @@ dependencies:
   awesome_dialog: ^3.0.2
   file_picker: ^8.1.2
   url_launcher: ^6.3.0
+  open_filex: ^4.5.0
+  path_provider: ^2.1.5
   http: ^1.6.0
 
   # Firebase
@@ -47,14 +49,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/docs/images/logoBLOOD.png
-    - assets/docs/restriction_page_01.png
-    - assets/docs/restriction_page_02.png
-    - assets/docs/restriction_page_03.png
-    - assets/docs/restriction_page_04.png
-    - assets/docs/restriction_page_05.png
-    - assets/docs/restriction_page_06.png
-    - assets/docs/restriction_page_07.png
-    - assets/docs/restriction_page_08.png
+    - assets/docs/donatio_restrictions.pdf
 
 flutter_launcher_icons:
   android: true

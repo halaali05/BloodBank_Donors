@@ -112,6 +112,8 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
     final request = _request!;
     final location = request.hospitalLocation.trim();
     final details = request.details.trim();
+    final appointment = request.appointmentAt;
+    final hasAppointment = appointment != null;
 
     return Directionality(
       textDirection: TextDirection.ltr,
@@ -171,6 +173,27 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+                if (hasAppointment) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'Appointment: ${_formatAppointment(appointment)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF2E7D32),
+                      ),
+                    ),
+                  ),
+                ],
                 if (location.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Row(
@@ -230,5 +253,28 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
         ),
       ),
     );
+  }
+
+  String _formatAppointment(DateTime? date) {
+    if (date == null) return '';
+    const months = [
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final hour12 = date.hour % 12 == 0 ? 12 : date.hour % 12;
+    final minute = date.minute.toString().padLeft(2, '0');
+    final ampm = date.hour >= 12 ? 'PM' : 'AM';
+    return '${months[date.month]} ${date.day}, $hour12:$minute $ampm';
   }
 }

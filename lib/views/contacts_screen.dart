@@ -4,6 +4,7 @@ import 'chat_screen.dart';
 import '../services/cloud_functions_service.dart';
 import '../shared/theme/app_theme.dart';
 import '../shared/utils/snack_bar_helper.dart';
+import '../shared/widgets/common/loading_indicator.dart';
 import '../controllers/chat_controller.dart';
 
 class ContactsScreen extends StatefulWidget {
@@ -97,7 +98,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const LoadingIndicator(message: 'Loading contacts...');
     }
 
     if (_error != null) {

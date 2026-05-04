@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter/material.dart';
 
 import 'package:bloodbank_donors/services/notification_navigation_service.dart';
 
@@ -39,9 +38,7 @@ void main() {
     });
 
     test('handles missing fields in JSON', () {
-      final payload = jsonEncode({
-        'requestId': '123',
-      });
+      final payload = jsonEncode({'requestId': '123'});
 
       service.openFromPayloadJson(payload);
     });
@@ -61,9 +58,7 @@ void main() {
     });
 
     test('does not crash with partial data', () {
-      service.openFromData({
-        'type': 'chat',
-      });
+      service.openFromData({'type': 'chat'});
     });
 
     test('handles full data structure', () {
@@ -98,17 +93,11 @@ void main() {
 
   group('edge cases', () {
     test('handles unknown notification type', () {
-      service.openFromData({
-        'type': 'unknown_type',
-        'requestId': '123',
-      });
+      service.openFromData({'type': 'unknown_type', 'requestId': '123'});
     });
 
     test('handles empty requestId in chat type', () {
-      service.openFromData({
-        'type': 'chat',
-        'requestId': '',
-      });
+      service.openFromData({'type': 'chat', 'requestId': ''});
     });
 
     test('handles null values in map', () {
