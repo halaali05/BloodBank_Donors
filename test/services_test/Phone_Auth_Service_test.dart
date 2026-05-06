@@ -234,9 +234,8 @@ void main() {
       await Future.delayed(Duration.zero);
       expect(linked, mockCredential);
     });
-  });
-
-  test('calls onVerificationFailed when Firebase verification fails', () async {
+  
+    test('calls onVerificationFailed when Firebase verification fails', () async {
   when(() => mockAuth.currentUser).thenReturn(mockUser);
 
   late void Function(FirebaseAuthException) capturedFailed;
@@ -269,7 +268,7 @@ void main() {
   expect(error, fakeError);
 });
 
-test('stores verificationId on auto retrieval timeout', () async {
+    test('stores verificationId on auto retrieval timeout', () async {
   when(() => mockAuth.currentUser).thenReturn(mockUser);
 
   late void Function(String) capturedTimeout;
@@ -298,7 +297,7 @@ test('stores verificationId on auto retrieval timeout', () async {
 
   expect(service.linkVerificationId, 'timeoutId');
 });
-
+  });
 test('auto link handles FirebaseAuthException', () async {
   when(() => mockAuth.currentUser).thenReturn(mockUser);
 
