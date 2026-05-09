@@ -23,8 +23,16 @@ import 'requests_service.dart';
 /// Shared by [FCMService] and [LocalNotifService] so navigation stays in one place.
 class NotificationNavigationService {
   NotificationNavigationService._();
-  static final NotificationNavigationService instance =
-      NotificationNavigationService._();
+  static final NotificationNavigationService instance = NotificationNavigationService._();
+
+  FirebaseAuth Function() authFactory = () => FirebaseAuth.instance;
+
+  AuthService Function() authServiceFactory = () => AuthService();
+
+  RequestsService Function() requestsFactory = () => RequestsService.instance;
+
+BuildContext? Function() contextFactory =  () => navigatorKey.currentContext;
+
 
   /// Parse JSON payload from [flutter_local_notifications] and route.
   void openFromPayloadJson(String payload) {
@@ -65,7 +73,7 @@ class NotificationNavigationService {
     Map<String, dynamic> data, {
     required bool fromNotificationTap,
   }) async {
-    final BuildContext? context = navigatorKey.currentContext;
+    final BuildContext? context = contextFactory();
 
     if (context == null) {
       Future.delayed(const Duration(milliseconds: 500), () {
@@ -81,7 +89,7 @@ class NotificationNavigationService {
     User? user;
 
     try {
-      user = FirebaseAuth.instance.currentUser;
+      user = authFactory().currentUser;
 
       if (user != null) {
         try {
@@ -95,7 +103,7 @@ class NotificationNavigationService {
 
       if (!isAuthenticated && user == null) {
         try {
-          user = await FirebaseAuth.instance
+          user = await authFactory()
               .authStateChanges()
               .timeout(const Duration(seconds: 1))
               .first;
@@ -130,7 +138,7 @@ class NotificationNavigationService {
     }
 
     try {
-      final authService = AuthService();
+      final authService = authServiceFactory();
       final userData = await authService.getUserData(user.uid);
 
       if (!context.mounted) return;
@@ -164,7 +172,7 @@ class NotificationNavigationService {
 
       // ── جديد: Account Approved notification ──
       if (notificationType == 'account_approved') {
-        final freshUserData = await AuthService().getUserData(user.uid);
+        final freshUserData = await authServiceFactory().getUserData(user.uid);
         if (!context.mounted) return;
         if (freshUserData != null &&
             freshUserData.role == models.UserRole.hospital) {

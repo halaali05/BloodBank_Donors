@@ -182,42 +182,40 @@ void main() {
       },
     );
   
-  test('fetchDonationHistory without active progress', () async {
-  when(() => mockAuth.currentUser).thenReturn(mockUser);
-  when(() => mockUser.uid).thenReturn('u1');
+    test('fetchDonationHistory without active progress', () async {
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
+      when(() => mockUser.uid).thenReturn('u1');
 
-  when(() => mockCloud.getDonationHistory(
+      when(() => mockCloud.getDonationHistory(
         includeActiveProgress: false,
       )).thenAnswer((_) async => {
         'reports': [],
       });
 
-  final result = await controller.fetchDonationHistory(
-    includeActiveProgress: false,
-  );
+      final result = await controller.fetchDonationHistory(includeActiveProgress: false,);
 
-  verify(() => mockCloud.getDonationHistory(
+      verify(() => mockCloud.getDonationHistory(
         includeActiveProgress: false,
       )).called(1);
 
-  expect(result, isEmpty);
-});
+      expect(result, isEmpty);
+    });
 
-test('fetchDonationHistory rethrows when includeActiveProgress = false', () {
-  when(() => mockAuth.currentUser).thenReturn(mockUser);
-  when(() => mockUser.uid).thenReturn('u1');
+    test('fetchDonationHistory rethrows when includeActiveProgress = false', () {
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
+      when(() => mockUser.uid).thenReturn('u1');
 
-  when(() => mockCloud.getDonationHistory(
+      when(() => mockCloud.getDonationHistory(
         includeActiveProgress: false,
       )).thenThrow(Exception());
 
-  expect(
-    () => controller.fetchDonationHistory(
-      includeActiveProgress: false,
-    ),
-    throwsException,
-  );
-});
+      expect(
+      () => controller.fetchDonationHistory(
+        includeActiveProgress: false,
+      ),
+        throwsException,
+      );
+    });
 
   });
 

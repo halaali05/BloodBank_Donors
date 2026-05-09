@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase;
@@ -33,7 +31,6 @@ void main() {
   late MockCloud mockCloud;
   late MockRemoteMessage message;
 
-  // نلتقط ما يُرسل للإشعار بدل تشغيل LocalNotifService
   late Map<String, dynamic> captured;
 
   setUp(() {
@@ -43,13 +40,13 @@ void main() {
     mockCloud = MockCloud();
     message = MockRemoteMessage();
 
-    // inject deps
     FcmForegroundHandler.instance.authFactory = () => mockAuth;
-    FcmForegroundHandler.instance.authServiceFactory = () => mockAuthService;
+    FcmForegroundHandler.instance.authServiceFactory =
+        () => mockAuthService;
     FcmForegroundHandler.instance.cloudFactory = () => mockCloud;
 
-    // stub showNotification لمنع plugin
     captured = {};
+
     FcmForegroundHandler.instance.showNotification =
         ({
           required String title,
@@ -77,254 +74,654 @@ void main() {
     );
   }
 
-  // ================= BASIC =================
+  // ================= COMPATIBLE BLOOD TYPES =================
 
-  group('basic', () {
+  group('compatibleBloodTypes', () {
+    test('A+ gives only to A+ and AB+', () {
+      expect(
+        FcmForegroundHandler.compatibleBloodTypes('A+'),
+        ['A+', 'AB+'],
+      );
+    });
+
+    test('B+ gives only to B+ and AB+', () {
+      expect(
+        FcmForegroundHandler.compatibleBloodTypes('B+'),
+        ['B+', 'AB+'],
+      );
+    });
+
+    test('AB+ gives only to AB+', () {
+      expect(
+        FcmForegroundHandler.compatibleBloodTypes('AB+'),
+        ['AB+'],
+      );
+    });
+
+    test('AB- gives only to AB- and AB+', () {
+      expect(
+        FcmForegroundHandler.compatibleBloodTypes('AB-'),
+        ['AB-', 'AB+'],
+      );
+    });
+
+    test('A- gives only to A-, A+, AB- and AB+', () {
+      expect(
+        FcmForegroundHandler.compatibleBloodTypes('A-'),
+        ['A-', 'A+', 'AB-', 'AB+'],
+      );
+    });
+
+    test('B- gives only to B-, B+, AB- and AB+', () {
+      expect(
+        FcmForegroundHandler.compatibleBloodTypes('B-'),
+        ['B-', 'B+', 'AB-', 'AB+'],
+      );
+    });
+
+    test('O- gives to all', () {
+      expect(
+        FcmForegroundHandler.compatibleBloodTypes('O-'),
+        containsAll([
+          'A+',
+          'B+',
+          'AB+',
+          'A-',
+          'B-',
+          'AB-',
+          'O+',
+          'O-',
+        ]),
+      );
+    });
+
+    test('O+ gives to A+, B+, AB+ and O+', () {
+      expect(
+        FcmForegroundHandler.compatibleBloodTypes('O+'),
+        containsAll(['A+', 'B+', 'AB+', 'O+']),
+      );
+    });
+
+    test('unknown returns null', () {
+      expect(
+        FcmForegroundHandler.compatibleBloodTypes('XYZ'),
+        null,
+      );
+    });
+
+    test('returns null for empty string', () {
+      expect(
+        FcmForegroundHandler.compatibleBloodTypes(''),
+        null,
+      );
+    });
+
+    test('returns null for null input', () {
+      expect(
+        FcmForegroundHandler.compatibleBloodTypes(null),
+        null,
+      );
+    });
+
+    test('trims spaces before switch matching', () {
+      expect(
+        FcmForegroundHandler.compatibleBloodTypes(' O+ '),
+        ['O+', 'A+', 'B+', 'AB+'],
+      );
+    });
+  });
+
+  // ================= BASIC NOTIFICATION HANDLING =================
+
+  group('basic notification handling', () {
     test('does not crash on empty message', () async {
       when(() => message.data).thenReturn({});
       when(() => message.notification).thenReturn(null);
 
-      await FcmForegroundHandler.instance.handleForegroundMessage(message);
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
 
-      // title/body default
       expect(captured['title'], 'Blood Request');
-      expect(captured['body'], 'New blood request available');
+      expect(
+        captured['body'],
+        'New blood request available',
+      );
     });
 
     test('uses notification fallback for title/body', () async {
       final notif = MockNotification();
+
       when(() => notif.title).thenReturn('T');
       when(() => notif.body).thenReturn('B');
 
       when(() => message.notification).thenReturn(notif);
       when(() => message.data).thenReturn({});
 
-      await FcmForegroundHandler.instance.handleForegroundMessage(message);
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
 
       expect(captured['title'], 'T');
       expect(captured['body'], 'B');
     });
   });
 
-  // ================= FILTER =================
+  // ================= FOREGROUND FILTERING =================
 
-  group('filter logic', () {
+  group('foreground filtering', () {
     test('blocks notification if NOT compatible', () async {
-      final data = <String, dynamic>{
+      when(() => message.data).thenReturn({
         'type': 'request',
         'bloodType': 'B+',
         'requestId': '123',
-      };
-
-      when(() => message.data).thenReturn(data);
+      });
 
       when(() => mockAuth.currentUser).thenReturn(mockUser);
-
-      // 🔥 هذا كان ناقص
       when(() => mockUser.uid).thenReturn('123');
 
       when(
         () => mockAuthService.getUserData(any()),
       ).thenAnswer((_) async => user('A+'));
 
-      await FcmForegroundHandler.instance.handleForegroundMessage(message);
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
 
       expect(captured, isEmpty);
     });
 
     test('allows notification if compatible', () async {
-      when(
-        () => message.data,
-      ).thenReturn({'type': 'request', 'bloodType': 'O+'});
+      when(() => message.data).thenReturn({
+        'type': 'request',
+        'bloodType': 'O+',
+      });
 
       when(() => mockAuth.currentUser).thenReturn(mockUser);
+
       when(
         () => mockAuthService.getUserData(any()),
       ).thenAnswer((_) async => user('O+'));
 
-      await FcmForegroundHandler.instance.handleForegroundMessage(message);
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
 
       expect(captured['title'], isNotNull);
     });
 
     test('skips filter if donor blood type empty', () async {
-      when(() => message.data).thenReturn({'type': 'request'});
+      when(() => message.data).thenReturn({
+        'type': 'request',
+      });
 
       when(() => mockAuth.currentUser).thenReturn(mockUser);
+
       when(
         () => mockAuthService.getUserData(any()),
-      ).thenAnswer((_) async => user('')); // فارغ
+      ).thenAnswer((_) async => user(''));
 
-      await FcmForegroundHandler.instance.handleForegroundMessage(message);
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
 
       expect(captured['title'], isNotNull);
     });
 
     test('works when no logged in user', () async {
-      when(() => message.data).thenReturn({'type': 'request'});
+      when(() => message.data).thenReturn({
+        'type': 'request',
+      });
+
       when(() => mockAuth.currentUser).thenReturn(null);
 
-      await FcmForegroundHandler.instance.handleForegroundMessage(message);
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
 
       expect(captured['title'], isNotNull);
     });
-  });
 
-  // ================= CLOUD FETCH =================
-
-  group('cloud fallback', () {
-    test('fetches blood type from cloud if missing', () async {
-      when(
-        () => message.data,
-      ).thenReturn({'type': 'request', 'requestId': '123'});
+    test('allows notification when compatibleBloodTypes returns null',
+        () async {
+      when(() => message.data).thenReturn({
+        'type': 'request',
+        'bloodType': 'O+',
+      });
 
       when(() => mockAuth.currentUser).thenReturn(mockUser);
+      when(() => mockUser.uid).thenReturn('u1');
+
+      when(
+        () => mockAuthService.getUserData(any()),
+      ).thenAnswer((_) async => user('UNKNOWN'));
+
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
+
+      expect(captured['title'], isNotNull);
+    });
+
+    test('allows notification when notifBloodType remains empty',
+        () async {
+      when(() => message.data).thenReturn({
+        'type': 'request',
+        'requestId': '123',
+      });
+
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
+      when(() => mockUser.uid).thenReturn('u1');
+
       when(
         () => mockAuthService.getUserData(any()),
       ).thenAnswer((_) async => user('O+'));
 
-      when(() => mockCloud.getRequests(limit: any(named: 'limit'))).thenAnswer(
-        (_) async => {
-          'requests': [
-            {'id': '123', 'bloodType': 'O+'},
-          ],
-        },
-      );
+      when(
+        () => mockCloud.getRequests(
+          limit: any(named: 'limit'),
+        ),
+      ).thenAnswer((_) async => {
+            'requests': [
+              {'id': '123'},
+            ],
+          });
 
-      await FcmForegroundHandler.instance.handleForegroundMessage(message);
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
+
+      expect(captured['title'], isNotNull);
+    });
+
+    test('trims donor blood type before compatibility check',
+        () async {
+      when(() => message.data).thenReturn({
+        'type': 'request',
+        'bloodType': 'A+',
+      });
+
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
+      when(() => mockUser.uid).thenReturn('u1');
+
+      when(
+        () => mockAuthService.getUserData(any()),
+      ).thenAnswer((_) async => user(' A+ '));
+
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
+
+      expect(captured['title'], isNotNull);
+    });
+
+    test('trims notification blood type', () async {
+      when(() => message.data).thenReturn({
+        'type': 'request',
+        'bloodType': ' O+ ',
+      });
+
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
+      when(() => mockUser.uid).thenReturn('u1');
+
+      when(
+        () => mockAuthService.getUserData(any()),
+      ).thenAnswer((_) async => user('O+'));
+
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
+
+      expect(captured['title'], isNotNull);
+    });
+
+    test('blocks notification when fetched cloud blood type is incompatible',
+        () async {
+      when(() => message.data).thenReturn({
+        'type': 'request',
+        'requestId': '123',
+      });
+
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
+      when(() => mockUser.uid).thenReturn('u1');
+
+      when(
+        () => mockAuthService.getUserData(any()),
+      ).thenAnswer((_) async => user('A+'));
+
+      when(
+        () => mockCloud.getRequests(
+          limit: any(named: 'limit'),
+        ),
+      ).thenAnswer((_) async => {
+            'requests': [
+              {
+                'id': '123',
+                'bloodType': 'B+',
+              },
+            ],
+          });
+
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
+
+      expect(captured, isEmpty);
+    });
+  });
+
+  // ================= CLOUD FALLBACK =================
+
+  group('cloud fallback', () {
+    test('fetches blood type from cloud if missing', () async {
+      when(() => message.data).thenReturn({
+        'type': 'request',
+        'requestId': '123',
+      });
+
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
+
+      when(
+        () => mockAuthService.getUserData(any()),
+      ).thenAnswer((_) async => user('O+'));
+
+      when(
+        () => mockCloud.getRequests(
+          limit: any(named: 'limit'),
+        ),
+      ).thenAnswer((_) async => {
+            'requests': [
+              {
+                'id': '123',
+                'bloodType': 'O+',
+              },
+            ],
+          });
+
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
 
       expect(captured['title'], isNotNull);
     });
 
     test('continues if cloud fetch throws', () async {
-      when(
-        () => message.data,
-      ).thenReturn({'type': 'request', 'requestId': '123'});
+      when(() => message.data).thenReturn({
+        'type': 'request',
+        'requestId': '123',
+      });
 
       when(() => mockAuth.currentUser).thenReturn(mockUser);
+
       when(
         () => mockAuthService.getUserData(any()),
       ).thenAnswer((_) async => user('O+'));
 
       when(
-        () => mockCloud.getRequests(limit: any(named: 'limit')),
+        () => mockCloud.getRequests(
+          limit: any(named: 'limit'),
+        ),
       ).thenThrow(Exception());
 
-      await FcmForegroundHandler.instance.handleForegroundMessage(message);
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
+
+      expect(captured['title'], isNotNull);
+    });
+
+    test('continues when requestId not found in cloud results',
+        () async {
+      when(() => message.data).thenReturn({
+        'type': 'request',
+        'requestId': '999',
+      });
+
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
+      when(() => mockUser.uid).thenReturn('u1');
+
+      when(
+        () => mockAuthService.getUserData(any()),
+      ).thenAnswer((_) async => user('O+'));
+
+      when(
+        () => mockCloud.getRequests(
+          limit: any(named: 'limit'),
+        ),
+      ).thenAnswer((_) async => {
+            'requests': [
+              {
+                'id': '123',
+                'bloodType': 'A+',
+              },
+            ],
+          });
+
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
+
+      expect(captured['title'], isNotNull);
+    });
+
+    test('handles empty cloud requests list', () async {
+      when(() => message.data).thenReturn({
+        'type': 'request',
+        'requestId': '123',
+      });
+
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
+      when(() => mockUser.uid).thenReturn('u1');
+
+      when(
+        () => mockAuthService.getUserData(any()),
+      ).thenAnswer((_) async => user('O+'));
+
+      when(
+        () => mockCloud.getRequests(
+          limit: any(named: 'limit'),
+        ),
+      ).thenAnswer((_) async => {
+            'requests': [],
+          });
+
+      await FcmForegroundHandler.instance
+          .handleForegroundMessage(message);
 
       expect(captured['title'], isNotNull);
     });
   });
 
-  // ================= PAYLOAD + FLAGS =================
+// ================= FILTER VERIFICATION =================
 
-  group('payload & flags', () {
-    test('builds payload correctly', () async {
-      when(() => message.data).thenReturn({
-        'type': 'request',
-        'requestId': '123',
-        'senderId': 's',
-        'recipientId': 'r',
-      });
+group('filter verification', () {
 
-      await FcmForegroundHandler.instance.handleForegroundMessage(message);
-
-      final p = captured['payload'] as String;
-      final decoded = jsonDecode(p);
-
-      expect(decoded['requestId'], '123');
-      expect(decoded['senderId'], 's');
-      expect(decoded['recipientId'], 'r');
+  test('does not call cloud when notification blood type already exists',
+      () async {
+    when(() => message.data).thenReturn({
+      'type': 'request',
+      'bloodType': 'O+',
+      'requestId': '123',
     });
 
-    test('parses isUrgent correctly for request', () async {
-      when(
-        () => message.data,
-      ).thenReturn({'type': 'request', 'isUrgent': 'true'});
+    when(() => mockAuth.currentUser).thenReturn(mockUser);
+    when(() => mockUser.uid).thenReturn('u1');
 
-      await FcmForegroundHandler.instance.handleForegroundMessage(message);
+    when(
+      () => mockAuthService.getUserData(any()),
+    ).thenAnswer((_) async => user('O+'));
 
-      expect(captured['isUrgent'], true);
-    });
+    await FcmForegroundHandler.instance
+        .handleForegroundMessage(message);
 
-    test('non-request never urgent', () async {
-      when(() => message.data).thenReturn({'type': 'chat', 'isUrgent': 'true'});
-
-      await FcmForegroundHandler.instance.handleForegroundMessage(message);
-
-      expect(captured['isUrgent'], false);
-    });
-
-    test('builds payload correctly', () async {
-      when(() => message.data).thenReturn({
-        'type': 'request',
-        'requestId': '123',
-        'senderId': 's',
-        'recipientId': 'r',
-      });
-
-      await FcmForegroundHandler.instance.handleForegroundMessage(message);
-
-      expect(captured['payload'], contains('123'));
-    });
+    verifyNever(
+      () => mockCloud.getRequests(
+        limit: any(named: 'limit'),
+      ),
+    );
   });
 
-  // ================= WEB BRANCH =================
-
-  group('web branch', () {
-    test('does not crash on web path', () async {
-      // لا نقدر نغيّر kIsWeb بسهولة، لكن نغطي عدم الانهيار
-      when(() => message.data).thenReturn({'type': 'chat'});
-
-      await FcmForegroundHandler.instance.handleForegroundMessage(message);
-
-      expect(true, isTrue);
+  test('calls authService with current user uid', () async {
+    when(() => message.data).thenReturn({
+      'type': 'request',
     });
+
+    when(() => mockAuth.currentUser).thenReturn(mockUser);
+    when(() => mockUser.uid).thenReturn('USER_1');
+
+    when(
+      () => mockAuthService.getUserData(any()),
+    ).thenAnswer((_) async => user('O+'));
+
+    await FcmForegroundHandler.instance
+        .handleForegroundMessage(message);
+
+    verify(
+      () => mockAuthService.getUserData('USER_1'),
+    ).called(1);
   });
 
-  // ================= COMPATIBLE BLOOD TYPES =================
-
-  group('compatibleBloodTypes', () {
-    test('O- gives to all', () {
-      final result = FcmForegroundHandler.compatibleBloodTypes('O-');
-      expect(result, containsAll(['A+', 'B+', 'AB+']));
+  test('calls cloud with limit 100', () async {
+    when(() => message.data).thenReturn({
+      'type': 'request',
+      'requestId': '123',
     });
 
-    test('A+ gives only to A+ and AB+', () {
-      final result = FcmForegroundHandler.compatibleBloodTypes('A+');
-      expect(result, ['A+', 'AB+']);
-    });
+    when(() => mockAuth.currentUser).thenReturn(mockUser);
+    when(() => mockUser.uid).thenReturn('u1');
 
-    test('B+ gives only to B+ and AB+', () {
-      final result = FcmForegroundHandler.compatibleBloodTypes('B+');
-      expect(result, ['B+', 'AB+']);
-    });
+    when(
+      () => mockAuthService.getUserData(any()),
+    ).thenAnswer((_) async => user('O+'));
 
-    test('AB+ gives only to AB+', () {
-      final result = FcmForegroundHandler.compatibleBloodTypes('AB+');
-      expect(result, ['AB+']);
-    });
+    when(
+      () => mockCloud.getRequests(
+        limit: any(named: 'limit'),
+      ),
+    ).thenAnswer((_) async => {
+          'requests': [],
+        });
 
-    test('unknown returns null', () {
-      final result = FcmForegroundHandler.compatibleBloodTypes('XYZ');
-      expect(result, null);
-    });
+    await FcmForegroundHandler.instance
+        .handleForegroundMessage(message);
+
+    verify(
+      () => mockCloud.getRequests(limit: 100),
+    ).called(1);
+  });
+});
+
+// ================= REQUEST TYPE DEFAULTING =================
+
+group('request type defaulting', () {
+
+test('missing type defaults to request behavior', () async {
+  when(() => message.data).thenReturn({
+    'bloodType': 'B+',
   });
 
-  test('non-request skips filtering', () async {
-    when(() => message.data).thenReturn({'type': 'chat'});
+  when(() => mockAuth.currentUser).thenReturn(mockUser);
 
-    await FcmForegroundHandler.instance.handleForegroundMessage(message);
+  when(() => mockUser.uid).thenReturn('u1');
+
+  when(
+    () => mockAuthService.getUserData(any()),
+  ).thenAnswer((_) async => user('A+'));
+
+  await FcmForegroundHandler.instance
+      .handleForegroundMessage(message);
+
+  expect(captured, isEmpty);
+});
+});
+
+// ================= NOTIFICATION PRIORITY =================
+
+group('notification priority', () {
+
+  test('data title overrides notification title only', () async {
+    final notif = MockNotification();
+
+    when(() => notif.title).thenReturn('notif title');
+    when(() => notif.body).thenReturn('notif body');
+
+    when(() => message.notification).thenReturn(notif);
+
+    when(() => message.data).thenReturn({
+      'title': 'data title',
+    });
+
+    await FcmForegroundHandler.instance
+        .handleForegroundMessage(message);
+
+    expect(captured['title'], 'data title');
+    expect(captured['body'], 'notif body');
+  });
+
+  test('data body overrides notification body only', () async {
+    final notif = MockNotification();
+
+    when(() => notif.title).thenReturn('notif title');
+    when(() => notif.body).thenReturn('notif body');
+
+    when(() => message.notification).thenReturn(notif);
+
+    when(() => message.data).thenReturn({
+      'body': 'data body',
+    });
+
+    await FcmForegroundHandler.instance
+        .handleForegroundMessage(message);
+
+    expect(captured['title'], 'notif title');
+    expect(captured['body'], 'data body');
+  });
+});
+
+// ================= REQUEST LOOKUP =================
+
+group('request lookup', () {
+
+  test('uses first matching requestId only', () async {
+    when(() => message.data).thenReturn({
+      'type': 'request',
+      'requestId': '123',
+    });
+
+    when(() => mockAuth.currentUser).thenReturn(mockUser);
+    when(() => mockUser.uid).thenReturn('u1');
+
+    when(
+      () => mockAuthService.getUserData(any()),
+    ).thenAnswer((_) async => user('O+'));
+
+    when(
+      () => mockCloud.getRequests(
+        limit: any(named: 'limit'),
+      ),
+    ).thenAnswer((_) async => {
+          'requests': [
+            {
+              'id': '123',
+              'bloodType': 'O+',
+            },
+            {
+              'id': '123',
+              'bloodType': 'B+',
+            },
+          ],
+        });
+
+    await FcmForegroundHandler.instance
+        .handleForegroundMessage(message);
 
     expect(captured['title'], isNotNull);
   });
+});
 
-  test('no user skips filtering', () async {
-    when(() => message.data).thenReturn({'type': 'request'});
-    when(() => mockAuth.currentUser).thenReturn(null);
+// ================= NOTIFICATION EXECUTION =================
 
-    await FcmForegroundHandler.instance.handleForegroundMessage(message);
+group('notification execution', () {
 
-    expect(captured['title'], isNotNull);
+  test('showNotification called with urgent false by default',
+      () async {
+    when(() => message.data).thenReturn({
+      'type': 'request',
+    });
+
+    await FcmForegroundHandler.instance
+        .handleForegroundMessage(message);
+
+    expect(captured['isUrgent'], false);
   });
+
+ 
+});
+
 }

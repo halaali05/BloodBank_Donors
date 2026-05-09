@@ -1,112 +1,336 @@
-import 'dart:convert';
-
+import 'package:firebase_auth/firebase_auth.dart' as firebase;
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
 
+import 'package:bloodbank_donors/models/user_model.dart' as models;
+import 'package:bloodbank_donors/services/auth_service.dart';
 import 'package:bloodbank_donors/services/notification_navigation_service.dart';
+
+// ================= MOCKS =================
+
+class MockFirebaseAuth extends Mock
+    implements firebase.FirebaseAuth {}
+
+class MockFirebaseUser extends Mock
+    implements firebase.User {}
+
+class MockAuthService extends Mock
+    implements AuthService {}
+
+// ================= TESTS =================
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  final service = NotificationNavigationService.instance;
+  late MockFirebaseAuth mockAuth;
+  late MockFirebaseUser mockUser;
+  late MockAuthService mockAuthService;
 
-  // =========================
-  // JSON PARSING
-  // =========================
+  late NotificationNavigationService service;
 
-  group('openFromPayloadJson', () {
-    test('parses valid JSON without crashing', () {
-      final payload = jsonEncode({
-        'requestId': '123',
-        'type': 'chat',
-        'senderId': 'A',
-        'recipientId': 'B',
-      });
+  late BuildContext realContext;
 
-      service.openFromPayloadJson(payload);
-    });
+  Future<void> pumpTestApp(
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            realContext = context;
+            return const Scaffold(
+              body: Text('test'),
+            );
+          },
+        ),
+      ),
+    );
 
-    test('handles invalid JSON gracefully', () {
-      service.openFromPayloadJson('invalid-json');
-    });
+    service.contextFactory = () => realContext;
+  }
 
-    test('handles non-map JSON', () {
-      service.openFromPayloadJson(jsonEncode(['not', 'map']));
-    });
+  setUp(() {
+    mockAuth = MockFirebaseAuth();
+    mockUser = MockFirebaseUser();
+    mockAuthService = MockAuthService();
 
-    test('handles empty payload', () {
-      service.openFromPayloadJson('');
-    });
+    service = NotificationNavigationService.instance;
 
-    test('handles missing fields in JSON', () {
-      final payload = jsonEncode({'requestId': '123'});
-
-      service.openFromPayloadJson(payload);
-    });
-
-    test('handles payload as plain string (fallback)', () {
-      service.openFromPayloadJson('simple_id');
-    });
+    service.authFactory = () => mockAuth;
+    service.authServiceFactory =
+        () => mockAuthService;
   });
 
-  // =========================
-  // openFromData
-  // =========================
+  // ================= PAYLOAD PARSING =================
 
-  group('openFromData', () {
-    test('does not crash with minimal data', () {
-      service.openFromData({});
-    });
+  group('payload parsing', () {
+    testWidgets(
+      'handles valid json payload',
+      (tester) async {
+        await pumpTestApp(tester);
 
-    test('does not crash with partial data', () {
-      service.openFromData({'type': 'chat'});
-    });
+        when(() => mockAuth.currentUser)
+            .thenReturn(null);
 
-    test('handles full data structure', () {
-      service.openFromData({
-        'requestId': '123',
-        'type': 'chat',
-        'senderId': 'A',
-        'recipientId': 'B',
-      });
-    });
+        when(
+          () => mockAuth.authStateChanges(),
+        ).thenAnswer(
+          (_) => const Stream.empty(),
+        );
+
+        service.openFromPayloadJson(
+          '''
+          {
+            "requestId":"123",
+            "type":"request",
+            "senderId":"s1",
+            "recipientId":"r1"
+          }
+          ''',
+        );
+
+        await tester.pumpAndSettle();
+
+        expect(find.byType(MaterialApp), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'handles invalid json payload',
+      (tester) async {
+        await pumpTestApp(tester);
+
+        when(() => mockAuth.currentUser)
+            .thenReturn(null);
+
+        when(
+          () => mockAuth.authStateChanges(),
+        ).thenAnswer(
+          (_) => const Stream.empty(),
+        );
+
+        service.openFromPayloadJson(
+          'INVALID_JSON',
+        );
+
+        await tester.pumpAndSettle();
+
+        expect(find.byType(MaterialApp), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'handles plain requestId payload',
+      (tester) async {
+        await pumpTestApp(tester);
+
+        when(() => mockAuth.currentUser)
+            .thenReturn(null);
+
+        when(
+          () => mockAuth.authStateChanges(),
+        ).thenAnswer(
+          (_) => const Stream.empty(),
+        );
+
+        service.openFromPayloadJson('123');
+
+        await tester.pumpAndSettle();
+
+        expect(find.byType(MaterialApp), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'handles empty payload',
+      (tester) async {
+        await pumpTestApp(tester);
+
+        when(() => mockAuth.currentUser)
+            .thenReturn(null);
+
+        when(
+          () => mockAuth.authStateChanges(),
+        ).thenAnswer(
+          (_) => const Stream.empty(),
+        );
+
+        service.openFromPayloadJson('');
+
+        await tester.pumpAndSettle();
+
+        expect(find.byType(MaterialApp), findsOneWidget);
+      },
+    );
   });
 
-  // =========================
-  // CONTEXT NULL BRANCH
-  // =========================
+  // ================= AUTHENTICATION =================
 
-  group('context handling', () {
-    test('retries when context is null (no crash)', () async {
-      // في test environment navigatorKey.currentContext = null
-      service.openFromData({'type': 'request'});
+  group('authentication handling', () {
+    testWidgets('handles unauthenticated user safely',(tester) async {
+        await pumpTestApp(tester);
 
-      // ننتظر retry (500ms)
-      await Future.delayed(const Duration(milliseconds: 600));
+        when(() => mockAuth.currentUser)
+            .thenReturn(null);
 
-      // إذا وصلنا هون بدون exception → pass
-    });
+        when(
+          () => mockAuth.authStateChanges(),
+        ).thenAnswer(
+          (_) => const Stream.empty(),
+        );
+
+        service.openFromData({
+          'type': 'request',
+        });
+
+        await tester.pumpAndSettle();
+
+        expect(find.byType(MaterialApp), findsOneWidget);
+      },
+    );
+
+    testWidgets('handles getIdToken failure',(tester) async {
+        await pumpTestApp(tester);
+
+        when(() => mockAuth.currentUser)
+            .thenReturn(mockUser);
+
+        when(
+          () => mockUser.getIdToken(),
+        ).thenThrow(Exception());
+
+        when(
+          () => mockAuth.authStateChanges(),
+        ).thenAnswer(
+          (_) => const Stream.empty(),
+        );
+
+        service.openFromData({
+          'type': 'request',
+        });
+
+        await tester.pumpAndSettle();
+
+        expect(find.byType(MaterialApp), findsOneWidget);
+      },
+    );
+
+    testWidgets('handles authStateChanges recovery',(tester) async {
+        await pumpTestApp(tester);
+
+        when(() => mockAuth.currentUser)
+            .thenReturn(null);
+
+        when(
+          () => mockAuth.authStateChanges(),
+        ).thenAnswer(
+          (_) => Stream.value(mockUser),
+        );
+
+        when(() => mockUser.uid)
+            .thenReturn('u1');
+
+        when(
+          () => mockUser.getIdToken(),
+        ).thenAnswer(
+          (_) async => 'TOKEN',
+        );
+
+        when(
+          () => mockAuthService.getUserData(
+            any(),
+          ),
+        ).thenAnswer(
+          (_) async => models.User(
+            uid: 'u1',
+            email: 't@test.com',
+            role: models.UserRole.donor,
+          ),
+        );
+
+        service.openFromData({
+          'type': 'request',
+          'requestId': '123',
+        });
+
+        await tester.pumpAndSettle();
+
+        expect(find.byType(MaterialApp), findsOneWidget);
+      },
+    );
   });
 
-  // =========================
-  // EDGE CASES
-  // =========================
+  // ================= USER DATA =================
 
-  group('edge cases', () {
-    test('handles unknown notification type', () {
-      service.openFromData({'type': 'unknown_type', 'requestId': '123'});
-    });
+  group('user data handling', () {
+    testWidgets(
+      'handles null userData safely',
+      (tester) async {
+        await pumpTestApp(tester);
 
-    test('handles empty requestId in chat type', () {
-      service.openFromData({'type': 'chat', 'requestId': ''});
-    });
+        when(() => mockAuth.currentUser)
+            .thenReturn(mockUser);
 
-    test('handles null values in map', () {
-      service.openFromData({
-        'type': null,
-        'requestId': null,
-        'senderId': null,
-        'recipientId': null,
-      });
-    });
+        when(() => mockUser.uid)
+            .thenReturn('u1');
+
+        when(
+          () => mockUser.getIdToken(),
+        ).thenAnswer(
+          (_) async => 'TOKEN',
+        );
+
+        when(
+          () => mockAuthService.getUserData(
+            any(),
+          ),
+        ).thenAnswer(
+          (_) async => null,
+        );
+
+        service.openFromData({
+          'type': 'request',
+        });
+
+        await tester.pumpAndSettle();
+
+        expect(find.byType(MaterialApp), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'handles getUserData exception safely',
+      (tester) async {
+        await pumpTestApp(tester);
+
+        when(() => mockAuth.currentUser)
+            .thenReturn(mockUser);
+
+        when(() => mockUser.uid)
+            .thenReturn('u1');
+
+        when(
+          () => mockUser.getIdToken(),
+        ).thenAnswer(
+          (_) async => 'TOKEN',
+        );
+
+        when(
+          () => mockAuthService.getUserData(
+            any(),
+          ),
+        ).thenThrow(Exception());
+
+        service.openFromData({
+          'type': 'request',
+        });
+
+        await tester.pumpAndSettle();
+
+        expect(find.byType(MaterialApp), findsOneWidget);
+      },
+    );
   });
-}
+
+ }

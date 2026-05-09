@@ -12,6 +12,12 @@ class FcmCloudSyncService {
   FcmCloudSyncService._();
   static final FcmCloudSyncService instance = FcmCloudSyncService._();
 
+  FirebaseMessaging Function() messagingFactory =  () => FirebaseMessaging.instance;
+
+  FirebaseAuth Function() authFactory = () => FirebaseAuth.instance;
+
+  CloudFunctionsService Function() cloudFactory = () => CloudFunctionsService();
+
   static const String _webVapidKey = String.fromEnvironment(
     'FIREBASE_WEB_VAPID_KEY',
     defaultValue:
@@ -39,7 +45,7 @@ class FcmCloudSyncService {
   /// Uses [FirebaseMessaging.getNotificationSettings] first so repeat calls
   /// after [FCMService.initFCM] do not re-prompt and stay fast on hot paths.
   Future<bool> syncPushTokenWithServer() async {
-    final messaging = FirebaseMessaging.instance;
+    final messaging = messagingFactory();
     await messaging.setAutoInitEnabled(true);
 
     NotificationSettings settings;
@@ -81,13 +87,13 @@ class FcmCloudSyncService {
   /// Upload FCM token for the signed-in user (no permission re-prompt).
   Future<bool> syncTokenToBackend() async {
     try {
-      final User? user = FirebaseAuth.instance.currentUser;
+      final User? user = authFactory().currentUser;
       if (user == null) {
         _lastSyncError = 'No authenticated user.';
         return false;
       }
 
-      final messaging = FirebaseMessaging.instance;
+      final messaging = messagingFactory();
       String? token = await getToken(messaging);
       if (token == null || token.isEmpty) {
         if (!kIsWeb) {
@@ -105,8 +111,8 @@ class FcmCloudSyncService {
       }
 
       if (token != null && token.isNotEmpty) {
-        await CloudFunctionsService().updateFcmToken(fcmToken: token);
-        final profile = await CloudFunctionsService().getUserData(
+        await cloudFactory().updateFcmToken(fcmToken: token);
+        final profile = await cloudFactory().getUserData(
           uid: user.uid,
         );
         final savedToken = (profile['fcmToken'] ?? '').toString().trim();
@@ -133,10 +139,10 @@ class FcmCloudSyncService {
   }
 
   Future<void> uploadRefreshedToken(String newToken) async {
-    final User? currentUser = FirebaseAuth.instance.currentUser;
+    final User? currentUser = authFactory().currentUser;
     if (currentUser == null) return;
     try {
-      await CloudFunctionsService().updateFcmToken(fcmToken: newToken);
+      await cloudFactory().updateFcmToken(fcmToken: newToken);
     } catch (e) {
       debugPrint('FCM cloud sync: token refresh upload failed: $e');
     }
@@ -155,10 +161,10 @@ class FcmCloudSyncService {
   }
 
   Future<Map<String, String>> getTokenDiagnostics() async {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = authFactory().currentUser;
     String permission = 'unknown';
     try {
-      final settings = await FirebaseMessaging.instance
+      final settings = await messagingFactory()
           .getNotificationSettings();
       permission = settings.authorizationStatus.name;
     } catch (e) {
@@ -166,7 +172,7 @@ class FcmCloudSyncService {
     }
     String tokenPreview = '';
     try {
-      final t = await getToken(FirebaseMessaging.instance);
+      final t = await getToken(messagingFactory());
       if (t != null && t.isNotEmpty) {
         tokenPreview = t.length > 24 ? '${t.substring(0, 24)}...' : t;
         if (_lastSyncError.isNotEmpty) {
@@ -178,7 +184,7 @@ class FcmCloudSyncService {
     String serverTokenPreview = '';
     try {
       if (user != null) {
-        final profile = await CloudFunctionsService().getUserData(
+        final profile = await cloudFactory().getUserData(
           uid: user.uid,
         );
         final t = (profile['fcmToken'] ?? '').toString().trim();
