@@ -11,7 +11,7 @@ import '../views/dashboard/donor_dashboard_screen.dart';
 /// Email/password sign-in, or **Jordan phone + same password** (resolves to donor email).
 class LoginController {
   LoginController({AuthService? authService})
-      : _authService = authService ?? AuthService();
+    : _authService = authService ?? AuthService();
 
   final AuthService _authService;
 
@@ -151,6 +151,20 @@ class LoginController {
         );
       }
 
+      // ── جديد: بنك الدم ينتظر موافقة الأدمن ──
+      if (userData.role == models.UserRole.hospital &&
+          userData.isApproved == false) {
+        await _authService.logout();
+        return LoginResult(
+          success: false,
+          errorType: LoginErrorType.awaitingApproval,
+          errorTitle: 'Account Under Review',
+          errorMessage:
+              'Your blood bank account is pending admin approval. '
+              'You will be notified once an administrator reviews your registration.',
+        );
+      }
+
       final nav = _navigationResultForUser(userData);
       if (!nav.success) await _authService.logout();
       return nav;
@@ -254,9 +268,7 @@ class LoginController {
       }
 
       await _authService.login(email: authEmail, password: password);
-
       await _authService.resendEmailVerification();
-
       await _authService.logout();
 
       return ResendVerificationResult(
@@ -282,7 +294,6 @@ class LoginController {
   }
 
   /// Resolved email for "Forgot password" when [rawIdentifier] is email or donor phone.
-  /// Returns `null` if unknown / invalid input or lookup fails.
   Future<String?> emailForForgotPassword(String rawIdentifier) async {
     final t = rawIdentifier.trim();
     if (t.isEmpty) return null;
@@ -303,8 +314,7 @@ class LoginController {
 
   LoginResult _loginResultFromUnhandled(Object e) {
     var errorStr = e.toString();
-    var msg =
-        'Something went wrong while logging you in. Please try again.';
+    var msg = 'Something went wrong while logging you in. Please try again.';
     var title = 'Login failed';
 
     if (errorStr.contains('Exception: ')) {
@@ -316,6 +326,8 @@ class LoginController {
         msg =
             'Unable to connect to the server. Please check your internet '
             'connection and try again.';
+      } else if (lower.contains('awaiting') || lower.contains('approval')) {
+        title = 'Account Under Review';
       } else if (lower.contains('not found') || lower.contains('profile')) {
         title = 'Profile not found';
       } else if (lower.contains('permission')) {

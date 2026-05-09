@@ -69,7 +69,10 @@ class NotificationNavigationService {
 
     if (context == null) {
       Future.delayed(const Duration(milliseconds: 500), () {
-        _handleNotificationClick(data, fromNotificationTap: fromNotificationTap);
+        _handleNotificationClick(
+          data,
+          fromNotificationTap: fromNotificationTap,
+        );
       });
       return;
     }
@@ -157,6 +160,64 @@ class NotificationNavigationService {
           // Standard in-app navigation keeps back stack.
           Navigator.of(context).push(MaterialPageRoute(builder: builder));
         }
+      }
+
+      // ── جديد: Account Approved notification ──
+      if (notificationType == 'account_approved') {
+        final freshUserData = await AuthService().getUserData(user.uid);
+        if (!context.mounted) return;
+        if (freshUserData != null &&
+            freshUserData.role == models.UserRole.hospital) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (_) => BloodBankDashboardScreen(
+                bloodBankName: freshUserData.bloodBankName ?? 'Blood Bank',
+                location: freshUserData.location ?? 'Unknown',
+              ),
+            ),
+            (route) => false,
+          );
+        } else {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+            (route) => false,
+          );
+        }
+        return;
+      }
+
+      // ── جديد: Account Rejected notification ──
+      if (notificationType == 'account_rejected') {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+          (route) => false,
+        );
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (!context.mounted) return;
+          showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.cancel_outlined, color: Colors.red),
+                  SizedBox(width: 8),
+                  Text('Registration Not Approved'),
+                ],
+              ),
+              content: const Text(
+                'Your blood bank registration was reviewed and was not approved.\n\n'
+                'Please contact support or register again with the correct information.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        });
+        return;
       }
 
       if (notificationType == 'chat' && requestId.isNotEmpty) {

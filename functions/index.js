@@ -66,3 +66,9 @@ exports.getBloodBankDonorMedicalHistory =
   donorMgmt.getBloodBankDonorMedicalHistory;
 exports.cleanupMissedScheduledAppointments =
   donorMgmt.cleanupMissedScheduledAppointments;
+
+const approvalFunctions = require("./approval_functions");
+
+exports.getPendingApprovals = approvalFunctions.getPendingApprovals;
+exports.approvePendingUser = approvalFunctions.approvePendingUser;
+exports.rejectPendingUser = approvalFunctions.rejectPendingUser;

@@ -46,7 +46,10 @@ async function snapshotsForPhoneVariants(colRef, normalized) {
   /** @type {Map<string, FirebaseFirestore.QueryDocumentSnapshot>} */
   const byId = new Map();
   for (const variant of variants) {
-    const snap = await colRef.where("phoneNumber", "==", variant).limit(25).get();
+    const snap = await colRef
+      .where("phoneNumber", "==", variant)
+      .limit(25)
+      .get();
     for (const doc of snap.docs) {
       if (!byId.has(doc.id)) byId.set(doc.id, doc);
     }
@@ -72,7 +75,7 @@ async function resolveDonorEmailViaAuthLinkedPhone(normalized) {
   }
 
   const email =
-      typeof userRecord.email === "string" ? userRecord.email.trim() : "";
+    typeof userRecord.email === "string" ? userRecord.email.trim() : "";
   if (!email) return null;
 
   return email;
@@ -144,7 +147,9 @@ exports.createPendingProfile = onCall(publicCallableOpts, async (request) => {
         data.bloodBankName,
         "bloodBankName",
       );
+
       payload.location = nonEmptyString(data.location, "location");
+      payload.status = "awaiting_admin_approval";
     }
 
     await db
@@ -172,82 +177,96 @@ exports.createPendingProfile = onCall(publicCallableOpts, async (request) => {
  * - Donors: BOTH verified email AND SMS-linked phone (single signup path via client).
  * - Hospitals: verified email only.
  */
-exports.completeProfileAfterVerification = onCall(publicCallableOpts, async (request) => {
-  try {
-    const uid = requireAuth(request);
+exports.completeProfileAfterVerification = onCall(
+  publicCallableOpts,
+  async (request) => {
+    try {
+      const uid = requireAuth(request);
 
-    const userRecord = await admin.auth().getUser(uid);
-    const emailVerified = userRecord.emailVerified === true;
-    const phoneVerified = authUserHasVerifiedPhoneLinked(userRecord);
-    const pendingRef = db.collection("pending_profiles").doc(uid);
-    const userRef = db.collection("users").doc(uid);
-    const pendingSnap = await pendingRef.get();
+      const userRecord = await admin.auth().getUser(uid);
+      const emailVerified = userRecord.emailVerified === true;
+      const phoneVerified = authUserHasVerifiedPhoneLinked(userRecord);
+      const pendingRef = db.collection("pending_profiles").doc(uid);
+      const userRef = db.collection("users").doc(uid);
+      const pendingSnap = await pendingRef.get();
 
-    if (!pendingSnap.exists) {
-      const userSnap = await userRef.get();
-      if (userSnap.exists) {
-        return { ok: true, message: "Profile already completed." };
+      if (!pendingSnap.exists) {
+        const userSnap = await userRef.get();
+        if (userSnap.exists) {
+          return { ok: true, message: "Profile already completed." };
+        }
+        throw new HttpsError("not-found", "No pending profile found.");
       }
-      throw new HttpsError("not-found", "No pending profile found.");
-    }
 
-    const pendingData = pendingSnap.data() || {};
-    const role = pendingData.role;
+      const pendingData = pendingSnap.data() || {};
+      const role = pendingData.role;
 
-    if (role === "donor") {
-      if (!emailVerified || !phoneVerified) {
+      if (role === "donor") {
+        if (!emailVerified || !phoneVerified) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Verify both your email (inbox link) and your phone number (SMS) before continuing.",
+          );
+        }
+      } else if (role === "hospital") {
+        if (!emailVerified) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Email is not verified yet.",
+          );
+        }
+        if (pendingData.status !== "approved") {
+          throw new HttpsError(
+            "permission-denied",
+            "Your blood bank account is awaiting admin approval.",
+          );
+        }
+      } else {
         throw new HttpsError(
           "failed-precondition",
-          "Verify both your email (inbox link) and your phone number (SMS) before continuing.",
+          "Unknown profile role; cannot complete verification.",
         );
       }
-    } else if (role === "hospital") {
-      if (!emailVerified) {
-        throw new HttpsError(
-          "failed-precondition",
-          "Email is not verified yet.",
+
+      await db.runTransaction(async (tx) => {
+        tx.set(
+          userRef,
+          {
+            ...pendingData,
+            email: userRecord.email || null,
+            phoneNumber:
+              pendingData.phoneNumber || userRecord.phoneNumber || null,
+            emailVerified,
+            phoneVerified,
+            verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+            ...(emailVerified
+              ? {
+                  emailVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+                }
+              : {}),
+            ...(phoneVerified
+              ? {
+                  phoneVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+                }
+              : {}),
+            activatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true },
         );
+        tx.delete(pendingRef);
+      });
+
+      if (pendingData && pendingData.role) {
+        await admin.auth().setCustomUserClaims(uid, { role: pendingData.role });
       }
-    } else {
-      throw new HttpsError(
-        "failed-precondition",
-        "Unknown profile role; cannot complete verification.",
-      );
+
+      return { ok: true, message: "Profile activated." };
+    } catch (err) {
+      console.error("[completeProfileAfterVerification] ERROR:", err);
+      throw toHttpsError(err, "Failed to activate profile.");
     }
-
-    await db.runTransaction(async (tx) => {
-      tx.set(
-        userRef,
-        {
-          ...pendingData,
-          email: userRecord.email || null,
-          phoneNumber: pendingData.phoneNumber || userRecord.phoneNumber || null,
-          emailVerified,
-          phoneVerified,
-          verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-          ...(emailVerified
-            ? {emailVerifiedAt: admin.firestore.FieldValue.serverTimestamp()}
-            : {}),
-          ...(phoneVerified
-            ? {phoneVerifiedAt: admin.firestore.FieldValue.serverTimestamp()}
-            : {}),
-          activatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
-      tx.delete(pendingRef);
-    });
-
-    if (pendingData && pendingData.role) {
-      await admin.auth().setCustomUserClaims(uid, { role: pendingData.role });
-    }
-
-    return { ok: true, message: "Profile activated." };
-  } catch (err) {
-    console.error("[completeProfileAfterVerification] ERROR:", err);
-    throw toHttpsError(err, "Failed to activate profile.");
-  }
-});
+  },
+);
 
 exports.getUserData = onCall(publicCallableOpts, async (request) => {
   try {
@@ -375,10 +394,10 @@ exports.updateFcmToken = onCall(publicCallableOpts, async (request) => {
     );
 
     const verifySnap = await userRef.get();
-    const savedToken = verifySnap.exists &&
-      typeof verifySnap.data().fcmToken === "string" ?
-      verifySnap.data().fcmToken.trim() :
-      "";
+    const savedToken =
+      verifySnap.exists && typeof verifySnap.data().fcmToken === "string"
+        ? verifySnap.data().fcmToken.trim()
+        : "";
     if (!savedToken) {
       throw new HttpsError(
         "internal",
@@ -407,158 +426,154 @@ exports.updateFcmToken = onCall(publicCallableOpts, async (request) => {
  * No caller authentication — returns not-found when nothing matches.
  */
 exports.resolveDonorEmailForPhoneLogin = onCall(
-    publicCallableOpts,
-    async (request) => {
-      try {
-        const data = request.data || {};
-        const raw =
-            typeof data.phoneNumber === "string" ? data.phoneNumber : "";
-        const normalized = normalizeJordanMobile(raw);
-        if (!normalized) {
-          throw new HttpsError(
-              "invalid-argument",
-              "Enter a valid Jordan mobile (079, 078, 077, or 962…).",
-          );
-        }
-
-        const userSnaps =
-            await snapshotsForPhoneVariants(db.collection("users"), normalized);
-        const matchingUserDocs = userSnaps;
-
-        if (matchingUserDocs.length === 1) {
-          const doc = matchingUserDocs[0];
-          const email =
-              await donorEmailFromUserDoc(doc.id, doc.data() || {});
-          if (!email) {
-            throw new HttpsError(
-                "not-found",
-                "No account uses this phone number.",
-            );
-          }
-          return { ok: true, email };
-        }
-
-        if (matchingUserDocs.length > 1) {
-          /** @type {{ id: string, email: string }[]} */
-          const withEmail = [];
-          for (const doc of matchingUserDocs) {
-            const email =
-                await donorEmailFromUserDoc(doc.id, doc.data() || {});
-            if (email) withEmail.push({ id: doc.id, email });
-          }
-          const distinctLower =
-              [...new Set(withEmail.map((x) => x.email.toLowerCase()))];
-
-          const everyDocHasEmail =
-              withEmail.length === matchingUserDocs.length;
-
-          if (everyDocHasEmail && distinctLower.length === 1) {
-            return {
-              ok: true,
-              email: withEmail[0].email,
-            };
-          }
-
-          console.error(
-              "[resolveDonorEmailForPhoneLogin] duplicate phone users",
-              normalized,
-              {
-                uidCount: matchingUserDocs.length,
-                resolvedEmails: distinctLower.length,
-              },
-          );
-          throw new HttpsError(
-              "failed-precondition",
-              "Several accounts share this mobile. Please sign in with "
-                  + "your email or contact support to tidy duplicate profiles.",
-          );
-        }
-
-        // Still onboarding: phone is on pending_profiles only until activation.
-        const pendingSnaps =
-            await snapshotsForPhoneVariants(
-                db.collection("pending_profiles"),
-                normalized,
-            );
-
-        const pendingMatchingDocs = pendingSnaps;
-
-        if (pendingMatchingDocs.length === 1) {
-          const uid = pendingMatchingDocs[0].id;
-          try {
-            const userRecord = await admin.auth().getUser(uid);
-            const authEmail =
-                typeof userRecord.email === "string" ?
-                    userRecord.email.trim() :
-                    "";
-            if (!authEmail) {
-              throw new HttpsError(
-                  "not-found",
-                  "No account uses this phone number.",
-              );
-            }
-            return { ok: true, email: authEmail };
-          } catch (err) {
-            if (err instanceof HttpsError) throw err;
-            console.error("[resolveDonorEmailForPhoneLogin] Auth lookup:", err);
-            throw new HttpsError(
-                "not-found",
-                "No account uses this phone number.",
-            );
-          }
-        }
-
-        if (pendingMatchingDocs.length > 1) {
-          /** @type {{ id: string, email: string }[]} */
-          const withEmail = [];
-          for (const doc of pendingMatchingDocs) {
-            try {
-              const rec = await admin.auth().getUser(doc.id);
-              const authEmail =
-                  typeof rec.email === "string" ? rec.email.trim() : "";
-              if (authEmail) withEmail.push({ id: doc.id, email: authEmail });
-            } catch (_) {
-              // orphaned pending_profiles doc
-            }
-          }
-          const distinctLower =
-              [...new Set(withEmail.map((x) => x.email.toLowerCase()))];
-
-          if (withEmail.length === pendingMatchingDocs.length &&
-              distinctLower.length === 1) {
-            return {
-              ok: true,
-              email: withEmail[0].email,
-            };
-          }
-
-          console.error(
-              "[resolveDonorEmailForPhoneLogin] duplicate phone pending",
-              normalized,
-              { count: pendingMatchingDocs.length },
-          );
-          throw new HttpsError(
-              "failed-precondition",
-              "Several onboarding accounts share this mobile. Sign in with "
-                  + "your email or contact support.",
-          );
-        }
-
-        const emailFromAuthPhone =
-            await resolveDonorEmailViaAuthLinkedPhone(normalized);
-        if (emailFromAuthPhone) {
-          return { ok: true, email: emailFromAuthPhone };
-        }
-
+  publicCallableOpts,
+  async (request) => {
+    try {
+      const data = request.data || {};
+      const raw = typeof data.phoneNumber === "string" ? data.phoneNumber : "";
+      const normalized = normalizeJordanMobile(raw);
+      if (!normalized) {
         throw new HttpsError(
+          "invalid-argument",
+          "Enter a valid Jordan mobile (079, 078, 077, or 962…).",
+        );
+      }
+
+      const userSnaps = await snapshotsForPhoneVariants(
+        db.collection("users"),
+        normalized,
+      );
+      const matchingUserDocs = userSnaps;
+
+      if (matchingUserDocs.length === 1) {
+        const doc = matchingUserDocs[0];
+        const email = await donorEmailFromUserDoc(doc.id, doc.data() || {});
+        if (!email) {
+          throw new HttpsError(
             "not-found",
             "No account uses this phone number.",
-        );
-      } catch (err) {
-        console.error("[resolveDonorEmailForPhoneLogin] ERROR:", err);
-        throw toHttpsError(err, "Could not resolve account.");
+          );
+        }
+        return { ok: true, email };
       }
-    },
+
+      if (matchingUserDocs.length > 1) {
+        /** @type {{ id: string, email: string }[]} */
+        const withEmail = [];
+        for (const doc of matchingUserDocs) {
+          const email = await donorEmailFromUserDoc(doc.id, doc.data() || {});
+          if (email) withEmail.push({ id: doc.id, email });
+        }
+        const distinctLower = [
+          ...new Set(withEmail.map((x) => x.email.toLowerCase())),
+        ];
+
+        const everyDocHasEmail = withEmail.length === matchingUserDocs.length;
+
+        if (everyDocHasEmail && distinctLower.length === 1) {
+          return {
+            ok: true,
+            email: withEmail[0].email,
+          };
+        }
+
+        console.error(
+          "[resolveDonorEmailForPhoneLogin] duplicate phone users",
+          normalized,
+          {
+            uidCount: matchingUserDocs.length,
+            resolvedEmails: distinctLower.length,
+          },
+        );
+        throw new HttpsError(
+          "failed-precondition",
+          "Several accounts share this mobile. Please sign in with " +
+            "your email or contact support to tidy duplicate profiles.",
+        );
+      }
+
+      // Still onboarding: phone is on pending_profiles only until activation.
+      const pendingSnaps = await snapshotsForPhoneVariants(
+        db.collection("pending_profiles"),
+        normalized,
+      );
+
+      const pendingMatchingDocs = pendingSnaps;
+
+      if (pendingMatchingDocs.length === 1) {
+        const uid = pendingMatchingDocs[0].id;
+        try {
+          const userRecord = await admin.auth().getUser(uid);
+          const authEmail =
+            typeof userRecord.email === "string" ? userRecord.email.trim() : "";
+          if (!authEmail) {
+            throw new HttpsError(
+              "not-found",
+              "No account uses this phone number.",
+            );
+          }
+          return { ok: true, email: authEmail };
+        } catch (err) {
+          if (err instanceof HttpsError) throw err;
+          console.error("[resolveDonorEmailForPhoneLogin] Auth lookup:", err);
+          throw new HttpsError(
+            "not-found",
+            "No account uses this phone number.",
+          );
+        }
+      }
+
+      if (pendingMatchingDocs.length > 1) {
+        /** @type {{ id: string, email: string }[]} */
+        const withEmail = [];
+        for (const doc of pendingMatchingDocs) {
+          try {
+            const rec = await admin.auth().getUser(doc.id);
+            const authEmail =
+              typeof rec.email === "string" ? rec.email.trim() : "";
+            if (authEmail) withEmail.push({ id: doc.id, email: authEmail });
+          } catch (_) {
+            // orphaned pending_profiles doc
+          }
+        }
+        const distinctLower = [
+          ...new Set(withEmail.map((x) => x.email.toLowerCase())),
+        ];
+
+        if (
+          withEmail.length === pendingMatchingDocs.length &&
+          distinctLower.length === 1
+        ) {
+          return {
+            ok: true,
+            email: withEmail[0].email,
+          };
+        }
+
+        console.error(
+          "[resolveDonorEmailForPhoneLogin] duplicate phone pending",
+          normalized,
+          { count: pendingMatchingDocs.length },
+        );
+        throw new HttpsError(
+          "failed-precondition",
+          "Several onboarding accounts share this mobile. Sign in with " +
+            "your email or contact support.",
+        );
+      }
+
+      const emailFromAuthPhone =
+        await resolveDonorEmailViaAuthLinkedPhone(normalized);
+      if (emailFromAuthPhone) {
+        return { ok: true, email: emailFromAuthPhone };
+      }
+
+      throw new HttpsError("not-found", "No account uses this phone number.");
+    } catch (err) {
+      console.error("[resolveDonorEmailForPhoneLogin] ERROR:", err);
+      throw toHttpsError(err, "Could not resolve account.");
+    }
+  },
 );
 
 exports.updateUserProfile = onCall(publicCallableOpts, async (request) => {

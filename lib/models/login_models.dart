@@ -8,6 +8,7 @@ enum LoginErrorType {
   invalidAccountType,
   authException,
   genericError,
+  awaitingApproval, // ← جديد: بنك الدم منتظر موافقة الأدمن
 }
 
 /// Result of login operation

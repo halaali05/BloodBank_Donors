@@ -13,94 +13,48 @@ enum UserRole {
 }
 
 /// Safely parse date values coming from Cloud Functions / Firestore.
-/// Accepts:
-/// - int (millisecondsSinceEpoch)
-/// - String (ISO-8601)
-/// - DateTime
-/// - Firestore Timestamp (has toDate())
-/// - Map like {_seconds: ..., _nanoseconds: ...}
 DateTime? _parseDate(dynamic v) {
   if (v == null) return null;
-
   if (v is DateTime) return v;
-
-  if (v is int) {
-    return DateTime.fromMillisecondsSinceEpoch(v);
-  }
-
-  if (v is String) {
-    return DateTime.tryParse(v);
-  }
-
-  // Firestore Timestamp (cloud_firestore) or any object with toDate()
+  if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
+  if (v is String) return DateTime.tryParse(v);
   try {
     // ignore: avoid_dynamic_calls
     final dt = v.toDate();
     if (dt is DateTime) return dt;
   } catch (_) {}
-
-  // Sometimes timestamps come as a Map: {_seconds: ..., _nanoseconds: ...}
   if (v is Map && v.containsKey('_seconds')) {
     final seconds = v['_seconds'];
     if (seconds is int) {
       return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
     }
   }
-
   return null;
 }
 
 /// Model class representing a user in the system
-/// Contains all user profile information for both donors and blood banks
 @immutable
 class User {
-  /// Unique identifier from Firebase Authentication
   final String uid;
-
-  /// User's email address
   final String email;
-
-  /// Full name of the user (for donors)
   final String? fullName;
-
-  /// Name of the blood bank (for hospital users)
   final String? bloodBankName;
-
-  /// User's location (governorate name)
   final String? location;
-
-  /// Latitude coordinate of the user's location (auto-set from governorate)
   final double? latitude;
-
-  /// Longitude coordinate of the user's location (auto-set from governorate)
   final double? longitude;
-
-  /// Blood type (for donors, e.g., 'A+', 'O-')
   final String? bloodType;
-
-  /// Donor gender: `male` or `female` (from registration).
   final String? gender;
-
-  /// After a completed donation, donor cannot use "I can donate" until this time.
   final DateTime? nextDonationEligibleAt;
-
-  /// Last successful donation timestamp (server), used with gender if needed.
   final DateTime? lastDonatedAt;
-
-  /// Medical restriction end time (from restricted report), if any.
   final DateTime? restrictedUntil;
-
-  /// True when donor is permanently blocked from donating (medical).
   final bool isPermanentlyBlocked;
-
-  /// Donor mobile in E.164 (e.g. +962791234567).
   final String? phoneNumber;
-
-  /// The role of the user (donor or hospital)
   final UserRole role;
-
-  /// Timestamp when the user account was created
   final DateTime? createdAt;
+
+  /// ← جديد: هل تم الموافقة على حساب بنك الدم من الأدمن؟
+  /// null = مش hospital أو مش مطلوب، false = ينتظر، true = موافق عليه
+  final bool? isApproved;
 
   const User({
     required this.uid,
@@ -119,6 +73,7 @@ class User {
     this.isPermanentlyBlocked = false,
     this.phoneNumber,
     this.createdAt,
+    this.isApproved, // ← جديد
   });
 
   /// Factory constructor to create a [User] from Firestore/Functions data
@@ -130,7 +85,6 @@ class User {
         ? UserRole.admin
         : UserRole.donor;
 
-    // Parse latitude/longitude - may come as int or double from Firestore
     double? parseDouble(dynamic v) {
       if (v == null) return null;
       if (v is double) return v;
@@ -156,6 +110,7 @@ class User {
       isPermanentlyBlocked: data['isPermanentlyBlocked'] == true,
       phoneNumber: data['phoneNumber'] as String?,
       createdAt: _parseDate(data['createdAt']),
+      isApproved: data['isApproved'] as bool?, // ← جديد
     );
   }
 
@@ -172,6 +127,7 @@ class User {
       if (bloodType != null) 'bloodType': bloodType,
       if (gender != null) 'gender': gender,
       if (phoneNumber != null) 'phoneNumber': phoneNumber,
+      if (isApproved != null) 'isApproved': isApproved, // ← جديد
     };
   }
 }

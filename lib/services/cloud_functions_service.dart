@@ -755,4 +755,49 @@ class CloudFunctionsService {
       throw _handleNetworkError(e);
     }
   }
+
+  // ─────────────────── Admin Approval ─────────────────── ← جديد
+
+  /// Fetches all pending blood bank profiles awaiting admin approval.
+  Future<List<Map<String, dynamic>>> getPendingApprovals() async {
+    try {
+      final callable = _functions.httpsCallable('getPendingApprovals');
+      final result = await callable.call();
+      final data = Map<String, dynamic>.from(result.data);
+      final raw = data['pending'];
+      if (raw is! List) return [];
+      return raw
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
+
+  /// Approves a pending blood bank account.
+  Future<void> approvePendingUser({required String uid}) async {
+    try {
+      final callable = _functions.httpsCallable('approvePendingUser');
+      await callable.call({'uid': uid});
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
+
+  /// Rejects a pending blood bank account.
+  Future<void> rejectPendingUser({required String uid, String? reason}) async {
+    try {
+      final callable = _functions.httpsCallable('rejectPendingUser');
+      await callable.call({'uid': uid, if (reason != null) 'reason': reason});
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    } catch (e) {
+      throw _handleNetworkError(e);
+    }
+  }
 }

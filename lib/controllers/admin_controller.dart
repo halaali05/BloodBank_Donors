@@ -1,4 +1,5 @@
 import '../models/blood_request_model.dart';
+import '../models/pending_approval_model.dart'; // ← جديد
 import '../models/user_model.dart';
 import '../services/cloud_functions_service.dart';
 
@@ -60,6 +61,30 @@ class AdminController {
     }
   }
 
+  // ─────────────────── Pending Approvals ─────────────────── ← جديد
+
+  /// Fetches all blood bank accounts waiting for admin approval
+  Future<List<PendingApproval>> fetchPendingApprovals() async {
+    try {
+      final raw = await _cloudFunctions.getPendingApprovals();
+      return raw.map((data) {
+        return PendingApproval.fromMap(data, data['uid']?.toString() ?? '');
+      }).toList();
+    } catch (e) {
+      throw Exception('Failed to fetch pending approvals: $e');
+    }
+  }
+
+  /// Approves a blood bank account
+  Future<void> approvePendingUser(String uid) async {
+    await _cloudFunctions.approvePendingUser(uid: uid);
+  }
+
+  /// Rejects and removes a pending blood bank account
+  Future<void> rejectPendingUser(String uid, {String? reason}) async {
+    await _cloudFunctions.rejectPendingUser(uid: uid, reason: reason);
+  }
+
   // ─────────────────── Statistics ───────────────────
 
   /// Computes overall admin statistics from a list of requests
@@ -71,7 +96,6 @@ class AdminController {
     final totalUnits = active.fold<int>(0, (s, r) => s + r.units);
     final totalAccepted = requests.fold<int>(0, (s, r) => s + r.acceptedCount);
 
-    // Donors with restrictions
     final now = DateTime.now();
     final restricted = donors
         .where(
@@ -83,7 +107,6 @@ class AdminController {
         )
         .length;
 
-    // Blood type distribution
     final btMap = <String, int>{};
     for (final d in donors) {
       if (d.bloodType != null && d.bloodType!.isNotEmpty) {
@@ -91,13 +114,11 @@ class AdminController {
       }
     }
 
-    // Requests per blood bank
     final bankMap = <String, int>{};
     for (final r in requests) {
       bankMap[r.bloodBankName] = (bankMap[r.bloodBankName] ?? 0) + 1;
     }
 
-    // Governorate distribution of donors
     final govMap = <String, int>{};
     for (final d in donors) {
       if (d.location != null && d.location!.isNotEmpty) {
