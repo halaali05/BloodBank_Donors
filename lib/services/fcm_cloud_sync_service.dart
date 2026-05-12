@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
 import 'cloud_functions_service.dart';
+import 'push_session_gate.dart';
 
 /// Uploads and verifies the FCM device token via **Cloud Functions** only.
 /// Keeps network/backend concerns out of [FCMService] and [LocalNotifService].
@@ -89,6 +90,7 @@ class FcmCloudSyncService {
     try {
       final User? user = authFactory().currentUser;
       if (user == null) {
+        await PushSessionGate.setActive(false);
         _lastSyncError = 'No authenticated user.';
         return false;
       }
@@ -123,6 +125,7 @@ class FcmCloudSyncService {
         }
         debugPrint('FCM cloud sync: token saved for uid=${user.uid}');
         _lastSyncError = '';
+        await PushSessionGate.setActive(true);
         return true;
       } else {
         debugPrint('FCM cloud sync: token unavailable for uid=${user.uid}');
@@ -143,8 +146,34 @@ class FcmCloudSyncService {
     if (currentUser == null) return;
     try {
       await cloudFactory().updateFcmToken(fcmToken: newToken);
+      await PushSessionGate.setActive(true);
     } catch (e) {
       debugPrint('FCM cloud sync: token refresh upload failed: $e');
+    }
+  }
+
+  Future<void> onSignedOut() async {
+    await PushSessionGate.setActive(false);
+  }
+
+  /// Clears the token on the user profile (stops server-side pushes) and
+  /// invalidates the local FCM token on mobile so the device stops receiving
+  /// for the old registration when possible.
+  Future<void> clearTokenForLogout() async {
+    await PushSessionGate.setActive(false);
+    final User? user = authFactory().currentUser;
+    if (user == null) return;
+    try {
+      await cloudFactory().clearFcmToken();
+    } catch (e) {
+      debugPrint('FCM: clear on server failed (logout): $e');
+    }
+    try {
+      if (!kIsWeb) {
+        await messagingFactory().deleteToken();
+      }
+    } catch (e) {
+      debugPrint('FCM: deleteToken on logout failed: $e');
     }
   }
 

@@ -358,6 +358,25 @@ exports.updateFcmToken = onCall(publicCallableOpts, async (request) => {
     const uid = requireAuth(request);
     const data = request.data || {};
 
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    const clearFcmToken =
+      data.clearFcmToken === true ||
+      (typeof data.fcmToken === "string" && data.fcmToken.trim() === "");
+
+    if (clearFcmToken) {
+      if (!userSnap.exists) {
+        return { ok: true, message: "User profile not found; nothing to clear." };
+      }
+      await userRef.set(
+        { fcmToken: admin.firestore.FieldValue.delete() },
+        { merge: true },
+      );
+      console.log(`[updateFcmToken] uid=${uid} FCM token cleared (logout)`);
+      return { ok: true, message: "FCM token cleared.", cleared: true };
+    }
+
     const fcmToken =
       typeof data.fcmToken === "string" && data.fcmToken.trim() !== ""
         ? data.fcmToken.trim()
@@ -370,9 +389,6 @@ exports.updateFcmToken = onCall(publicCallableOpts, async (request) => {
     console.log(
       `[updateFcmToken] uid=${uid} tokenPrefix=${fcmToken.substring(0, 16)}`,
     );
-
-    const userRef = db.collection("users").doc(uid);
-    const userSnap = await userRef.get();
 
     if (!userSnap.exists) {
       throw new HttpsError(

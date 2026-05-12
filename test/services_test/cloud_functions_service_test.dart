@@ -71,6 +71,23 @@ void main() {
       expect(result['done'], true);
     });
 
+    test('clearFcmToken calls updateFcmToken with clearFcmToken', () async {
+      when(() => mockFunctions.httpsCallable('updateFcmToken'))
+          .thenReturn(mockCallable);
+
+      when(() => mockCallable.call(any()))
+          .thenAnswer((_) async => mockResult);
+
+      when(() => mockResult.data).thenReturn({'ok': true, 'cleared': true});
+
+      final result = await service.clearFcmToken();
+
+      expect(result['cleared'], true);
+      verify(
+        () => mockCallable.call({'clearFcmToken': true}),
+      ).called(1);
+    });
+
     test('getUserRole returns role', () async {
       when(() => mockFunctions.httpsCallable('getUserRole'))
           .thenReturn(mockCallable);

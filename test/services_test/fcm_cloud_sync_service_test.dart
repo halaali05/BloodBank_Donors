@@ -4,9 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase;
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:bloodbank_donors/services/fcm_cloud_sync_service.dart';
 import 'package:bloodbank_donors/services/cloud_functions_service.dart';
+import 'package:bloodbank_donors/services/push_session_gate.dart';
 
 // ================= MOCKS =================
 
@@ -32,6 +34,7 @@ void main() {
   late FcmCloudSyncService service;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     mockAuth = MockFirebaseAuth();
     mockUser = MockFirebaseUser();
     mockMessaging = MockFirebaseMessaging();
@@ -144,6 +147,7 @@ void main() {
         service.getLastSyncError(),
         'No authenticated user.',
       );
+      expect(await PushSessionGate.isActive(), false);
     });
 
     test('uploads token successfully', () async {
@@ -178,6 +182,8 @@ void main() {
           fcmToken: 'TOKEN',
         ),
       ).called(1);
+
+      expect(await PushSessionGate.isActive(), true);
     });
 
     test('returns false when token empty after retries', () async {
@@ -296,6 +302,8 @@ void main() {
           fcmToken: 'TOKEN',
         ),
       ).called(1);
+
+      expect(await PushSessionGate.isActive(), true);
     });
 
     test('handles upload exception safely', () async {
@@ -311,6 +319,55 @@ void main() {
       await service.uploadRefreshedToken('TOKEN');
 
       expect(true, isTrue);
+    });
+  });
+
+  // ================= onSignedOut =================
+
+  group('onSignedOut', () {
+    test('sets push session inactive', () async {
+      await PushSessionGate.setActive(true);
+      await service.onSignedOut();
+      expect(await PushSessionGate.isActive(), false);
+    });
+  });
+
+  // ================= clearTokenForLogout =================
+
+  group('clearTokenForLogout', () {
+    test('does nothing when user is null', () async {
+      when(() => mockAuth.currentUser).thenReturn(null);
+
+      await service.clearTokenForLogout();
+
+      verifyNever(() => mockCloud.clearFcmToken());
+      expect(await PushSessionGate.isActive(), false);
+    });
+
+    test('calls clearFcmToken and deleteToken when user present', () async {
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
+      when(() => mockCloud.clearFcmToken()).thenAnswer(
+        (_) async => {'ok': true},
+      );
+      when(() => mockMessaging.deleteToken()).thenAnswer((_) async {});
+
+      await service.clearTokenForLogout();
+
+      verify(() => mockCloud.clearFcmToken()).called(1);
+      verify(() => mockMessaging.deleteToken()).called(1);
+      expect(await PushSessionGate.isActive(), false);
+    });
+
+    test('still deletes local token if server clear fails', () async {
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
+      when(() => mockCloud.clearFcmToken()).thenThrow(Exception('network'));
+      when(() => mockMessaging.deleteToken()).thenAnswer((_) async {});
+
+      await service.clearTokenForLogout();
+
+      verify(() => mockCloud.clearFcmToken()).called(1);
+      verify(() => mockMessaging.deleteToken()).called(1);
+      expect(await PushSessionGate.isActive(), false);
     });
   });
 

@@ -152,6 +152,17 @@ class CloudFunctionsService {
     }
   }
 
+  /// Removes the push token from the signed-in user (call **before** [signOut]).
+  Future<Map<String, dynamic>> clearFcmToken() async {
+    try {
+      final callable = _functions.httpsCallable('updateFcmToken');
+      final result = await callable.call({'clearFcmToken': true});
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      throw _handleFunctionsException(e);
+    }
+  }
+
   /// Updates display name (and related fields on the server).
   Future<Map<String, dynamic>> updateUserProfile({required String name}) async {
     try {

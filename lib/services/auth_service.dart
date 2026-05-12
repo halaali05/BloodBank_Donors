@@ -1,7 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/user_model.dart' as models;
 import 'cloud_functions_service.dart';
+import 'fcm_cloud_sync_service.dart';
 
 /// Thrown when a donor has not satisfied both Firebase email verification and
 /// linked phone (SMS provider) yet.
@@ -45,10 +47,16 @@ class SignupException implements Exception {
 class AuthService {
   final FirebaseAuth _auth;
   final CloudFunctionsService _cloudFunctions;
+  final Future<void> Function() _clearFcmOnLogout;
 
-  AuthService({FirebaseAuth? auth, CloudFunctionsService? cloudFunctions})
-    : _auth = auth ?? FirebaseAuth.instance,
-      _cloudFunctions = cloudFunctions ?? CloudFunctionsService();
+  AuthService({
+    FirebaseAuth? auth,
+    CloudFunctionsService? cloudFunctions,
+    Future<void> Function()? clearFcmOnLogout,
+  }) : _clearFcmOnLogout = clearFcmOnLogout ??
+            FcmCloudSyncService.instance.clearTokenForLogout,
+       _auth = auth ?? FirebaseAuth.instance,
+       _cloudFunctions = cloudFunctions ?? CloudFunctionsService();
 
   /// Signs up a new donor user
   ///
@@ -199,6 +207,11 @@ class AuthService {
 
   /// Logs out the current user
   Future<void> logout() async {
+    try {
+      await _clearFcmOnLogout();
+    } catch (e, st) {
+      debugPrint('AuthService: FCM cleanup before signOut failed: $e\n$st');
+    }
     await _auth.signOut();
   }
 

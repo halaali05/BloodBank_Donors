@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -132,16 +134,19 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (result.success && result.navigationRoute != null) {
-      try {
-        await FCMService.instance.ensureTokenSynced(
-          attempts: 5,
-          delay: const Duration(seconds: 1),
-        );
-      } catch (_) {}
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => result.navigationRoute!),
         (route) => false,
+      );
+      // Sync push token without blocking the UI (dashboards also retry FCM).
+      unawaited(
+        FCMService.instance
+            .ensureTokenSynced(
+              attempts: 4,
+              delay: const Duration(seconds: 2),
+            )
+            .catchError((Object _, StackTrace __) => false),
       );
     } else {
       _showError(result);

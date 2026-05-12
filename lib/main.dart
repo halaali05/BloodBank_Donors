@@ -8,6 +8,7 @@ import 'firebase_options.dart';
 import 'views/onboarding/welcome_screen.dart';
 import 'services/fcm_service.dart';
 import 'services/local_notif_service.dart';
+import 'services/push_session_gate.dart';
 
 // ------------------ Global State ------------------
 /// Global navigator key for navigation from anywhere in the app
@@ -60,10 +61,17 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
+    if (!await PushSessionGate.isActive()) {
+      return;
+    }
+
     await LocalNotifService.instance.init();
     await _showFcmBackgroundLocalNotification(message);
   } catch (e) {
     try {
+      if (!await PushSessionGate.isActive()) {
+        return;
+      }
       await LocalNotifService.instance.init();
       await _showFcmBackgroundLocalNotification(
         message,

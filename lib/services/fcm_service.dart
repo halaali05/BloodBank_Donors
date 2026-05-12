@@ -86,6 +86,8 @@ Future<void> Function() localNotifInit =
       authFactory().authStateChanges().listen((User? user) {
         if (user != null) {
           unawaited(_cloudSync.syncTokenToBackend());
+        } else {
+          unawaited(_cloudSync.onSignedOut());
         }
       });
     }

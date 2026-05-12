@@ -25,7 +25,11 @@ void main() {
     mockAuth = MockFirebaseAuth();
     mockCloud = MockCloudFunctionsService();
 
-    service = AuthService(auth: mockAuth, cloudFunctions: mockCloud);
+    service = AuthService(
+      auth: mockAuth,
+      cloudFunctions: mockCloud,
+      clearFcmOnLogout: () async {},
+    );
   });
 
   /// signUpDonor
@@ -340,12 +344,21 @@ group('signUpBloodBank', () {
 });
 
   });
-  /// logout
-  test('logout calls FirebaseAuth signOut', () async {
+  test('logout invokes clearFcmOnLogout then signOut', () async {
     when(() => mockAuth.signOut()).thenAnswer((_) async {});
 
-    await service.logout();
+    final log = <String>[];
+    final svc = AuthService(
+      auth: mockAuth,
+      cloudFunctions: mockCloud,
+      clearFcmOnLogout: () async {
+        log.add('clear');
+      },
+    );
 
+    await svc.logout();
+
+    expect(log, ['clear']);
     verify(() => mockAuth.signOut()).called(1);
   });
 

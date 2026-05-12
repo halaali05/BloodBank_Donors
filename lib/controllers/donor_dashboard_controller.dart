@@ -30,7 +30,7 @@ class DonorDashboardController {
   }
 
   Future<void> logout() async {
-    await _auth.signOut();
+    await _authService.logout();
   }
 
   // --- Stats ---

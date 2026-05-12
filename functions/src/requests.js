@@ -183,8 +183,7 @@ async function deleteRequestCascade(requestRef, requestId) {
       collectSnapshot(r.value);
     } else {
       console.warn(
-        `[deleteRequestCascade] collectionGroup query ${i} failed: ${
-          r.reason && r.reason.message ? r.reason.message : r.reason
+        `[deleteRequestCascade] collectionGroup query ${i} failed: ${r.reason && r.reason.message ? r.reason.message : r.reason
         }`,
       );
     }
@@ -213,8 +212,7 @@ async function deleteRequestCascade(requestRef, requestId) {
         collectSnapshot(r.value);
       } else {
         console.warn(
-          `[deleteRequestCascade] per-donor notification query failed: ${
-            r.reason && r.reason.message ? r.reason.message : r.reason
+          `[deleteRequestCascade] per-donor notification query failed: ${r.reason && r.reason.message ? r.reason.message : r.reason
           } (chunk ${i}+${j})`,
         );
       }
@@ -382,8 +380,8 @@ async function buildDonorManagementEntries(responseDocs, options = {}) {
   const userSnaps = userRefs.length > 0 ? await db.getAll(...userRefs) : [];
   const reportsByDonor = includeLatestReports
     ? await getLatestUploadedMedicalReportsByDonor(
-        responseDocs.map((doc) => doc.id),
-      )
+      responseDocs.map((doc) => doc.id),
+    )
     : new Map();
 
   return responseDocs.map((doc, index) => {
@@ -419,7 +417,7 @@ async function buildDonorManagementEntries(responseDocs, options = {}) {
       processStatus: row.processStatus ?? null,
       appointmentStatus:
         typeof row.appointmentStatus === "string" &&
-        row.appointmentStatus.trim()
+          row.appointmentStatus.trim()
           ? row.appointmentStatus.trim().toLowerCase()
           : null,
       appointmentAtMillis: millisFromPipelineValue(row.appointmentAt),
@@ -447,8 +445,8 @@ function haversineDistanceKm(lat1, lon1, lat2, lon2) {
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -1308,6 +1306,7 @@ function normalizeGovernorateLabel(s) {
 
 /**
  * True if donor and hospital are in the same governorate (loose match).
+ * When the request has a governorate, donors without a location do not match.
  */
 function donorMatchesHospitalLocation(donorData, hospitalLocationRaw) {
   const hospitalLocation = (hospitalLocationRaw || "").trim();
@@ -1316,7 +1315,7 @@ function donorMatchesHospitalLocation(donorData, hospitalLocationRaw) {
   }
   const donorLocation = (donorData.location || "").trim();
   if (!donorLocation) {
-    return true;
+    return false;
   }
   const a = normalizeGovernorateLabel(donorLocation);
   const b = normalizeGovernorateLabel(hospitalLocation);
@@ -1394,15 +1393,8 @@ function canonicalStandardBloodType(raw) {
 }
 
 /**
- * True if the donor should get a push/in-app notification for this request:
- * - Donor has no blood type on file (empty / missing): notify (unknown).
- * - Donor blood type cannot be confidently normalized: treat as unknown and notify.
- * - Otherwise: notify only when donor type matches request type.
- * If the request blood type is not a standard value, all donors are notified (legacy safety).
- */
-/**
- * Returns the list of blood types that [donorType] can donate TO.
- * Based on standard blood donation compatibility rules.
+ * Returns the list of request/patient blood types that [donorType] can donate to.
+ * Based on standard red-cell donation compatibility rules.
  */
 function compatibleRequestBloodTypes(donorType) {
   switch (donorType) {
@@ -1457,8 +1449,9 @@ function donorMatchesRequestBloodType(donorData, requestBloodTypeRaw) {
 
 /**
  * Creates in-app notification docs, request messages, and FCM pushes for donors.
- * Called directly from addRequest (reliable). Filters by governorate (with fallback)
- * and by blood type (unknown blood type on profile still receives notifications).
+ * Called directly from addRequest (reliable). Requires governorate match when the
+ * request has hospitalLocation (no broad fallback). Blood type uses donation
+ * compatibility; unknown/unparseable donor blood type still receives notifications.
  */
 async function notifyDonorsForNewRequest(requestId, data) {
   if (!data || !requestId) {
@@ -1474,7 +1467,7 @@ async function notifyDonorsForNewRequest(requestId, data) {
 
   console.log(
     `[notifyDonorsForNewRequest] Request: ${requestId}, bloodType: ${bloodType}, ` +
-      `hospitalLocation: ${hospitalLocation}, isUrgent: ${isUrgent}`,
+    `hospitalLocation: ${hospitalLocation}, isUrgent: ${isUrgent}`,
   );
 
   const requestRef = db.collection("requests").doc(requestId);
@@ -1490,21 +1483,14 @@ async function notifyDonorsForNewRequest(requestId, data) {
 
   if (!hospitalLocation) {
     console.log(
-      "[notifyDonorsForNewRequest] No hospitalLocation set, notifying all donors " +
+      "[notifyDonorsForNewRequest] No hospitalLocation set, location filter skipped " +
         `(eligible=${eligibleDonors.length})`,
     );
-  }
-
-  if (
-    eligibleDonors.length === 0 &&
-    allDonorsSnapshot.size > 0 &&
-    hospitalLocation
-  ) {
-    console.warn(
-      `[notifyDonorsForNewRequest] No governorate match for "${hospitalLocation}"; ` +
-        "falling back to ALL donors so users still get notified.",
+  } else if (eligibleDonors.length === 0 && allDonorsSnapshot.size > 0) {
+    console.log(
+      `[notifyDonorsForNewRequest] No donors with matching governorate for "${hospitalLocation}" ` +
+        "(strict location + no fallback).",
     );
-    eligibleDonors = allDonorsSnapshot.docs;
   }
 
   const eligibleBeforeBlood = eligibleDonors.length;
@@ -1513,12 +1499,12 @@ async function notifyDonorsForNewRequest(requestId, data) {
   );
   console.log(
     `[notifyDonorsForNewRequest] Blood-type filter: ${eligibleDonors.length} donors ` +
-      `(before filter: ${eligibleBeforeBlood}, requestBlood=${bloodType})`,
+    `(before filter: ${eligibleBeforeBlood}, requestBlood=${bloodType})`,
   );
 
   console.log(
     `[notifyDonorsForNewRequest] Total donors: ${allDonorsSnapshot.size}, ` +
-      `eligible for this request: ${eligibleDonors.length}`,
+    `eligible for this request: ${eligibleDonors.length}`,
   );
 
   if (eligibleDonors.length === 0) {
@@ -1616,25 +1602,13 @@ async function notifyDonorsForNewRequest(requestId, data) {
 
   if (uniqueTokens.length > 0) {
     const title = isUrgent ? "Urgent blood request" : "New blood request";
-    const body = `${data.bloodBankName || "Blood Bank"} needs ${
-      data.units || ""
-    } units (${bloodType})`;
+    const body = `${data.bloodBankName || "Blood Bank"} needs ${data.units || ""
+      } units (${bloodType})`;
 
-    const androidNotification = {
-      channelId: isUrgent
-        ? "emergency_request_channel_v4"
-        : "normal_request_channel",
-      icon: "ic_launcher",
-      sound: isUrgent ? "emergency_request" : "normal_request",
-      defaultSound: false,
-      defaultVibrateTimings: false,
-    };
-    if (isUrgent) {
-      androidNotification.vibrateTimingsMillis = [0, 500, 250, 500];
-    }
-
+    // Data-only payload so the OS does not show a notification when the app is
+    // backgrounded/quit; we display via LocalNotifService only when
+    // PushSessionGate is active (logged in + token synced).
     const message = {
-      notification: { title, body },
       data: {
         type: "request",
         requestId: String(requestId),
@@ -1645,15 +1619,14 @@ async function notifyDonorsForNewRequest(requestId, data) {
       },
       android: {
         priority: "high",
-        notification: androidNotification,
       },
       apns: {
+        headers: {
+          "apns-priority": "10",
+        },
         payload: {
           aps: {
-            alert: { title, body },
-            sound: isUrgent ? "emergency_request.mp3" : "normal_request.mp3",
-            "interruption-level": isUrgent ? "time-sensitive" : "active",
-            badge: 1,
+            "content-available": 1,
           },
         },
       },
@@ -1698,7 +1671,7 @@ async function notifyDonorsForNewRequest(requestId, data) {
 
   console.log(
     `[notifyDonorsForNewRequest] Done. Eligible: ${eligibleDonors.length}, ` +
-      `FCM tokens: ${uniqueTokens.length}, location="${hospitalLocation}".`,
+    `FCM tokens: ${uniqueTokens.length}, location="${hospitalLocation}".`,
   );
 }
 

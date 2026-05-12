@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 import '../new_request_screen.dart';
 import '../auth/login_screen.dart';
@@ -26,6 +25,8 @@ import '../../shared/widgets/dashboard/header_card.dart';
 import '../../shared/widgets/dashboard/request_card.dart';
 
 import '../../services/fcm_service.dart';
+import '../../services/auth_service.dart';
+import '../../main.dart' show navigatorKey;
 
 class BloodBankDashboardScreen extends StatefulWidget {
   final String bloodBankName;
@@ -268,11 +269,20 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
     }
   }
 
-  Future<void> _handleLogout(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
-    if (context.mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
+  Future<void> _handleLogout() async {
+    try {
+      await AuthService().logout();
+    } catch (e, st) {
+      debugPrint('Blood bank logout error: $e\n$st');
+      if (mounted) {
+        SnackBarHelper.failureFrom(context, e);
+      }
+      return;
+    }
+
+    final nav = navigatorKey.currentState;
+    if (nav != null && nav.mounted) {
+      nav.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
         (_) => false,
       );
@@ -320,7 +330,7 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.logout, color: AppTheme.deepRed),
-            onPressed: () => _handleLogout(context),
+            onPressed: _handleLogout,
           ),
         ],
       ),

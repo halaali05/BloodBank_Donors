@@ -61,12 +61,12 @@ group('Auth helpers', () {
     expect(result, null);
   });
 
-  test('logout calls signOut', () async {
-    when(() => mockAuth.signOut()).thenAnswer((_) async {});
+  test('logout calls AuthService logout', () async {
+    when(() => mockAuthService.logout()).thenAnswer((_) async {});
 
     await controller.logout();
 
-    verify(() => mockAuth.signOut()).called(1);
+    verify(() => mockAuthService.logout()).called(1);
   });
 });
 

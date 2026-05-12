@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'auth_service.dart';
 import 'cloud_functions_service.dart';
 import 'local_notif_service.dart';
+import 'push_session_gate.dart';
 import '../notifications/web_foreground_notification.dart';
 
 /// Foreground FCM handling: donor blood-type filter, then **local** or **web** display.
@@ -43,6 +44,15 @@ CloudFunctionsService Function() cloudFactory = () => CloudFunctionsService();
   }
 
   Future<void> handleForegroundMessage(RemoteMessage message) async {
+    if (!await PushSessionGate.isActive()) {
+      debugPrint('FCM foreground: push session inactive, ignoring message');
+      return;
+    }
+    if (authFactory().currentUser == null) {
+      debugPrint('FCM foreground: signed out, ignoring message');
+      return;
+    }
+
     final String requestId = message.data['requestId']?.toString() ?? '';
     final String type = message.data['type']?.toString() ?? 'request';
     final bool isUrgent =
@@ -50,7 +60,8 @@ CloudFunctionsService Function() cloudFactory = () => CloudFunctionsService();
 
     if (type == 'request') {
       try {
-        final user = authFactory().currentUser;        if (user != null) {
+        final user = authFactory().currentUser;
+        if (user != null) {
           final authService = authServiceFactory();
           final userData = await authService.getUserData(user.uid);
           final donorBloodType = userData?.bloodType?.trim() ?? '';
