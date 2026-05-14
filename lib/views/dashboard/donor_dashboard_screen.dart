@@ -18,6 +18,8 @@ import '../../shared/widgets/dashboard/donor_header.dart';
 import '../../shared/widgets/dashboard/donor_request_card.dart';
 import '../../shared/widgets/common/donor_cooldown_blocked_message.dart';
 import '../../shared/utils/donor_eligibility.dart';
+import '../support/support_screen.dart';
+import '../../models/support_ticket_model.dart';
 import '../../shared/utils/error_message_helper.dart';
 import '../../shared/utils/snack_bar_helper.dart';
 import '../donor_map_screen.dart';
@@ -56,12 +58,12 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
   );
 
   TextStyle get _cooldownSnackLinkStyle => TextStyle(
-        color: Colors.amber.shade100,
-        fontSize: 14,
-        height: 1.35,
-        fontWeight: FontWeight.w800,
-        decoration: TextDecoration.underline,
-      );
+    color: Colors.amber.shade100,
+    fontSize: 14,
+    height: 1.35,
+    fontWeight: FontWeight.w800,
+    decoration: TextDecoration.underline,
+  );
 
   Widget _donorCooldownLinkedSnackContent() {
     return DonorCooldownBlockedMessage(
@@ -504,6 +506,25 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
           ],
         ),
         actions: [
+          // Support button
+          IconButton(
+            tooltip: 'Support & Complaints',
+            icon: const Icon(
+              Icons.support_agent_rounded,
+              color: AppTheme.deepRed,
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SupportScreen(
+                    senderRole: TicketSenderRole.donor,
+                    senderName: user?.displayName,
+                  ),
+                ),
+              );
+            },
+          ),
           // Profile button
           IconButton(
             tooltip: 'Profile',
@@ -767,7 +788,9 @@ class _DashboardRescheduleAppointmentSheetState
                   onPressed: _submitting
                       ? null
                       : () async {
-                          final dt = await pickDonorAppointmentDateTime(context);
+                          final dt = await pickDonorAppointmentDateTime(
+                            context,
+                          );
                           if (dt != null && mounted) {
                             setState(() => _preferredAt = dt);
                           }
@@ -823,7 +846,10 @@ class _DashboardRescheduleAppointmentSheetState
       return;
     }
     if (_preferredAt == null) {
-      SnackBarHelper.notice(context, 'Please choose your preferred date and time.');
+      SnackBarHelper.notice(
+        context,
+        'Please choose your preferred date and time.',
+      );
       return;
     }
 

@@ -72,3 +72,13 @@ const approvalFunctions = require("./approval_functions");
 exports.getPendingApprovals = approvalFunctions.getPendingApprovals;
 exports.approvePendingUser = approvalFunctions.approvePendingUser;
 exports.rejectPendingUser = approvalFunctions.rejectPendingUser;
+
+const supportFunctions = require("./support_functions");
+
+exports.submitSupportTicket = supportFunctions.submitSupportTicket;
+exports.replySupportTicket = supportFunctions.replySupportTicket;
+exports.getMyTickets = supportFunctions.getMyTickets;
+exports.getAllTickets = supportFunctions.getAllTickets;
+exports.updateTicketStatus = supportFunctions.updateTicketStatus;
+exports.deleteSupportTicket = supportFunctions.deleteSupportTicket;
+exports.countOpenTickets = supportFunctions.countOpenTickets;

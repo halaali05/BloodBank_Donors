@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../controllers/admin_controller.dart';
+import '../../controllers/support_controller.dart';
 import '../../models/blood_request_model.dart';
 import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
@@ -7,6 +8,7 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/snack_bar_helper.dart';
 import '../auth/login_screen.dart';
 import 'admin_approvals_tab.dart'; // ← جديد
+import 'admin_support_tab.dart'; // ← قسم الدعم والشكاوي
 import 'admin_donors_tab.dart';
 import 'admin_requests_tab.dart';
 import 'admin_stats_tab.dart';
@@ -32,6 +34,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   // عدد الحسابات المعلقة لعرضه على الـ badge
   int _pendingCount = 0;
+  int _openTicketsCount = 0;
 
   bool _isLoading = true;
   String _requestFilter = 'all';
@@ -40,7 +43,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this); // ← 4 بدل 3
+    _tabController = TabController(length: 5, vsync: this); // ← 5 تبويبات
     _loadData();
   }
 
@@ -60,12 +63,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       // جلب عدد الحسابات المعلقة
       final pending = await _controller.fetchPendingApprovals();
 
+      // جلب عدد تذاكر الدعم المفتوحة
+      int openTickets = 0;
+      try {
+        final SupportController supportCtrl = SupportController();
+        openTickets = await supportCtrl.countOpenTickets();
+      } catch (_) {}
+
       if (!mounted) return;
       setState(() {
         _requests = requests;
         _donors = donors;
         _stats = stats;
         _pendingCount = pending.length;
+        _openTicketsCount = openTickets;
         _applyRequestFilter(_requestFilter);
         _applyDonorFilter(_donorFilter);
         _isLoading = false;
@@ -305,6 +316,48 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 ],
               ),
             ),
+
+            // ── تاب الدعم والشكاوي ──
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(Icons.support_agent_rounded, size: 16),
+                      if (_openTicketsCount > 0)
+                        Positioned(
+                          top: -6,
+                          right: -6,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 14,
+                              minHeight: 14,
+                            ),
+                            child: Text(
+                              '$_openTicketsCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(width: 4),
+                  const Text('Support'),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -344,6 +397,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 ),
 
                 const AdminApprovalsTab(),
+
+                const AdminSupportTab(),
               ],
             ),
     );

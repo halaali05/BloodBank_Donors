@@ -27,6 +27,8 @@ import '../../shared/widgets/dashboard/request_card.dart';
 import '../../services/fcm_service.dart';
 import '../../services/auth_service.dart';
 import '../../main.dart' show navigatorKey;
+import '../support/support_screen.dart';
+import '../../models/support_ticket_model.dart';
 
 class BloodBankDashboardScreen extends StatefulWidget {
   final String bloodBankName;
@@ -305,6 +307,24 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
       appBar: AppBarWithLogo(
         title: 'Blood Bank',
         actions: [
+          IconButton(
+            tooltip: 'Support & Complaints',
+            icon: const Icon(
+              Icons.support_agent_rounded,
+              color: AppTheme.deepRed,
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SupportScreen(
+                    senderRole: TicketSenderRole.hospital,
+                    senderName: widget.bloodBankName,
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Donors',
             icon: const Icon(Icons.groups_2_outlined, color: AppTheme.deepRed),
