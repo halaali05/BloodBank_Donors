@@ -86,6 +86,14 @@ class LoginController {
 
       return await _finalizeAuthenticatedSession();
     } on FirebaseAuthException catch (e) {
+      if (e.code == 'network-request-failed') {
+        return LoginResult(
+          success: false,
+          errorType: LoginErrorType.networkOffline,
+          errorTitle: 'No connection',
+          errorMessage: 'No internet connection available',
+        );
+      }
       return LoginResult(
         success: false,
         errorType: LoginErrorType.authException,
@@ -322,10 +330,12 @@ class LoginController {
 
       final lower = msg.toLowerCase();
       if (lower.contains('network') || lower.contains('connection')) {
-        title = 'Connection error';
-        msg =
-            'Unable to connect to the server. Please check your internet '
-            'connection and try again.';
+        return LoginResult(
+          success: false,
+          errorType: LoginErrorType.networkOffline,
+          errorTitle: 'No connection',
+          errorMessage: 'No internet connection available',
+        );
       } else if (lower.contains('awaiting') || lower.contains('approval')) {
         title = 'Account Under Review';
       } else if (lower.contains('not found') || lower.contains('profile')) {

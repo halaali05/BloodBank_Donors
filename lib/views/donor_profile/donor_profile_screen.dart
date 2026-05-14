@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../controllers/donor_profile_controller.dart';
 import '../../models/donor_medical_report.dart';
+import '../../shared/app_status/loading_status_messages.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/error_message_helper.dart';
 import '../../shared/utils/platform_file_reader.dart';
@@ -343,29 +344,20 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
         ),
       ),
       body: _isLoading && _userData == null
-          ? const LoadingIndicator(message: 'Loading your profile...')
+          ? const LoadingIndicator(message: LoadingStatusMessages.loadingData)
           : _error != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.red),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Error: $_error',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.red),
-                    ),
-                    const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: _loadUserProfile,
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              ),
+          ? LoadingIndicator(
+              message: LoadingStatusMessages.looksLikeConnectivityIssue(_error!)
+                  ? LoadingStatusMessages.noInternet
+                  : _error!,
+              messageColor:
+                  LoadingStatusMessages.looksLikeConnectivityIssue(_error!)
+                  ? Colors.deepOrange.shade900
+                  : Colors.red.shade800,
+              showSpinner: false,
+              connectivityIssue:
+                  LoadingStatusMessages.looksLikeConnectivityIssue(_error!),
+              onRetry: _loadUserProfile,
             )
           : RefreshIndicator(
               onRefresh: () async {

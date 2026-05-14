@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../../controllers/admin_controller.dart';
 import '../../models/blood_request_model.dart';
 import '../../models/user_model.dart';
+import '../../shared/app_status/loading_status_messages.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/widgets/common/loading_indicator.dart';
 
 /// Tab 3 — System-wide statistics for Admin
 class AdminStatsTab extends StatelessWidget {
@@ -20,7 +22,10 @@ class AdminStatsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (stats == null) {
-      return const Center(child: Text('No data available'));
+      return const LoadingIndicator(
+        message: LoadingStatusMessages.fetchingReports,
+        color: AppTheme.deepRed,
+      );
     }
     final s = stats!;
 

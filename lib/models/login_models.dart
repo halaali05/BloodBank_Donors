@@ -9,6 +9,7 @@ enum LoginErrorType {
   authException,
   genericError,
   awaitingApproval, // ← جديد: بنك الدم منتظر موافقة الأدمن
+  networkOffline,
 }
 
 /// Result of login operation

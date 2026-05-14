@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../controllers/support_controller.dart';
 import '../../models/support_ticket_model.dart';
+import '../../shared/app_status/loading_status_messages.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/error_message_helper.dart';
 import '../../shared/utils/snack_bar_helper.dart';
+import '../../shared/widgets/common/loading_indicator.dart';
 
 class AdminSupportTab extends StatefulWidget {
   const AdminSupportTab({super.key});
@@ -15,6 +18,7 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
   final SupportController _controller = SupportController();
   List<SupportTicket> _tickets = [];
   bool _isLoading = true;
+  String? _loadError;
   TicketType? _filterType;
 
   @override
@@ -24,26 +28,29 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
   }
 
   Future<void> _load() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       final list = await _controller.fetchAllTickets(filterType: _filterType);
       if (!mounted) return;
       setState(() {
         _tickets = list;
         _isLoading = false;
+        _loadError = null;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
-      SnackBarHelper.failureFrom(context, e);
+      setState(() {
+        _isLoading = false;
+        _loadError = ErrorMessageHelper.humanize(e);
+      });
     }
   }
 
   Future<void> _openReplyDialog(SupportTicket ticket) async {
     final replyCtrl = TextEditingController(text: ticket.adminReply ?? '');
-    TicketStatus selectedStatus = ticket.status == TicketStatus.open
-        ? TicketStatus.inProgress
-        : ticket.status;
 
     await showDialog(
       context: context,
@@ -245,8 +252,31 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
         // القائمة
         Expanded(
           child: _isLoading
-              ? const Center(
-                  child: CircularProgressIndicator(color: AppTheme.deepRed),
+              ? const LoadingIndicator(
+                  message: LoadingStatusMessages.loadingAdminTickets,
+                  color: AppTheme.deepRed,
+                )
+              : _loadError != null
+              ? LoadingIndicator(
+                  message:
+                      LoadingStatusMessages.looksLikeConnectivityIssue(
+                        _loadError!,
+                      )
+                      ? LoadingStatusMessages.noInternet
+                      : _loadError!,
+                  color: AppTheme.deepRed,
+                  messageColor:
+                      LoadingStatusMessages.looksLikeConnectivityIssue(
+                        _loadError!,
+                      )
+                      ? Colors.deepOrange.shade900
+                      : Colors.red.shade800,
+                  showSpinner: false,
+                  connectivityIssue:
+                      LoadingStatusMessages.looksLikeConnectivityIssue(
+                        _loadError!,
+                      ),
+                  onRetry: _load,
                 )
               : _tickets.isEmpty
               ? Center(

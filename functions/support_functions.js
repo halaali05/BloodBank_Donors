@@ -379,8 +379,32 @@ exports.deleteSupportTicket = onCall(publicCallableOpts, async (request) => {
     throw new HttpsError("invalid-argument", "ticketId is required.");
   }
 
+  // Remove every in-app notification tied to this ticket (sender + admin, etc.).
+  const notifSnap = await db
+    .collectionGroup("user_notifications")
+    .where("ticketId", "==", ticketId)
+    .get();
+
+  const batchSize = 500;
+  if (!notifSnap.empty) {
+    for (let i = 0; i < notifSnap.docs.length; i += batchSize) {
+      const batch = db.batch();
+      for (
+        let j = i;
+        j < Math.min(i + batchSize, notifSnap.docs.length);
+        j += 1
+      ) {
+        batch.delete(notifSnap.docs[j].ref);
+      }
+      await batch.commit();
+    }
+  }
+
   await db.collection("supportTickets").doc(ticketId).delete();
-  return { ok: true };
+  return {
+    ok: true,
+    deletedNotifications: notifSnap.docs.length,
+  };
 });
 
 // ─── countOpenTickets ─────────────────────────────────────────────

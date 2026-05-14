@@ -130,12 +130,16 @@ CloudFunctionsService Function() cloudFactory = () => CloudFunctionsService();
         message.notification?.body ??
         'New blood request available';
 
-    final payload = {
+    final payload = <String, dynamic>{
       'type': type,
       'requestId': requestId,
       'senderId': message.data['senderId']?.toString() ?? '',
       'recipientId': message.data['recipientId']?.toString() ?? '',
     };
+    final ticketId = message.data['ticketId']?.toString().trim() ?? '';
+    if (ticketId.isNotEmpty) {
+      payload['ticketId'] = ticketId;
+    }
 
     if (kIsWeb) {
       showWebForegroundNotification(

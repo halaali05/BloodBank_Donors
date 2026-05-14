@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_core/firebase_core.dart' as firebase_core; 
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:bloodbank_donors/models/user_model.dart' as models;
 import 'package:bloodbank_donors/services/auth_service.dart';
@@ -11,8 +10,7 @@ import 'package:bloodbank_donors/services/notification_navigation_service.dart';
 
 // ================= MOCKS =================
 
-class MockFirebaseAuth extends Mock
-    implements firebase.FirebaseAuth {}
+class MockFirebaseAuth extends Mock implements firebase.FirebaseAuth {}
 
 class MockFirebaseUser extends Mock implements firebase.User {}
 
@@ -21,7 +19,6 @@ class MockAuthService extends Mock implements AuthService {}
 // ================= TESTS =================
 
 void main() {
-
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setupFirebaseCoreMocks();
@@ -34,17 +31,13 @@ void main() {
 
   late BuildContext realContext;
 
-  Future<void> pumpTestApp(
-    WidgetTester tester,
-  ) async {
+  Future<void> pumpTestApp(WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
           builder: (context) {
             realContext = context;
-            return const Scaffold(
-              body: Text('test'),
-            );
+            return const Scaffold(body: Text('test'));
           },
         ),
       ),
@@ -64,303 +57,204 @@ void main() {
     service.authServiceFactory = () => mockAuthService;
   });
 
-   setUpAll(() async {
+  setUpAll(() async {
     await Firebase.initializeApp();
- 
   });
-
 
   // ================= PAYLOAD PARSING =================
 
   group('payload parsing', () {
-    testWidgets(
-      'handles valid json payload',
-      (tester) async {
-        await pumpTestApp(tester);
+    testWidgets('handles valid json payload', (tester) async {
+      await pumpTestApp(tester);
 
-        when(() => mockAuth.currentUser)
-            .thenReturn(null);
+      when(() => mockAuth.currentUser).thenReturn(null);
 
-        when(
-          () => mockAuth.authStateChanges(),
-        ).thenAnswer(
-          (_) => const Stream.empty(),
-        );
+      when(
+        () => mockAuth.authStateChanges(),
+      ).thenAnswer((_) => const Stream.empty());
 
-        service.openFromPayloadJson(
-          '''
+      service.openFromPayloadJson('''
           {
             "requestId":"123",
             "type":"request",
             "senderId":"s1",
             "recipientId":"r1"
           }
-          ''',
-        );
+          ''');
 
-        await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-        expect(find.byType(MaterialApp), findsOneWidget);
-      },
-    );
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
 
-    testWidgets(
-      'handles invalid json payload',
-      (tester) async {
-        await pumpTestApp(tester);
+    testWidgets('handles invalid json payload', (tester) async {
+      await pumpTestApp(tester);
 
-        when(() => mockAuth.currentUser)
-            .thenReturn(null);
+      when(() => mockAuth.currentUser).thenReturn(null);
 
-        when(
-          () => mockAuth.authStateChanges(),
-        ).thenAnswer(
-          (_) => const Stream.empty(),
-        );
+      when(
+        () => mockAuth.authStateChanges(),
+      ).thenAnswer((_) => const Stream.empty());
 
-        service.openFromPayloadJson(
-          'INVALID_JSON',
-        );
+      service.openFromPayloadJson('INVALID_JSON');
 
-        await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-        expect(find.byType(MaterialApp), findsOneWidget);
-      },
-    );
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
 
-    testWidgets(
-      'handles plain requestId payload',
-      (tester) async {
-        await pumpTestApp(tester);
+    testWidgets('handles plain requestId payload', (tester) async {
+      await pumpTestApp(tester);
 
-        when(() => mockAuth.currentUser)
-            .thenReturn(null);
+      when(() => mockAuth.currentUser).thenReturn(null);
 
-        when(
-          () => mockAuth.authStateChanges(),
-        ).thenAnswer(
-          (_) => const Stream.empty(),
-        );
+      when(
+        () => mockAuth.authStateChanges(),
+      ).thenAnswer((_) => const Stream.empty());
 
-        service.openFromPayloadJson('123');
+      service.openFromPayloadJson('123');
 
-        await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-        expect(find.byType(MaterialApp), findsOneWidget);
-      },
-    );
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
 
-    testWidgets(
-      'handles empty payload',
-      (tester) async {
-        await pumpTestApp(tester);
+    testWidgets('handles empty payload', (tester) async {
+      await pumpTestApp(tester);
 
-        when(() => mockAuth.currentUser)
-            .thenReturn(null);
+      when(() => mockAuth.currentUser).thenReturn(null);
 
-        when(
-          () => mockAuth.authStateChanges(),
-        ).thenAnswer(
-          (_) => const Stream.empty(),
-        );
+      when(
+        () => mockAuth.authStateChanges(),
+      ).thenAnswer((_) => const Stream.empty());
 
-        service.openFromPayloadJson('');
+      service.openFromPayloadJson('');
 
-        await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-        expect(find.byType(MaterialApp), findsOneWidget);
-      },
-    );
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
   });
 
   // ================= AUTHENTICATION =================
 
   group('authentication handling', () {
-    testWidgets('handles unauthenticated user safely',(tester) async {
-        await pumpTestApp(tester);
+    testWidgets('handles unauthenticated user safely', (tester) async {
+      await pumpTestApp(tester);
 
-        when(() => mockAuth.currentUser)
-            .thenReturn(null);
+      when(() => mockAuth.currentUser).thenReturn(null);
 
-        when(
-          () => mockAuth.authStateChanges(),
-        ).thenAnswer(
-          (_) => const Stream.empty(),
-        );
+      when(
+        () => mockAuth.authStateChanges(),
+      ).thenAnswer((_) => const Stream.empty());
 
-        service.openFromData({
-          'type': 'request',
-        });
+      service.openFromData({'type': 'request'});
 
-        await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-        expect(find.byType(MaterialApp), findsOneWidget);
-      },
-    );
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
 
-    testWidgets('handles getIdToken failure',(tester) async {
-        await pumpTestApp(tester);
+    testWidgets('handles getIdToken failure', (tester) async {
+      await pumpTestApp(tester);
 
-        when(() => mockAuth.currentUser)
-            .thenReturn(mockUser);
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
 
-        when(
-          () => mockUser.getIdToken(),
-        ).thenThrow(Exception());
+      when(() => mockUser.getIdToken()).thenThrow(Exception());
 
-        when(
-          () => mockAuth.authStateChanges(),
-        ).thenAnswer(
-          (_) => const Stream.empty(),
-        );
+      when(
+        () => mockAuth.authStateChanges(),
+      ).thenAnswer((_) => const Stream.empty());
 
-        service.openFromData({
-          'type': 'request',
-        });
+      service.openFromData({'type': 'request'});
 
-        await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-        expect(find.byType(MaterialApp), findsOneWidget);
-      },
-    );
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
 
-    testWidgets('handles authStateChanges recovery',(tester) async {
-        await pumpTestApp(tester);
+    testWidgets('handles authStateChanges recovery', (tester) async {
+      await pumpTestApp(tester);
 
-        when(() => mockAuth.currentUser)
-            .thenReturn(null);
+      when(() => mockAuth.currentUser).thenReturn(null);
 
-        when(
-          () => mockAuth.authStateChanges(),
-        ).thenAnswer(
-          (_) => Stream.value(mockUser),
-        );
+      when(
+        () => mockAuth.authStateChanges(),
+      ).thenAnswer((_) => Stream.value(mockUser));
 
-        when(() => mockUser.uid)
-            .thenReturn('u1');
+      when(() => mockUser.uid).thenReturn('u1');
 
-        when(
-          () => mockUser.getIdToken(),
-        ).thenAnswer(
-          (_) async => 'TOKEN',
-        );
+      when(() => mockUser.getIdToken()).thenAnswer((_) async => 'TOKEN');
 
-        when(
-          () => mockAuthService.getUserData(
-            any(),
-          ),
-        ).thenAnswer(
-          (_) async => models.User(
-            uid: 'u1',
-            email: 't@test.com',
-            role: models.UserRole.donor,
-          ),
-        );
+      when(() => mockAuthService.getUserData(any())).thenAnswer(
+        (_) async => models.User(
+          uid: 'u1',
+          email: 't@test.com',
+          role: models.UserRole.donor,
+        ),
+      );
 
-        service.openFromData({
-          'type': 'request',
-          'requestId': '123',
-        });
+      service.openFromData({'type': 'request', 'requestId': '123'});
 
-        await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-        expect(find.byType(MaterialApp), findsOneWidget);
-      },
-    );
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
   });
 
   // ================= USER DATA =================
 
   group('user data handling', () {
-    testWidgets(
-      'handles null userData safely',
-      (tester) async {
-        await pumpTestApp(tester);
+    testWidgets('handles null userData safely', (tester) async {
+      await pumpTestApp(tester);
 
-        when(() => mockAuth.currentUser)
-            .thenReturn(mockUser);
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
 
-        when(() => mockUser.uid)
-            .thenReturn('u1');
+      when(() => mockUser.uid).thenReturn('u1');
 
-        when(
-          () => mockUser.getIdToken(),
-        ).thenAnswer(
-          (_) async => 'TOKEN',
-        );
-
-        when(
-          () => mockAuthService.getUserData(
-            any(),
-          ),
-        ).thenAnswer(
-          (_) async => null,
-        );
-
-        service.openFromData({
-          'type': 'request',
-        });
-
-        await tester.pumpAndSettle();
-
-        expect(find.byType(MaterialApp), findsOneWidget);
-      },
-    );
-
-    testWidgets(
-      'handles getUserData exception safely',
-      (tester) async {
-        await pumpTestApp(tester);
-
-        when(() => mockAuth.currentUser)
-            .thenReturn(mockUser);
-
-        when(() => mockUser.uid)
-            .thenReturn('u1');
-
-        when(
-          () => mockUser.getIdToken(),
-        ).thenAnswer(
-          (_) async => 'TOKEN',
-        );
-
-        when(
-          () => mockAuthService.getUserData(
-            any(),
-          ),
-        ).thenThrow(Exception());
-
-        service.openFromData({
-          'type': 'request',
-        });
-
-        await tester.pumpAndSettle();
-
-        expect(find.byType(MaterialApp), findsOneWidget);
-      },
-    );
-  });
-
-    // ================= NOTIFICATION TYPES =================
-
-  group('notification type handling', () {
-
-    Future<void> mockAuthenticatedDonor() async {
-      when(() => mockAuth.currentUser)
-          .thenReturn(mockUser);
-
-      when(() => mockUser.uid)
-          .thenReturn('u1');
-
-      when(
-        () => mockUser.getIdToken(),
-      ).thenAnswer(
-        (_) async => 'TOKEN',
-      );
+      when(() => mockUser.getIdToken()).thenAnswer((_) async => 'TOKEN');
 
       when(
         () => mockAuthService.getUserData(any()),
-      ).thenAnswer(
+      ).thenAnswer((_) async => null);
+
+      service.openFromData({'type': 'request'});
+
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
+
+    testWidgets('handles getUserData exception safely', (tester) async {
+      await pumpTestApp(tester);
+
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
+
+      when(() => mockUser.uid).thenReturn('u1');
+
+      when(() => mockUser.getIdToken()).thenAnswer((_) async => 'TOKEN');
+
+      when(() => mockAuthService.getUserData(any())).thenThrow(Exception());
+
+      service.openFromData({'type': 'request'});
+
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
+  });
+
+  // ================= NOTIFICATION TYPES =================
+
+  group('notification type handling', () {
+    Future<void> mockAuthenticatedDonor() async {
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
+
+      when(() => mockUser.uid).thenReturn('u1');
+
+      when(() => mockUser.getIdToken()).thenAnswer((_) async => 'TOKEN');
+
+      when(() => mockAuthService.getUserData(any())).thenAnswer(
         (_) async => models.User(
           uid: 'u1',
           email: 'donor@test.com',
@@ -370,21 +264,13 @@ void main() {
     }
 
     Future<void> mockAuthenticatedHospital() async {
-      when(() => mockAuth.currentUser)
-          .thenReturn(mockUser);
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
 
-      when(() => mockUser.uid)
-          .thenReturn('u1');
+      when(() => mockUser.uid).thenReturn('u1');
 
-      when(
-        () => mockUser.getIdToken(),
-      ).thenAnswer(
-        (_) async => 'TOKEN',
-      );
+      when(() => mockUser.getIdToken()).thenAnswer((_) async => 'TOKEN');
 
-      when(
-        () => mockAuthService.getUserData(any()),
-      ).thenAnswer(
+      when(() => mockAuthService.getUserData(any())).thenAnswer(
         (_) async => models.User(
           uid: 'u1',
           email: 'hospital@test.com',
@@ -395,405 +281,293 @@ void main() {
       );
     }
 
-   testWidgets('handles account_approved for hospital', (tester) async {
-    await pumpTestApp(tester);
+    testWidgets('handles account_approved for hospital', (tester) async {
+      await pumpTestApp(tester);
 
-    await mockAuthenticatedHospital();
+      await mockAuthenticatedHospital();
 
-    service.openFromData({
-      'type': 'account_approved',
+      service.openFromData({'type': 'account_approved'});
+
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.byType(MaterialApp), findsOneWidget);
     });
 
-    await tester.pump();
-    await tester.pump(
-      const Duration(seconds: 1),
-    );
+    testWidgets('handles account_rejected notification', (tester) async {
+      await pumpTestApp(tester);
 
-    expect(find.byType(MaterialApp),
-        findsOneWidget);
-  },
-);
-   
-    testWidgets('handles account_rejected notification',(tester) async {
-        await pumpTestApp(tester);
+      await mockAuthenticatedDonor();
 
-        await mockAuthenticatedDonor();
+      service.openFromData({'type': 'account_rejected'});
 
-        service.openFromData({
-          'type': 'account_rejected',
-        });
+      await tester.pumpAndSettle();
 
-        await tester.pumpAndSettle();
-
-        expect(find.text('Registration Not Approved'),
-            findsOneWidget);
-      },
-    );
+      expect(find.text('Registration Not Approved'), findsOneWidget);
+    });
 
     testWidgets('handles chat notification', (tester) async {
-        await pumpTestApp(tester);
+      await pumpTestApp(tester);
 
-        await mockAuthenticatedDonor();
+      await mockAuthenticatedDonor();
 
-        service.openFromData({
-          'type': 'chat',
-          'requestId': 'req1',
-          'senderId': 'sender1',
-        });
+      service.openFromData({
+        'type': 'chat',
+        'requestId': 'req1',
+        'senderId': 'sender1',
+      });
 
-        await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-        expect(find.byType(MaterialApp), findsOneWidget);
-      },
-    );
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
 
-    testWidgets('handles appointment_scheduled for donor',(tester) async {
-        await pumpTestApp(tester);
+    testWidgets('handles appointment_scheduled for donor', (tester) async {
+      await pumpTestApp(tester);
 
-        await mockAuthenticatedDonor();
+      await mockAuthenticatedDonor();
 
-        service.openFromData({
-          'type': 'appointment_scheduled',
-          'requestId': 'req1',
-        });
+      service.openFromData({
+        'type': 'appointment_scheduled',
+        'requestId': 'req1',
+      });
 
-        await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-        expect(find.byType(MaterialApp), findsOneWidget);
-      },
-    );
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
 
     testWidgets('handles medical_report_saved for donor', (tester) async {
-        await pumpTestApp(tester);
+      await pumpTestApp(tester);
 
-        await mockAuthenticatedDonor();
+      await mockAuthenticatedDonor();
 
-        service.openFromData({
-          'type': 'medical_report_saved',
-        });
+      service.openFromData({'type': 'medical_report_saved'});
 
-        await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-        expect(find.byType(MaterialApp), findsOneWidget);
-      },
-    );
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
 
-    testWidgets('handles request notification',(tester) async {
-        await pumpTestApp(tester);
+    testWidgets('handles support_reply notification', (tester) async {
+      await pumpTestApp(tester);
 
-        await mockAuthenticatedDonor();
+      await mockAuthenticatedDonor();
 
-        service.openFromData({
-          'type': 'request',
-          'requestId': 'req123',
-        });
+      service.openFromData({
+        'type': 'support_reply',
+        'ticketId': 'ticket-abc',
+      });
 
-        await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
 
-        expect(find.byType(MaterialApp), findsOneWidget);
-      },
-    );
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
+
+    testWidgets('handles request notification', (tester) async {
+      await pumpTestApp(tester);
+
+      await mockAuthenticatedDonor();
+
+      service.openFromData({'type': 'request', 'requestId': 'req123'});
+
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
 
     testWidgets('handles unknown notification type for donor', (tester) async {
-        await pumpTestApp(tester);
+      await pumpTestApp(tester);
 
-        await mockAuthenticatedDonor();
+      await mockAuthenticatedDonor();
 
-        service.openFromData({
-          'type': 'unknown_type',
-        });
+      service.openFromData({'type': 'unknown_type'});
 
-        await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-        expect(find.byType(MaterialApp), findsOneWidget);
-      },
-    );
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
 
-  
     testWidgets('handles non notification tap navigation', (tester) async {
-    await pumpTestApp(tester);
+      await pumpTestApp(tester);
 
-    await mockAuthenticatedDonor();
+      await mockAuthenticatedDonor();
 
-    service.openFromData(
-      {
+      service.openFromData({
         'type': 'chat',
         'requestId': '123',
-      },
-      fromNotificationTap: false,
-    );
+      }, fromNotificationTap: false);
 
-    await tester.pump();
-    await tester.pump(
-      const Duration(seconds: 1),
-    );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
 
-    expect(find.byType(MaterialApp),
-        findsOneWidget);
-  },
-);
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
 
     testWidgets('handles empty requestId', (tester) async {
-    await pumpTestApp(tester);
+      await pumpTestApp(tester);
 
-    await mockAuthenticatedDonor();
+      await mockAuthenticatedDonor();
 
-    service.openFromData({
-      'type': 'chat',
-      'requestId': '',
+      service.openFromData({'type': 'chat', 'requestId': ''});
+
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.byType(MaterialApp), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 2));
+
+      // dispose tree
+      await tester.pumpWidget(const SizedBox());
     });
 
-    await tester.pump(
-      const Duration(seconds: 1),
-    );
+    testWidgets('handles unknown notification for hospital', (tester) async {
+      await pumpTestApp(tester);
 
-    expect(find.byType(MaterialApp),
-        findsOneWidget);
+      await mockAuthenticatedHospital();
 
-         await tester.pump(
-      const Duration(seconds: 2),
-    );
+      service.openFromData({'type': 'unknown'});
 
-    // dispose tree
-    await tester.pumpWidget(
-      const SizedBox(),
-    );
-  },
-);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
 
-    testWidgets('handles unknown notification for hospital',(tester) async {
-    await pumpTestApp(tester);
+      expect(find.byType(MaterialApp), findsOneWidget);
 
-    await mockAuthenticatedHospital();
+      await tester.pump(const Duration(seconds: 2));
 
-    service.openFromData({
-      'type': 'unknown',
+      await tester.pumpWidget(const SizedBox());
     });
-
-    await tester.pump();
-    await tester.pump(
-      const Duration(seconds: 1),
-    );
-
-    expect(find.byType(MaterialApp),
-        findsOneWidget);
-
-    await tester.pump(
-      const Duration(seconds: 2),
-    );
-
-    await tester.pumpWidget(
-      const SizedBox(),
-    );
-  },
-);
 
     testWidgets('handles authStateChanges exception', (tester) async {
-    await pumpTestApp(tester);
+      await pumpTestApp(tester);
 
-    when(() => mockAuth.currentUser)
-        .thenReturn(null);
+      when(() => mockAuth.currentUser).thenReturn(null);
 
-    when(
-      () => mockAuth.authStateChanges(),
-    ).thenThrow(Exception());
+      when(() => mockAuth.authStateChanges()).thenThrow(Exception());
 
-    service.openFromData({
-      'type': 'request',
+      service.openFromData({'type': 'request'});
+
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.byType(MaterialApp), findsOneWidget);
     });
 
-    await tester.pump(
-      const Duration(seconds: 1),
-    );
+    testWidgets('handles malformed payload map', (tester) async {
+      await pumpTestApp(tester);
 
-    expect(find.byType(MaterialApp),
-        findsOneWidget);
-  },
-);
+      when(() => mockAuth.currentUser).thenReturn(null);
 
-    testWidgets('handles malformed payload map',(tester) async {
-    await pumpTestApp(tester);
+      when(
+        () => mockAuth.authStateChanges(),
+      ).thenAnswer((_) => const Stream.empty());
 
-    when(() => mockAuth.currentUser)
-        .thenReturn(null);
+      service.openFromPayloadJson('{"bad_json":true}');
 
-    when(
-      () => mockAuth.authStateChanges(),
-    ).thenAnswer(
-      (_) => const Stream.empty(),
-    );
+      await tester.pump(const Duration(seconds: 1));
 
-    service.openFromPayloadJson(
-      '{"bad_json":true}',
-    );
-
-    await tester.pump(
-      const Duration(seconds: 1),
-    );
-
-    expect(find.byType(MaterialApp),
-        findsOneWidget);
-  },
-);
-
-testWidgets('handles donor fallback navigation',(tester) async {
-    await pumpTestApp(tester);
-
-    await mockAuthenticatedDonor();
-
-    service.openFromData({
-      'type': 'unknown',
+      expect(find.byType(MaterialApp), findsOneWidget);
     });
 
-    await tester.pump();
-    await tester.pump(
-      const Duration(milliseconds: 200),
-    );
+    testWidgets('handles donor fallback navigation', (tester) async {
+      await pumpTestApp(tester);
 
-    expect(find.byType(MaterialApp),
-        findsOneWidget);
+      await mockAuthenticatedDonor();
 
-     await tester.pump(
-      const Duration(seconds: 2),
-    );
+      service.openFromData({'type': 'unknown'});
 
-    await tester.pumpWidget(
-      const SizedBox(),
-    );
-  },
-);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
 
-testWidgets('handles hospital with null fields',(tester) async {
-    await pumpTestApp(tester);
+      expect(find.byType(MaterialApp), findsOneWidget);
 
-    when(() => mockAuth.currentUser)
-        .thenReturn(mockUser);
+      await tester.pump(const Duration(seconds: 2));
 
-    when(() => mockUser.uid)
-        .thenReturn('u1');
-
-    when(
-      () => mockUser.getIdToken(),
-    ).thenAnswer(
-      (_) async => 'TOKEN',
-    );
-
-    when(
-      () => mockAuthService.getUserData(any()),
-    ).thenAnswer(
-      (_) async => models.User(
-        uid: 'u1',
-        email: 'hospital@test.com',
-        role: models.UserRole.hospital,
-      ),
-    );
-
-    service.openFromData({
-      'type': 'unknown',
+      await tester.pumpWidget(const SizedBox());
     });
 
-    await tester.pump();
-    await tester.pump(
-      const Duration(milliseconds: 200),
-    );
+    testWidgets('handles hospital with null fields', (tester) async {
+      await pumpTestApp(tester);
 
-    expect(find.byType(MaterialApp),
-        findsOneWidget);
+      when(() => mockAuth.currentUser).thenReturn(mockUser);
 
-      await tester.pump(
-      const Duration(seconds: 2),
-    );
+      when(() => mockUser.uid).thenReturn('u1');
 
-    await tester.pumpWidget(
-      const SizedBox(),
-    );
-  },
-);
+      when(() => mockUser.getIdToken()).thenAnswer((_) async => 'TOKEN');
 
-testWidgets('handles malformed notification data', (tester) async {
-    await pumpTestApp(tester);
+      when(() => mockAuthService.getUserData(any())).thenAnswer(
+        (_) async => models.User(
+          uid: 'u1',
+          email: 'hospital@test.com',
+          role: models.UserRole.hospital,
+        ),
+      );
 
-    await mockAuthenticatedDonor();
+      service.openFromData({'type': 'unknown'});
 
-    service.openFromData({
-      'type': null,
-      'requestId': null,
-      'senderId': null,
-      'recipientId': null,
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.byType(MaterialApp), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 2));
+
+      await tester.pumpWidget(const SizedBox());
     });
 
-    await tester.pump(
-      const Duration(milliseconds: 300),
-    );
+    testWidgets('handles malformed notification data', (tester) async {
+      await pumpTestApp(tester);
 
-    expect(find.byType(MaterialApp),
-        findsOneWidget);
+      await mockAuthenticatedDonor();
 
-      await tester.pump(
-      const Duration(seconds: 2),
-    );  
+      service.openFromData({
+        'type': null,
+        'requestId': null,
+        'senderId': null,
+        'recipientId': null,
+      });
 
-    await tester.pumpWidget(
-      const SizedBox(),
-    );
-  },
-);
+      await tester.pump(const Duration(milliseconds: 300));
 
-testWidgets('handles invalid token after authStateChanges', (tester) async {
-    await pumpTestApp(tester);
+      expect(find.byType(MaterialApp), findsOneWidget);
 
-    when(() => mockAuth.currentUser)
-        .thenReturn(null);
+      await tester.pump(const Duration(seconds: 2));
 
-    when(
-      () => mockAuth.authStateChanges(),
-    ).thenAnswer(
-      (_) => Stream.value(mockUser),
-    );
-
-    when(
-      () => mockUser.getIdToken(),
-    ).thenThrow(Exception());
-
-    service.openFromData({
-      'type': 'request',
+      await tester.pumpWidget(const SizedBox());
     });
 
-    await tester.pump(
-      const Duration(seconds: 1),
-    );
+    testWidgets('handles invalid token after authStateChanges', (tester) async {
+      await pumpTestApp(tester);
 
-    expect(find.byType(MaterialApp),
-        findsOneWidget);
-  },
-);
+      when(() => mockAuth.currentUser).thenReturn(null);
 
-testWidgets('handles json list payload',(tester) async {
-    await pumpTestApp(tester);
+      when(
+        () => mockAuth.authStateChanges(),
+      ).thenAnswer((_) => Stream.value(mockUser));
 
-    when(() => mockAuth.currentUser)
-        .thenReturn(null);
+      when(() => mockUser.getIdToken()).thenThrow(Exception());
 
-    when(
-      () => mockAuth.authStateChanges(),
-    ).thenAnswer(
-      (_) => const Stream.empty(),
-    );
+      service.openFromData({'type': 'request'});
 
-    service.openFromPayloadJson(
-      '["123"]',
-    );
+      await tester.pump(const Duration(seconds: 1));
 
-    await tester.pump(
-      const Duration(seconds: 1),
-    );
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
 
-    expect(find.byType(MaterialApp),
-        findsOneWidget);
-  },
-);
+    testWidgets('handles json list payload', (tester) async {
+      await pumpTestApp(tester);
 
+      when(() => mockAuth.currentUser).thenReturn(null);
+
+      when(
+        () => mockAuth.authStateChanges(),
+      ).thenAnswer((_) => const Stream.empty());
+
+      service.openFromPayloadJson('["123"]');
+
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.byType(MaterialApp), findsOneWidget);
+    });
   });
-
-
- }
+}

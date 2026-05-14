@@ -4,8 +4,11 @@ import '../../controllers/support_controller.dart';
 import '../../models/blood_request_model.dart';
 import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
+import '../../shared/app_status/loading_status_messages.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/error_message_helper.dart';
 import '../../shared/utils/snack_bar_helper.dart';
+import '../../shared/widgets/common/loading_indicator.dart';
 import '../auth/login_screen.dart';
 import 'admin_approvals_tab.dart'; // ← جديد
 import 'admin_support_tab.dart'; // ← قسم الدعم والشكاوي
@@ -37,6 +40,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   int _openTicketsCount = 0;
 
   bool _isLoading = true;
+  String? _loadError;
   String _requestFilter = 'all';
   String _donorFilter = 'all';
 
@@ -54,7 +58,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       final requests = await _controller.fetchAllRequests();
       final donors = await _controller.fetchDonors();
@@ -80,11 +87,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _applyRequestFilter(_requestFilter);
         _applyDonorFilter(_donorFilter);
         _isLoading = false;
+        _loadError = null;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
-      SnackBarHelper.failureFrom(context, e);
+      setState(() {
+        _isLoading = false;
+        _loadError = ErrorMessageHelper.humanize(e);
+      });
     }
   }
 
@@ -362,8 +372,26 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         ),
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppTheme.deepRed),
+          ? const LoadingIndicator(
+              message: LoadingStatusMessages.loadingData,
+              color: AppTheme.deepRed,
+            )
+          : _loadError != null
+          ? LoadingIndicator(
+              message: LoadingStatusMessages.looksLikeConnectivityIssue(
+                    _loadError!,
+                  )
+                  ? LoadingStatusMessages.noInternet
+                  : _loadError!,
+              color: AppTheme.deepRed,
+              messageColor:
+                  LoadingStatusMessages.looksLikeConnectivityIssue(_loadError!)
+                  ? Colors.deepOrange.shade900
+                  : Colors.red.shade800,
+              showSpinner: false,
+              connectivityIssue:
+                  LoadingStatusMessages.looksLikeConnectivityIssue(_loadError!),
+              onRetry: _loadData,
             )
           : TabBarView(
               controller: _tabController,

@@ -2,15 +2,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../controllers/notifications_controller.dart';
+import '../shared/app_status/loading_status_messages.dart';
 import '../shared/theme/app_theme.dart';
 import '../shared/widgets/common/app_bar_with_logo.dart';
 import '../shared/widgets/common/loading_indicator.dart';
-import '../shared/widgets/common/error_box.dart';
 import '../shared/widgets/notifications/notification_item_cloud.dart';
 import '../shared/utils/error_message_helper.dart';
 import '../shared/utils/snack_bar_helper.dart';
 
-/// In-app alerts (all / unread). Loads through Cloud Functions and refreshes on a timer.
+/// In-app alerts (all / unread). Loads via Cloud Functions (stale cleanup) and
+/// subscribes to Firestore for instant list sync when documents change.
 class NotificationsScreen extends StatefulWidget {
   /// 0 = All, 1 = Unread.
   final int initialTabIndex;
@@ -26,6 +27,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   final NotificationsController _controller = NotificationsController();
 
   Timer? _refreshTimer;
+  StreamSubscription<List<Map<String, dynamic>>>? _notifSub;
   List<Map<String, dynamic>> _notifications = [];
   bool _isLoading = true;
   bool _isMarkingAll = false;
@@ -42,14 +44,12 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     );
     _loadNotifications();
 
-    // Ensure tab is set to the correct index after the first frame
-    // This handles cases where the widget is rebuilt or navigation happens
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && widget.initialTabIndex != 0) {
-        // Use a small delay to ensure the TabBarView is fully built
+      if (!mounted) return;
+      _subscribeRealtimeNotifications();
+      if (widget.initialTabIndex != 0) {
         Future.delayed(const Duration(milliseconds: 100), () {
           if (mounted && widget.initialTabIndex < _tabController.length) {
-            // Always animate to the initial tab index to ensure it's set correctly
             _tabController.animateTo(widget.initialTabIndex);
           }
         });
@@ -79,9 +79,29 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
   @override
   void dispose() {
+    _notifSub?.cancel();
     _refreshTimer?.cancel();
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _subscribeRealtimeNotifications() {
+    final uid = _controller.getCurrentUser()?.uid;
+    if (uid == null) return;
+    _notifSub?.cancel();
+    _notifSub = NotificationsController.watchMyNotifications(uid).listen(
+      (list) {
+        if (!mounted) return;
+        setState(() {
+          _notifications = list;
+          _isLoading = false;
+          _error = null;
+        });
+      },
+      onError: (Object e, StackTrace st) {
+        debugPrint('Notifications realtime listener: $e');
+      },
+    );
   }
 
   // ------------------ Data Loading ------------------
@@ -137,10 +157,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     try {
       await _controller.markAllAsRead();
       if (!mounted) return;
-
-      unawaited(_loadNotifications(showLoading: false));
-
-      if (!mounted) return;
       SnackBarHelper.success(context, 'All notifications marked as read');
     } catch (e) {
       if (!mounted) return;
@@ -169,23 +185,20 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     if (!changed) return;
 
     unawaited(
-      _controller
-          .markAsRead(notificationId)
-          .then((_) => _loadNotifications(showLoading: false))
-          .catchError((Object err) {
-            if (!mounted) return;
-            setState(() {
-              _notifications = _notifications.map((n) {
-                final id =
-                    (n['id'] as String?) ??
-                    (n['notificationId'] as String?) ??
-                    '';
-                if (id != notificationId) return n;
-                return {...n, 'read': false, 'isRead': false};
-              }).toList();
-            });
-            SnackBarHelper.failureFrom(context, err);
-          }),
+      _controller.markAsRead(notificationId).catchError((Object err) {
+        if (!mounted) return;
+        setState(() {
+          _notifications = _notifications.map((n) {
+            final id =
+                (n['id'] as String?) ??
+                (n['notificationId'] as String?) ??
+                '';
+            if (id != notificationId) return n;
+            return {...n, 'read': false, 'isRead': false};
+          }).toList();
+        });
+        SnackBarHelper.failureFrom(context, err);
+      }),
     );
   }
 
@@ -272,9 +285,23 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           ),
         ),
         body: _isLoading && _notifications.isEmpty
-            ? const LoadingIndicator()
+            ? const LoadingIndicator(message: LoadingStatusMessages.loadingData)
             : _error != null
-            ? ErrorBox(title: 'Error loading notifications', message: _error!)
+            ? LoadingIndicator(
+                message: LoadingStatusMessages.looksLikeConnectivityIssue(
+                      _error!,
+                    )
+                    ? LoadingStatusMessages.noInternet
+                    : _error!,
+                messageColor:
+                    LoadingStatusMessages.looksLikeConnectivityIssue(_error!)
+                    ? Colors.deepOrange.shade900
+                    : Colors.red.shade800,
+                showSpinner: false,
+                connectivityIssue:
+                    LoadingStatusMessages.looksLikeConnectivityIssue(_error!),
+                onRetry: () => _loadNotifications(),
+              )
             : RefreshIndicator(
                 onRefresh: _loadNotifications,
                 child: _notifications.isEmpty

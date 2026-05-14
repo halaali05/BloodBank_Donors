@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../controllers/support_controller.dart';
 import '../../models/support_ticket_model.dart';
+import '../../shared/app_status/loading_status_messages.dart';
 import '../../shared/theme/app_theme.dart';
-import '../../shared/utils/snack_bar_helper.dart';
+import '../../shared/utils/error_message_helper.dart';
+import '../../shared/widgets/common/app_loading_overlay.dart';
+import '../../shared/widgets/common/loading_indicator.dart';
 
 /// شاشة الدعم والشكاوي — للمتبرعين وبنوك الدم
 class SupportScreen extends StatefulWidget {
@@ -123,6 +126,9 @@ class _NewTicketTabState extends State<_NewTicketTab> {
   final _messageCtrl = TextEditingController();
   TicketType _selectedType = TicketType.help;
   bool _isSubmitting = false;
+  bool _submitSuccessFlash = false;
+  String? _submitOverlayMessage;
+  bool _submitOverlayIsError = false;
 
   @override
   void dispose() {
@@ -133,7 +139,11 @@ class _NewTicketTabState extends State<_NewTicketTab> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _isSubmitting = true);
+    setState(() {
+      _isSubmitting = true;
+      _submitOverlayMessage = LoadingStatusMessages.submittingReport;
+      _submitOverlayIsError = false;
+    });
     try {
       await widget.controller.submitTicket(
         type: _selectedType,
@@ -143,27 +153,40 @@ class _NewTicketTabState extends State<_NewTicketTab> {
         senderName: widget.senderName,
       );
       if (!mounted) return;
-      SnackBarHelper.success(
-        context,
-        'Your ticket has been submitted. We\'ll get back to you soon.',
-      );
+      setState(() {
+        _isSubmitting = false;
+        _submitSuccessFlash = true;
+        _submitOverlayMessage = LoadingStatusMessages.ticketSubmittedBrief;
+        _submitOverlayIsError = false;
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 1600));
+      if (!mounted) return;
       _subjectCtrl.clear();
       _messageCtrl.clear();
-      setState(() => _selectedType = TicketType.help);
+      setState(() {
+        _submitOverlayMessage = null;
+        _submitSuccessFlash = false;
+        _selectedType = TicketType.help;
+      });
       widget.onSubmitted();
     } catch (e) {
       if (!mounted) return;
-      SnackBarHelper.failureFrom(context, e);
-    } finally {
-      if (mounted) setState(() => _isSubmitting = false);
+      setState(() {
+        _isSubmitting = false;
+        _submitSuccessFlash = false;
+        _submitOverlayMessage = LoadingStatusMessages.failedSubmitReport;
+        _submitOverlayIsError = true;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Form(
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Form(
         key: _formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -303,7 +326,8 @@ class _NewTicketTabState extends State<_NewTicketTab> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: _isSubmitting ? null : _submit,
+                onPressed:
+                    (_isSubmitting || _submitSuccessFlash) ? null : _submit,
                 icon: _isSubmitting
                     ? const SizedBox(
                         width: 16,
@@ -330,6 +354,19 @@ class _NewTicketTabState extends State<_NewTicketTab> {
           ],
         ),
       ),
+        ),
+        if (_isSubmitting || _submitOverlayMessage != null)
+          AppLoadingOverlay(
+            visible: true,
+            showProgress: _isSubmitting,
+            message: _submitOverlayMessage ??
+                LoadingStatusMessages.submittingReport,
+            isError: !_isSubmitting && _submitOverlayIsError,
+            isSuccess: !_isSubmitting && _submitSuccessFlash,
+            progressColor: AppTheme.deepRed,
+            onRetry: (!_isSubmitting && _submitOverlayIsError) ? _submit : null,
+          ),
+      ],
     );
   }
 
@@ -374,6 +411,7 @@ class _MyTicketsTab extends StatefulWidget {
 class _MyTicketsTabState extends State<_MyTicketsTab> {
   List<SupportTicket> _tickets = [];
   bool _isLoading = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -382,7 +420,10 @@ class _MyTicketsTabState extends State<_MyTicketsTab> {
   }
 
   Future<void> _load() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       final list = await widget.controller.fetchMyTickets();
       if (!mounted) return;
@@ -392,16 +433,37 @@ class _MyTicketsTabState extends State<_MyTicketsTab> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
-      SnackBarHelper.failureFrom(context, e);
+      setState(() {
+        _isLoading = false;
+        _loadError = ErrorMessageHelper.humanize(e);
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppTheme.deepRed),
+      return const LoadingIndicator(
+        message: LoadingStatusMessages.loadingData,
+        color: AppTheme.deepRed,
+      );
+    }
+
+    if (_loadError != null) {
+      return LoadingIndicator(
+        message: LoadingStatusMessages.looksLikeConnectivityIssue(_loadError!)
+            ? LoadingStatusMessages.noInternet
+            : _loadError!,
+        color: AppTheme.deepRed,
+        messageColor: LoadingStatusMessages.looksLikeConnectivityIssue(
+              _loadError!,
+            )
+            ? Colors.deepOrange.shade900
+            : Colors.red.shade800,
+        showSpinner: false,
+        connectivityIssue:
+            LoadingStatusMessages.looksLikeConnectivityIssue(_loadError!),
+        onRetry: _load,
       );
     }
 

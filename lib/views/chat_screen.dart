@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../controllers/chat_controller.dart';
-import '../shared/utils/snack_bar_helper.dart';
-import '../shared/widgets/common/error_box.dart';
+import '../shared/app_status/loading_status_messages.dart';
+import '../shared/utils/error_message_helper.dart';
 import '../shared/widgets/common/loading_indicator.dart';
 import '../shared/widgets/chat/message_bubble.dart';
 import '../shared/widgets/chat/chat_input_field.dart';
@@ -54,6 +54,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isSending = false;
   String? _error;
   bool _didAutoSendInitialMessage = false;
+  String? _sendHint;
+  bool _sendHintIsError = false;
 
   /// Blood bank user id for routing outgoing messages.
   String? _requestOwnerId;
@@ -137,7 +139,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString().replaceFirst('Exception: ', '');
+          _error = ErrorMessageHelper.humanize(e);
           if (showLoading) _isLoading = false;
         });
       }
@@ -155,15 +157,18 @@ class _ChatScreenState extends State<ChatScreen> {
     final currentUser = _controller.getCurrentUser();
     if (text.isEmpty || currentUser == null || _isSending) return;
 
-    setState(() => _isSending = true);
+    setState(() {
+      _isSending = true;
+      _sendHint = null;
+    });
     _sendWatchdogTimer?.cancel();
     _sendWatchdogTimer = Timer(const Duration(seconds: 12), () {
       if (!mounted || !_isSending) return;
-      setState(() => _isSending = false);
-      SnackBarHelper.notice(
-        context,
-        'Message send is taking too long. Please try again.',
-      );
+      setState(() {
+        _isSending = false;
+        _sendHint = 'Message send is taking too long. Please try again.';
+        _sendHintIsError = true;
+      });
     });
 
     try {
@@ -186,24 +191,24 @@ class _ChatScreenState extends State<ChatScreen> {
       unawaited(_loadMessages(showLoading: false));
 
       if (mounted) {
-        SnackBarHelper.success(
-          context,
-          'Message sent',
-          duration: const Duration(seconds: 1),
-        );
+        setState(() {
+          _sendHint = 'Message sent';
+          _sendHintIsError = false;
+        });
+        Future<void>.delayed(const Duration(seconds: 2), () {
+          if (mounted &&
+              _sendHint == 'Message sent' &&
+              !_sendHintIsError) {
+            setState(() => _sendHint = null);
+          }
+        });
       }
     } catch (e) {
       if (mounted) {
-        SnackBarHelper.failure(
-          context,
-          'Failed to send message: '
-          '${SnackBarHelper.stripExceptionPrefix(e.toString())}',
-          action: SnackBarAction(
-            label: 'Retry',
-            textColor: Colors.white,
-            onPressed: _sendMessage,
-          ),
-        );
+        setState(() {
+          _sendHint = ErrorMessageHelper.humanize(e);
+          _sendHintIsError = true;
+        });
       }
     } finally {
       _sendWatchdogTimer?.cancel();
@@ -240,12 +245,26 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: _isLoading && _messages.isEmpty
                   ? const LoadingIndicator(
-                      message: 'Loading conversation...',
+                      message: LoadingStatusMessages.loadingData,
                     )
                   : _error != null
-                  ? ErrorBox(
-                      title: 'Error loading messages',
-                      message: _error!,
+                  ? LoadingIndicator(
+                      message: LoadingStatusMessages.looksLikeConnectivityIssue(
+                            _error!,
+                          )
+                          ? LoadingStatusMessages.noInternet
+                          : _error!,
+                      messageColor:
+                          LoadingStatusMessages.looksLikeConnectivityIssue(
+                            _error!,
+                          )
+                          ? Colors.deepOrange.shade900
+                          : Colors.red.shade800,
+                      showSpinner: false,
+                      connectivityIssue:
+                          LoadingStatusMessages.looksLikeConnectivityIssue(
+                            _error!,
+                          ),
                       onRetry: _loadMessages,
                     )
                   : RefreshIndicator(
@@ -279,6 +298,21 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                     ),
             ),
+            if (_sendHint != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                child: Text(
+                  _sendHint!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _sendHintIsError
+                        ? Colors.red.shade800
+                        : Colors.green.shade800,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             ChatInputField(
               controller: _textController,
               isSending: _isSending,

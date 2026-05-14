@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../controllers/admin_controller.dart';
 import '../../models/pending_approval_model.dart';
+import '../../shared/app_status/loading_status_messages.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/error_message_helper.dart';
 import '../../shared/utils/snack_bar_helper.dart';
+import '../../shared/widgets/common/loading_indicator.dart';
 
 /// Tab shown in the Admin Dashboard for reviewing pending blood bank registrations.
 class AdminApprovalsTab extends StatefulWidget {
@@ -16,6 +19,7 @@ class _AdminApprovalsTabState extends State<AdminApprovalsTab> {
   final AdminController _controller = AdminController();
   List<PendingApproval> _pending = [];
   bool _isLoading = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -24,18 +28,24 @@ class _AdminApprovalsTabState extends State<AdminApprovalsTab> {
   }
 
   Future<void> _load() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       final list = await _controller.fetchPendingApprovals();
       if (!mounted) return;
       setState(() {
         _pending = list;
         _isLoading = false;
+        _loadError = null;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
-      SnackBarHelper.failureFrom(context, e);
+      setState(() {
+        _isLoading = false;
+        _loadError = ErrorMessageHelper.humanize(e);
+      });
     }
   }
 
@@ -150,8 +160,26 @@ class _AdminApprovalsTabState extends State<AdminApprovalsTab> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppTheme.deepRed),
+      return const LoadingIndicator(
+        message: LoadingStatusMessages.loadingPendingApprovals,
+        color: AppTheme.deepRed,
+      );
+    }
+
+    if (_loadError != null) {
+      return LoadingIndicator(
+        message: LoadingStatusMessages.looksLikeConnectivityIssue(_loadError!)
+            ? LoadingStatusMessages.noInternet
+            : _loadError!,
+        color: AppTheme.deepRed,
+        messageColor:
+            LoadingStatusMessages.looksLikeConnectivityIssue(_loadError!)
+            ? Colors.deepOrange.shade900
+            : Colors.red.shade800,
+        showSpinner: false,
+        connectivityIssue:
+            LoadingStatusMessages.looksLikeConnectivityIssue(_loadError!),
+        onRetry: _load,
       );
     }
 

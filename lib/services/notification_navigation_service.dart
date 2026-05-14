@@ -17,6 +17,8 @@ import '../views/donor_profile/donor_profile_reports_page.dart';
 import '../views/notifications_screen.dart';
 import '../views/onboarding/welcome_screen.dart';
 import '../views/request_details_screen.dart';
+import '../views/support/support_ticket_detail_screen.dart';
+import '../models/support_ticket_model.dart';
 import 'requests_service.dart';
 
 /// Routes the user after a push or local notification is opened.
@@ -36,29 +38,23 @@ BuildContext? Function() contextFactory =  () => navigatorKey.currentContext;
 
   /// Parse JSON payload from [flutter_local_notifications] and route.
   void openFromPayloadJson(String payload) {
-    String requestId = '';
-    String type = 'request';
-    String senderId = '';
-    String recipientId = '';
+    if (payload.trim().isEmpty) return;
     try {
       final decoded = jsonDecode(payload);
-      if (decoded is Map<String, dynamic>) {
-        requestId = decoded['requestId']?.toString() ?? '';
-        type = decoded['type']?.toString() ?? 'request';
-        senderId = decoded['senderId']?.toString() ?? '';
-        recipientId = decoded['recipientId']?.toString() ?? '';
-      } else {
-        requestId = payload;
+      if (decoded is Map) {
+        openFromData(
+          Map<String, dynamic>.from(decoded),
+          fromNotificationTap: true,
+        );
+        return;
       }
     } catch (_) {
-      requestId = payload;
+      // Fall through to legacy plain request id string.
     }
-    openFromData(<String, dynamic>{
-      'requestId': requestId,
-      'type': type,
-      'senderId': senderId,
-      'recipientId': recipientId,
-    }, fromNotificationTap: true);
+    openFromData(
+      <String, dynamic>{'type': 'request', 'requestId': payload},
+      fromNotificationTap: true,
+    );
   }
 
   /// Same routing as FCM / web `notificationData` query (map from message.data).
@@ -151,8 +147,10 @@ BuildContext? Function() contextFactory =  () => navigatorKey.currentContext;
         return;
       }
 
-      final notificationType = data['type']?.toString() ?? 'request';
+      final notificationType =
+          (data['type']?.toString() ?? 'request').trim().toLowerCase();
       final requestId = data['requestId']?.toString() ?? '';
+      final ticketId = data['ticketId']?.toString() ?? '';
       final recipientId = data['recipientId']?.toString() ?? '';
       final senderId = data['senderId']?.toString() ?? '';
 
@@ -225,6 +223,23 @@ BuildContext? Function() contextFactory =  () => navigatorKey.currentContext;
             ),
           );
         });
+        return;
+      }
+
+      if (notificationType == 'support_reply' && ticketId.isNotEmpty) {
+        final senderRole = userData.role == models.UserRole.hospital
+            ? TicketSenderRole.hospital
+            : TicketSenderRole.donor;
+        final senderName = userData.role == models.UserRole.hospital
+            ? (userData.bloodBankName ?? userData.fullName)
+            : userData.fullName;
+        await openTarget(
+          (_) => SupportTicketDetailScreen(
+            ticketId: ticketId,
+            senderRole: senderRole,
+            senderName: senderName,
+          ),
+        );
         return;
       }
 

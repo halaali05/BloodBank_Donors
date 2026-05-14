@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 
 import '../controllers/chat_controller.dart';
 import '../services/cloud_functions_service.dart';
+import '../shared/app_status/loading_status_messages.dart';
 import '../shared/theme/app_theme.dart';
+import '../shared/utils/error_message_helper.dart';
 import '../shared/utils/snack_bar_helper.dart';
 import '../shared/widgets/common/loading_indicator.dart';
 import 'chat_screen.dart';
@@ -84,7 +86,7 @@ class _RequestDonorsScreenState extends State<RequestDonorsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = ErrorMessageHelper.humanize(e);
         _isLoading = false;
       });
     }
@@ -100,20 +102,20 @@ class _RequestDonorsScreenState extends State<RequestDonorsScreen> {
         ),
       ),
       body: _isLoading
-          ? const LoadingIndicator(message: 'Loading donors...')
+          ? const LoadingIndicator(message: LoadingStatusMessages.loadingData)
           : _error != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(_error!, textAlign: TextAlign.center),
-                    const SizedBox(height: 8),
-                    TextButton(onPressed: _loadDonors, child: const Text('Retry')),
-                  ],
-                ),
-              ),
+          ? LoadingIndicator(
+              message: LoadingStatusMessages.looksLikeConnectivityIssue(_error!)
+                  ? LoadingStatusMessages.noInternet
+                  : _error!,
+              messageColor:
+                  LoadingStatusMessages.looksLikeConnectivityIssue(_error!)
+                  ? Colors.deepOrange.shade900
+                  : Colors.red.shade800,
+              showSpinner: false,
+              connectivityIssue:
+                  LoadingStatusMessages.looksLikeConnectivityIssue(_error!),
+              onRetry: _loadDonors,
             )
           : _donors.isEmpty
           ? const Center(

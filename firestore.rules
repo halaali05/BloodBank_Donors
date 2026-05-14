@@ -30,7 +30,8 @@ service cloud.firestore {
     }
 
     match /notifications/{userId}/user_notifications/{notificationId} {
-      allow read: if false;
+      // Own notifications: read for real-time list sync; writes stay server-side only.
+      allow read: if request.auth != null && request.auth.uid == userId;
       allow write: if false; // Only Cloud Functions can write (create, update, delete)
     }
 

@@ -11,12 +11,12 @@ import '../blood_bank_past_donors_screen.dart';
 
 import '../../models/blood_request_model.dart';
 import '../../controllers/blood_bank_dashboard_controller.dart';
+import '../../shared/app_status/loading_status_messages.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/error_message_helper.dart';
 import '../../shared/utils/snack_bar_helper.dart';
 
 import '../../shared/widgets/common/app_bar_with_logo.dart';
-import '../../shared/widgets/common/error_box.dart';
 import '../../shared/widgets/common/loading_indicator.dart';
 import '../../shared/widgets/common/empty_state.dart';
 import '../../shared/widgets/common/section_header.dart';
@@ -356,9 +356,27 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
       ),
       body: SafeArea(
         child: _isLoading && _requests.isEmpty
-            ? const LoadingIndicator(color: AppTheme.deepRed)
+            ? const LoadingIndicator(
+                message: LoadingStatusMessages.loadingData,
+                color: AppTheme.deepRed,
+              )
             : _error != null
-            ? ErrorBox(title: 'Error', message: _error!, onRetry: _loadRequests)
+            ? LoadingIndicator(
+                message: LoadingStatusMessages.looksLikeConnectivityIssue(
+                      _error!,
+                    )
+                    ? LoadingStatusMessages.noInternet
+                    : _error!,
+                color: AppTheme.deepRed,
+                messageColor:
+                    LoadingStatusMessages.looksLikeConnectivityIssue(_error!)
+                    ? Colors.deepOrange.shade900
+                    : Colors.red.shade800,
+                showSpinner: false,
+                connectivityIssue:
+                    LoadingStatusMessages.looksLikeConnectivityIssue(_error!),
+                onRetry: () => _loadRequests(showLoading: true),
+              )
             : RefreshIndicator(
                 onRefresh: () => _loadRequests(showLoading: false),
                 child: CustomScrollView(

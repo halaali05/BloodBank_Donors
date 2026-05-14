@@ -6,8 +6,9 @@ import 'package:flutter/services.dart';
 import '../../controllers/login_controller.dart';
 import '../../models/login_models.dart';
 import '../../services/fcm_service.dart';
+import '../../shared/app_status/loading_status_messages.dart';
 import '../../shared/theme/app_theme.dart';
-import '../../shared/utils/dialog_helper.dart';
+import '../../shared/widgets/common/app_loading_overlay.dart';
 import '../../shared/utils/jordan_phone.dart';
 import '../../shared/widgets/auth/login_widgets.dart';
 import 'password_reset/forgot_password_screen.dart';
@@ -27,8 +28,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _obscurePassword = true;
   bool _isLoading = false;
+  String _blockingCaption = LoadingStatusMessages.signingIn;
 
-  /// Live error under unified identifier field.
+  /// Message for failed login / forgot-password lookup (not while busy).
+  String? _authErrorText;
+  bool _authErrorIsOffline = false;
+
+  String? _resendHint;
+  bool _resendHintIsError = false;
+  bool _resendBusy = false;
+
   String? _identifierError;
 
   bool get _emailMode =>
@@ -89,6 +98,15 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  String _loginFailureMessage(LoginResult result) {
+    if (result.errorType == LoginErrorType.networkOffline) {
+      return LoadingStatusMessages.noInternet;
+    }
+    final m = result.errorMessage?.trim();
+    if (m != null && m.isNotEmpty) return m;
+    return LoadingStatusMessages.genericError;
+  }
+
   Future<void> _handleLogin() async {
     if (_isLoading) return;
 
@@ -109,15 +127,19 @@ class _LoginScreenState extends State<LoginScreen> {
       identifier: identifier,
       password: password,
     )) {
-      DialogHelper.showWarning(
-        context: context,
-        title: 'Missing information',
-        message: 'Please enter your password.',
-      );
+      setState(() {
+        _authErrorText = 'Please enter your password.';
+        _authErrorIsOffline = false;
+      });
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _blockingCaption = LoadingStatusMessages.signingIn;
+      _authErrorText = null;
+      _resendHint = null;
+    });
 
     final result = await _loginController.login(
       identifier: identifier,
@@ -127,19 +149,11 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
     setState(() => _isLoading = false);
 
-    await _applyLoginOutcome(result);
-  }
-
-  Future<void> _applyLoginOutcome(LoginResult result) async {
-    if (!mounted) return;
-
     if (result.success && result.navigationRoute != null) {
-      if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => result.navigationRoute!),
         (route) => false,
       );
-      // Sync push token without blocking the UI (dashboards also retry FCM).
       unawaited(
         FCMService.instance
             .ensureTokenSynced(
@@ -148,9 +162,13 @@ class _LoginScreenState extends State<LoginScreen> {
             )
             .catchError((Object _, StackTrace __) => false),
       );
-    } else {
-      _showError(result);
+      return;
     }
+
+    setState(() {
+      _authErrorText = _loginFailureMessage(result);
+      _authErrorIsOffline = result.errorType == LoginErrorType.networkOffline;
+    });
   }
 
   Future<void> _handleResendVerification() async {
@@ -158,11 +176,10 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text;
 
     if (identifier.isEmpty) {
-      DialogHelper.showWarning(
-        context: context,
-        title: 'Missing information',
-        message: 'Enter your email or phone number first.',
-      );
+      setState(() {
+        _resendHint = 'Enter your email or phone number first.';
+        _resendHintIsError = true;
+      });
       return;
     }
 
@@ -175,14 +192,19 @@ class _LoginScreenState extends State<LoginScreen> {
       identifier: identifier,
       password: password,
     )) {
-      DialogHelper.showWarning(
-        context: context,
-        title: 'Missing information',
-        message:
-            'Enter your password as well — it is needed to send another verification email.',
-      );
+      setState(() {
+        _resendHint =
+            'Enter your password as well — it is needed to resend verification.';
+        _resendHintIsError = true;
+      });
       return;
     }
+
+    setState(() {
+      _resendBusy = true;
+      _resendHint = null;
+      _authErrorText = null;
+    });
 
     try {
       final result = await _loginController.resendVerification(
@@ -193,25 +215,30 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (result.success) {
-        DialogHelper.showSuccess(
-          context: context,
-          title: 'Verification email sent',
-          message: result.message ?? '',
-        );
+        setState(() {
+          _resendBusy = false;
+          _resendHint =
+              result.message ??
+              'We sent a new verification email. Check your inbox.';
+          _resendHintIsError = false;
+        });
       } else {
-        DialogHelper.showError(
-          context: context,
-          title: result.errorTitle ?? 'Error',
-          message: result.errorMessage ?? 'Failed to send verification email',
-        );
+        setState(() {
+          _resendBusy = false;
+          _resendHint =
+              result.errorMessage ??
+              result.errorTitle ??
+              LoadingStatusMessages.genericError;
+          _resendHintIsError = true;
+        });
       }
     } catch (_) {
       if (!mounted) return;
-      DialogHelper.showError(
-        context: context,
-        title: 'Error',
-        message: 'Something went wrong. Please try again.',
-      );
+      setState(() {
+        _resendBusy = false;
+        _resendHint = LoadingStatusMessages.genericError;
+        _resendHintIsError = true;
+      });
     }
   }
 
@@ -220,11 +247,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final identifier = _identifierController.text.trim();
     if (identifier.isEmpty) {
-      DialogHelper.showWarning(
-        context: context,
-        title: 'Missing information',
-        message: 'Enter your email or phone number first.',
-      );
+      setState(() {
+        _authErrorText = 'Enter your email or phone number first.';
+        _authErrorIsOffline = false;
+      });
       return;
     }
 
@@ -233,7 +259,12 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _blockingCaption = LoadingStatusMessages.lookingUpAccount;
+      _authErrorText = null;
+      _resendHint = null;
+    });
 
     String? inbox;
     if (_emailMode) {
@@ -246,49 +277,17 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (inbox == null || inbox.isEmpty) {
-      DialogHelper.showError(
-        context: context,
-        title: 'Could not find inbox',
-        message: _emailMode
-            ? 'Check the email spelling, or enter your Jordan mobile '
-                'if your account uses phone login.'
-            : 'No donor account uses this mobile, or verification failed. '
-                'Try entering the email you registered with.',
-      );
+      setState(() {
+        _authErrorText = _emailMode
+            ? 'Could not find an account with this email. Check spelling or try your Jordan mobile.'
+            : 'No account uses this mobile, or lookup failed. Try the email you registered with.';
+        _authErrorIsOffline = false;
+      });
       return;
     }
 
     if (!mounted) return;
     _navigateTo(ForgotPasswordScreen(initialEmail: inbox));
-  }
-
-  void _showError(LoginResult result) {
-    final errorTitle = result.errorTitle ?? 'Error';
-    final errorMessage = result.errorMessage ?? 'An error occurred';
-
-    switch (result.errorType) {
-      case LoginErrorType.emailNotVerified:
-        DialogHelper.showWarning(
-          context: context,
-          title: errorTitle,
-          message: '$errorMessage Tap “Resend verification email” below (phone '
-              'numbers work too, with your password).',
-        );
-        break;
-      case LoginErrorType.profileNotReady:
-        DialogHelper.showInfo(
-          context: context,
-          title: errorTitle,
-          message: errorMessage,
-        );
-        break;
-      default:
-        DialogHelper.showError(
-          context: context,
-          title: errorTitle,
-          message: errorMessage,
-        );
-    }
   }
 
   void _navigateTo(Widget screen) {
@@ -297,68 +296,147 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final errColor = Colors.red.shade800;
+    final offlineColor = Colors.deepOrange.shade900;
+
     return Scaffold(
       backgroundColor: AppTheme.softBg,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
-          child: LoginFormCard(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const LoginAvatar(),
-                const SizedBox(height: 22),
-                TextField(
-                  controller: _identifierController,
-                  autocorrect: false,
-                  /// One field for email or Jordan mobile: full keyboard avoids being
-                  /// stuck on email-only layout when signing in with a number.
-                  keyboardType: TextInputType.text,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(
-                      RegExp(r'[a-zA-Z0-9@._+\- \t()]'),
+      body: Stack(
+        children: [
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  LoginFormCard(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const LoginAvatar(),
+                        const SizedBox(height: 22),
+                        TextField(
+                      controller: _identifierController,
+                      autocorrect: false,
+                      keyboardType: TextInputType.text,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'[a-zA-Z0-9@._+\- \t()]'),
+                        ),
+                        LengthLimitingTextInputFormatter(128),
+                      ],
+                      decoration: AppTheme.underlineInputDecoration(
+                        hint: 'Enter your email or phone number',
+                        icon: Icons.person_outline,
+                      ).copyWith(
+                        labelText: 'Email or Phone Number',
+                        floatingLabelBehavior: FloatingLabelBehavior.auto,
+                        errorText: _identifierError,
+                      ),
                     ),
-                    LengthLimitingTextInputFormatter(128),
+                    const SizedBox(height: 14),
+                    PasswordField(
+                      controller: _passwordController,
+                      obscureText: _obscurePassword,
+                      onToggleVisibility: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
+                    ),
+                    if (_authErrorText != null && !_isLoading) ...[
+                      const SizedBox(height: 16),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            _authErrorIsOffline
+                                ? Icons.wifi_off_rounded
+                                : Icons.error_outline_rounded,
+                            size: 22,
+                            color: _authErrorIsOffline ? offlineColor : errColor,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _authErrorText!,
+                              style: TextStyle(
+                                color:
+                                    _authErrorIsOffline ? offlineColor : errColor,
+                                fontSize: 14,
+                                height: 1.35,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    PrimaryButton(
+                      text: 'Log In',
+                      onPressed: _isLoading ? null : _handleLogin,
+                      isLoading: false,
+                    ),
+                    const SizedBox(height: 8),
+                    LinkButton(
+                      text: 'Resend verification email',
+                      onPressed: (!_isLoading && !_resendBusy)
+                          ? _handleResendVerification
+                          : null,
+                    ),
+                    if (_resendBusy) ...[
+                      const SizedBox(height: 10),
+                      const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        LoadingStatusMessages.syncingData,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                    if (_resendHint != null && !_resendBusy) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _resendHint!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: _resendHintIsError
+                              ? errColor
+                              : Colors.green.shade800,
+                          fontSize: 13,
+                          height: 1.35,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                    LinkButton(
+                      text: 'Forgot password?',
+                      onPressed: !_isLoading ? _openForgotPassword : null,
+                    ),
+                    const SizedBox(height: 10),
+                    RegisterLink(
+                      onTap: () => _navigateTo(const RegisterScreen()),
+                    ),
                   ],
-                  decoration: AppTheme.underlineInputDecoration(
-                    hint: 'Enter your email or phone number',
-                    icon: Icons.person_outline,
-                  ).copyWith(
-                    labelText: 'Email or Phone Number',
-                    floatingLabelBehavior: FloatingLabelBehavior.auto,
-                    errorText: _identifierError,
-                  ),
                 ),
-                const SizedBox(height: 14),
-                PasswordField(
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
-                  onToggleVisibility: () =>
-                      setState(() => _obscurePassword = !_obscurePassword),
-                ),
-                const SizedBox(height: 18),
-                PrimaryButton(
-                  text: 'Log In',
-                  onPressed: _handleLogin,
-                  isLoading: _isLoading,
-                ),
-                const SizedBox(height: 8),
-                LinkButton(
-                  text: 'Resend verification email',
-                  onPressed: !_isLoading ? _handleResendVerification : null,
-                ),
-                LinkButton(
-                  text: 'Forgot password?',
-                  onPressed: !_isLoading ? _openForgotPassword : null,
-                ),
-                const SizedBox(height: 10),
-                RegisterLink(
-                  onTap: () => _navigateTo(const RegisterScreen()),
-                ),
-              ],
+              ),
+                ],
+              ),
             ),
           ),
-        ),
+          if (_isLoading)
+            AppLoadingOverlay(
+              visible: true,
+              showProgress: true,
+              message: _blockingCaption,
+              progressColor: AppTheme.deepRed,
+            ),
+        ],
       ),
     );
   }

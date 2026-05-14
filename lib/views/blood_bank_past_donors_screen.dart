@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../models/blood_bank_past_donor.dart';
 import '../services/cloud_functions_service.dart';
+import '../shared/app_status/loading_status_messages.dart';
 import '../shared/theme/app_theme.dart';
+import '../shared/utils/error_message_helper.dart';
 import '../shared/utils/snack_bar_helper.dart';
 import '../shared/widgets/common/app_bar_with_logo.dart';
-import '../shared/widgets/common/empty_state.dart';
-import '../shared/widgets/common/error_box.dart';
 import '../shared/widgets/common/loading_indicator.dart';
+import '../shared/widgets/common/empty_state.dart';
 import 'blood_bank_donor_detail_screen.dart';
 import 'chat_screen.dart';
 
@@ -57,7 +58,7 @@ class _BloodBankPastDonorsScreenState extends State<BloodBankPastDonorsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = ErrorMessageHelper.humanize(e);
         _loading = false;
       });
     }
@@ -160,9 +161,23 @@ class _BloodBankPastDonorsScreenState extends State<BloodBankPastDonorsScreen> {
       appBar: const AppBarWithLogo(title: 'Donors'),
       body: SafeArea(
         child: _loading
-            ? const LoadingIndicator()
+            ? const LoadingIndicator(message: LoadingStatusMessages.loadingData)
             : _error != null
-            ? ErrorBox(title: 'Could not load donors', message: _error!)
+            ? LoadingIndicator(
+                message: LoadingStatusMessages.looksLikeConnectivityIssue(
+                      _error!,
+                    )
+                    ? LoadingStatusMessages.noInternet
+                    : _error!,
+                messageColor:
+                    LoadingStatusMessages.looksLikeConnectivityIssue(_error!)
+                    ? Colors.deepOrange.shade900
+                    : Colors.red.shade800,
+                showSpinner: false,
+                connectivityIssue:
+                    LoadingStatusMessages.looksLikeConnectivityIssue(_error!),
+                onRetry: _load,
+              )
             : RefreshIndicator(
                 onRefresh: _load,
                 child: _donors.isEmpty

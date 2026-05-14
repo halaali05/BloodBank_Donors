@@ -47,7 +47,7 @@ class NotificationItemCloud extends StatelessWidget {
     final title = data['title'] as String? ?? 'Blood Request';
     final body = data['body'] as String? ?? '';
 
-    Future<void> _markReadIfNeeded() async {
+    Future<void> markReadIfNeeded() async {
       if (isRead || notificationId.isEmpty || onMarkAsRead == null) return;
       try {
         await onMarkAsRead!(notificationId);
@@ -61,7 +61,7 @@ class NotificationItemCloud extends StatelessWidget {
     Future<void> handleCardTap() async {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
-      await _markReadIfNeeded();
+      await markReadIfNeeded();
       NotificationNavigationService.instance.openFromData({
         ...data,
         'type': type,
@@ -75,12 +75,13 @@ class NotificationItemCloud extends StatelessWidget {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      await _markReadIfNeeded();
+      await markReadIfNeeded();
       if (!context.mounted) return;
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => ChatScreen(requestId: requestId, initialMessage: body),
+          builder: (_) =>
+              ChatScreen(requestId: requestId, initialMessage: body),
         ),
       );
     }

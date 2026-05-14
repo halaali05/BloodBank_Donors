@@ -8,9 +8,9 @@ import '../../controllers/donor_dashboard_controller.dart';
 import '../notifications_screen.dart';
 import '../../services/fcm_service.dart';
 import '../donor_profile/donor_profile_screen.dart';
+import '../../shared/app_status/loading_status_messages.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/common/app_bar_with_logo.dart';
-import '../../shared/widgets/common/error_box.dart';
 import '../../shared/widgets/common/loading_indicator.dart';
 import '../../shared/widgets/common/section_header.dart';
 import '../../shared/widgets/common/empty_state.dart';
@@ -547,9 +547,29 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
           // ── Tab 1: List view ──────────────────────────────────────────────
           SafeArea(
             child: _isLoading && _requests.isEmpty
-                ? const LoadingIndicator()
+                ? const LoadingIndicator(
+                    message: LoadingStatusMessages.loadingData,
+                  )
                 : _error != null
-                ? ErrorBox(title: 'Error loading requests', message: _error!)
+                ? LoadingIndicator(
+                    message: LoadingStatusMessages.looksLikeConnectivityIssue(
+                          _error!,
+                        )
+                        ? LoadingStatusMessages.noInternet
+                        : _error!,
+                    messageColor:
+                        LoadingStatusMessages.looksLikeConnectivityIssue(
+                          _error!,
+                        )
+                        ? Colors.deepOrange.shade900
+                        : Colors.red.shade800,
+                    showSpinner: false,
+                    connectivityIssue:
+                        LoadingStatusMessages.looksLikeConnectivityIssue(
+                          _error!,
+                        ),
+                    onRetry: () => _loadDashboardData(showLoading: true),
+                  )
                 : RefreshIndicator(
                     onRefresh: () => _loadDashboardData(showLoading: false),
                     child: CustomScrollView(

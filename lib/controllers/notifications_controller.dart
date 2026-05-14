@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../services/cloud_functions_service.dart';
@@ -76,6 +77,41 @@ class NotificationsController {
       final isRead = n['isRead'] == true || n['read'] == true;
       return !isRead;
     }).toList();
+  }
+
+  /// Same shape as [fetchNotifications] items, for Firestore snapshot rows.
+  static Map<String, dynamic> mapFirestoreNotificationDoc(
+    String documentId,
+    Map<String, dynamic> data,
+  ) {
+    final out = <String, dynamic>{};
+    for (final e in data.entries) {
+      final v = e.value;
+      if (v is Timestamp) {
+        out[e.key] = v.millisecondsSinceEpoch;
+      } else {
+        out[e.key] = v;
+      }
+    }
+    out['id'] = documentId;
+    return out;
+  }
+
+  /// Live updates when notification documents change (e.g. ticket deleted on server).
+  /// Requires Firestore rules: read on own `notifications/{uid}/user_notifications`.
+  static Stream<List<Map<String, dynamic>>> watchMyNotifications(String uid) {
+    return FirebaseFirestore.instance
+        .collection('notifications')
+        .doc(uid)
+        .collection('user_notifications')
+        .orderBy('createdAt', descending: true)
+        .limit(80)
+        .snapshots()
+        .map(
+          (snap) => snap.docs
+              .map((d) => mapFirestoreNotificationDoc(d.id, d.data()))
+              .toList(),
+        );
   }
 
   String formatTime(BuildContext context, int? timestampMillis) {

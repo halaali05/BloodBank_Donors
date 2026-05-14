@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 
 import '../models/blood_request_model.dart';
 import '../services/requests_service.dart';
+import '../shared/app_status/loading_status_messages.dart';
 import '../shared/theme/app_theme.dart';
 import '../shared/widgets/common/app_bar_with_logo.dart';
 import '../shared/widgets/common/loading_indicator.dart';
 import '../shared/widgets/common/urgent_badge.dart';
-import '../shared/widgets/common/error_box.dart';
 import 'chat_screen.dart';
 import '../shared/utils/error_message_helper.dart';
 import '../shared/utils/snack_bar_helper.dart';
@@ -84,36 +84,10 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: AppTheme.softBg,
-        body: LoadingIndicator(),
-      );
-    }
-
-    if (_error != null || _request == null) {
-      return Scaffold(
-        backgroundColor: AppTheme.softBg,
-        appBar: AppBarWithLogo(
-          title: 'Request details',
-          centerTitle: true,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ),
-        body: ErrorBox(
-          message: _error ?? 'Request not found',
-          onRetry: _loadRequest,
-        ),
-      );
-    }
-
-    final request = _request!;
-    final location = request.hospitalLocation.trim();
-    final details = request.details.trim();
-    final appointment = request.appointmentAt;
-    final hasAppointment = appointment != null;
+    final request = _request;
+    final err = _error;
+    final offline = err != null &&
+        LoadingStatusMessages.looksLikeConnectivityIssue(err);
 
     return Directionality(
       textDirection: TextDirection.ltr,
@@ -127,129 +101,152 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> {
             onPressed: () => Navigator.of(context).pop(),
           ),
         ),
-        body: Padding(
-          padding: const EdgeInsets.all(AppTheme.padding),
-          child: Container(
-            padding: const EdgeInsets.all(AppTheme.padding),
-            decoration: AppTheme.cardDecoration(
-              shadow: AppTheme.cardShadowLarge,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+        body: _isLoading
+            ? const LoadingIndicator(message: LoadingStatusMessages.loadingData)
+            : (err != null || request == null)
+            ? LoadingIndicator(
+                message: err != null && offline
+                    ? LoadingStatusMessages.noInternet
+                    : (err ?? LoadingStatusMessages.failedToLoad),
+                messageColor: err != null && offline
+                    ? Colors.deepOrange.shade900
+                    : Colors.red.shade800,
+                showSpinner: false,
+                connectivityIssue: offline,
+                onRetry: _loadRequest,
+              )
+            : _buildRequestBody(request),
+      ),
+    );
+  }
+
+  Widget _buildRequestBody(BloodRequest request) {
+    final location = request.hospitalLocation.trim();
+    final details = request.details.trim();
+    final appointment = request.appointmentAt;
+    final hasAppointment = appointment != null;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppTheme.padding),
+      child: Container(
+        padding: const EdgeInsets.all(AppTheme.padding),
+        decoration: AppTheme.cardDecoration(
+          shadow: AppTheme.cardShadowLarge,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 22,
-                      backgroundColor: AppTheme.urgentBg,
-                      child: Text(
-                        request.bloodType,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          color: AppTheme.deepRed,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        '${request.units} units needed',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 15,
-                        ),
-                      ),
-                    ),
-                    if (request.isUrgent) const UrgentBadge(),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Blood bank: ${request.bloodBankName}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Colors.black54,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                if (hasAppointment) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE8F5E9),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      'Appointment: ${_formatAppointment(appointment)}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF2E7D32),
-                      ),
-                    ),
-                  ),
-                ],
-                if (location.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.location_on_outlined,
-                        size: 16,
-                        color: Colors.black54,
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          location,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Colors.black54,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-                if (details.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Text(details, style: const TextStyle(fontSize: 13)),
-                ],
-                const SizedBox(height: 14),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ChatScreen(
-                            requestId: widget.requestId,
-                            initialMessage: '',
-                          ),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.chat_bubble_outline),
-                    label: const Text('Messages'),
-                    style: AppTheme.primaryButtonStyle(
-                      borderRadius: 24,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 10,
-                      ),
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: AppTheme.urgentBg,
+                  child: Text(
+                    request.bloodType,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: AppTheme.deepRed,
                     ),
                   ),
                 ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '${request.units} units needed',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+                if (request.isUrgent) const UrgentBadge(),
               ],
             ),
-          ),
+            const SizedBox(height: 10),
+            Text(
+              'Blood bank: ${request.bloodBankName}',
+              style: const TextStyle(
+                fontSize: 13,
+                color: Colors.black54,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (hasAppointment) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F5E9),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'Appointment: ${_formatAppointment(appointment)}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF2E7D32),
+                  ),
+                ),
+              ),
+            ],
+            if (location.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.location_on_outlined,
+                    size: 16,
+                    color: Colors.black54,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      location,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (details.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(details, style: const TextStyle(fontSize: 13)),
+            ],
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ChatScreen(
+                        requestId: widget.requestId,
+                        initialMessage: '',
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: const Text('Messages'),
+                style: AppTheme.primaryButtonStyle(
+                  borderRadius: 24,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 10,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

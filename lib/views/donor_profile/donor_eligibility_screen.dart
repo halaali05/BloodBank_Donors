@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../controllers/donor_profile_controller.dart';
+import '../../shared/app_status/loading_status_messages.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/donor_eligibility.dart';
+import '../../shared/utils/error_message_helper.dart';
 import '../../shared/widgets/common/loading_indicator.dart';
 
 /// Shows eligibility end date, countdown, and a day-by-day timeline after last donation.
@@ -39,7 +41,7 @@ class _DonorEligibilityScreenState extends State<DonorEligibilityScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = ErrorMessageHelper.humanize(e);
         _loading = false;
       });
     }
@@ -89,19 +91,37 @@ class _DonorEligibilityScreenState extends State<DonorEligibilityScreen> {
         child: _loading
             ? ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                children: const [
-                  SizedBox(height: 120),
-                  LoadingIndicator(
-                    message: 'Checking your donation eligibility...',
+                children: [
+                  const SizedBox(height: 120),
+                  const LoadingIndicator(
+                    message: LoadingStatusMessages.loadingData,
                   ),
                 ],
               )
             : _error != null
             ? ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(24),
                 children: [
-                  Text(_error!, style: const TextStyle(color: Colors.red)),
+                  const SizedBox(height: 80),
+                  LoadingIndicator(
+                    message: LoadingStatusMessages.looksLikeConnectivityIssue(
+                          _error!,
+                        )
+                        ? LoadingStatusMessages.noInternet
+                        : _error!,
+                    messageColor:
+                        LoadingStatusMessages.looksLikeConnectivityIssue(
+                          _error!,
+                        )
+                        ? Colors.deepOrange.shade900
+                        : Colors.red.shade800,
+                    showSpinner: false,
+                    connectivityIssue:
+                        LoadingStatusMessages.looksLikeConnectivityIssue(
+                          _error!,
+                        ),
+                    onRetry: _load,
+                  ),
                 ],
               )
             : _buildContent(context),

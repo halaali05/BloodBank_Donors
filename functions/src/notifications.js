@@ -20,6 +20,15 @@ function notificationRequestId(data) {
   return s === "" ? null : s;
 }
 
+/** Support ticket id on notification docs (e.g. support_reply, support_new_ticket). */
+function notificationTicketId(data) {
+  const d = data || {};
+  const v = d.ticketId;
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s === "" ? null : s;
+}
+
 async function requireRequestChatAccess(uid, requestId, options = {}) {
   const filterRecipientId =
     typeof options.filterRecipientId === "string" &&
@@ -308,11 +317,16 @@ exports.getNotifications = onCall(publicCallableOpts, async (request) => {
               : null,
         },
         requestKey: notificationRequestId(d),
+        ticketKey: notificationTicketId(d),
       };
     });
 
     const uniqueRequestIds = [
       ...new Set(rows.map((r) => r.requestKey).filter(Boolean)),
+    ];
+
+    const uniqueTicketIds = [
+      ...new Set(rows.map((r) => r.ticketKey).filter(Boolean)),
     ];
 
     const requestExists = new Map();
@@ -326,9 +340,27 @@ exports.getNotifications = onCall(publicCallableOpts, async (request) => {
       });
     }
 
+    const ticketExists = new Map();
+    for (let i = 0; i < uniqueTicketIds.length; i += GET_ALL_CHUNK) {
+      const chunk = uniqueTicketIds.slice(i, i + GET_ALL_CHUNK);
+      const refs = chunk.map((id) => db.collection("supportTickets").doc(id));
+      const snaps = await db.getAll(...refs);
+      snaps.forEach((snap, idx) => {
+        ticketExists.set(chunk[idx], snap.exists);
+      });
+    }
+
     const staleRefs = [];
     const notifications = [];
     for (const row of rows) {
+      if (row.ticketKey != null) {
+        if (ticketExists.get(row.ticketKey) === true) {
+          notifications.push(row.payload);
+        } else {
+          staleRefs.push(row.ref);
+        }
+        continue;
+      }
       if (row.requestKey == null) {
         notifications.push(row.payload);
         continue;

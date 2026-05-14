@@ -109,8 +109,9 @@ class SupportTicket {
     if (v is String) return DateTime.tryParse(v);
     if (v is Map && v.containsKey('_seconds')) {
       final seconds = v['_seconds'];
-      if (seconds is int)
+      if (seconds is int) {
         return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+      }
     }
     return null;
   }

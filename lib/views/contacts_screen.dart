@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'chat_screen.dart';
 import '../services/cloud_functions_service.dart';
+import '../shared/app_status/loading_status_messages.dart';
 import '../shared/theme/app_theme.dart';
+import '../shared/utils/error_message_helper.dart';
 import '../shared/utils/snack_bar_helper.dart';
 import '../shared/widgets/common/loading_indicator.dart';
 import '../controllers/chat_controller.dart';
@@ -76,7 +78,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString().replaceAll('Exception: ', '');
+          _error = ErrorMessageHelper.humanize(e);
           _isLoading = false;
         });
       }
@@ -98,11 +100,22 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const LoadingIndicator(message: 'Loading contacts...');
+      return const LoadingIndicator(message: LoadingStatusMessages.loadingData);
     }
 
     if (_error != null) {
-      return Center(child: Text(_error!));
+      return LoadingIndicator(
+        message: LoadingStatusMessages.looksLikeConnectivityIssue(_error!)
+            ? LoadingStatusMessages.noInternet
+            : _error!,
+        messageColor: LoadingStatusMessages.looksLikeConnectivityIssue(_error!)
+            ? Colors.deepOrange.shade900
+            : Colors.red.shade800,
+        showSpinner: false,
+        connectivityIssue:
+            LoadingStatusMessages.looksLikeConnectivityIssue(_error!),
+        onRetry: _loadDonors,
+      );
     }
 
     if (_donors == null || _donors!.isEmpty) {
