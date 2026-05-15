@@ -207,8 +207,7 @@ void main() {
       expect(r.navigationRoute, isNotNull);
     });
 
-    test('donor login via Jordan phone resolves email then password auth',
-        () async {
+    test('donor login via Jordan phone resolves email then password auth', () async {
       final user = MockUser();
       when(
         () => mockAuth.resolveDonorEmailForPhoneLogin('+962791234567'),
@@ -245,9 +244,7 @@ void main() {
     });
 
     test('Jordan phone unknown yields userNotFound', () async {
-      when(
-        () => mockAuth.resolveDonorEmailForPhoneLogin('+962791234567'),
-      ).thenAnswer((_) async => null);
+      when(() => mockAuth.resolveDonorEmailForPhoneLogin('+962791234567'),).thenAnswer((_) async => null);
 
       final r = await controller.login(
         identifier: '0791234567',
@@ -305,7 +302,7 @@ void main() {
       expect(r.errorTitle, 'Account disabled');
     });
   
-    test('network error → genericError with Connection title', () async {
+    test('network timeout → networkOffline', () async {
       when(() => mockAuth.login(
               email: any(named: 'email'),
               password: any(named: 'password')))
@@ -317,11 +314,11 @@ void main() {
       );
 
       expect(r.success, false);
-      expect(r.errorType, LoginErrorType.genericError);
+      expect(r.errorType, LoginErrorType.networkOffline);
       expect(r.errorTitle, isNotNull);
     });
 
-    test('unknown error → genericError', () async {
+    test('unknown error → networkOffline', () async {
       when(() => mockAuth.login(
               email: any(named: 'email'),
               password: any(named: 'password')))
@@ -358,17 +355,19 @@ void main() {
     });
 
     test('Jordan phone resolves donor email then resends verification', () async {
-      when(
-        () => mockAuth.resolveDonorEmailForPhoneLogin('+962791234567'),
+      
+      when(() => mockAuth.resolveDonorEmailForPhoneLogin('+962791234567'),
       ).thenAnswer((_) async => 'donor@test.com');
+      
       when(
         () => mockAuth.login(
           email: 'donor@test.com',
           password: any(named: 'password'),
         ),
       ).thenAnswer((_) async {});
-      when(() => mockAuth.resendEmailVerification())
-          .thenAnswer((_) async {});
+     
+      when(() => mockAuth.resendEmailVerification()).thenAnswer((_) async {});
+     
       when(() => mockAuth.logout()).thenAnswer((_) async {});
 
       final r = await controller.resendVerification(
@@ -377,9 +376,7 @@ void main() {
       );
 
       expect(r.success, true);
-      verify(
-        () => mockAuth.resolveDonorEmailForPhoneLogin('+962791234567'),
-      ).called(1);
+      verify(() => mockAuth.resolveDonorEmailForPhoneLogin('+962791234567'),).called(1);
     });
 
     test('FirebaseAuthException mapped', () async {
@@ -461,8 +458,8 @@ test('Exception prefix parsing - network', () async {
 
   final r = await controller.login(identifier: 'a@test.com', password: 'b');
 
-  expect(r.errorType, LoginErrorType.genericError);
-  expect(r.errorTitle, 'Connection error');
+  expect(r.errorType, LoginErrorType.networkOffline);
+  expect(r.errorTitle, 'No connection');
 });
 
 test('Exception prefix parsing - permission', () async {
@@ -512,7 +509,6 @@ test('profileCompleteFuture handles exception silently', () async {
   when(() => mockAuth.currentUser).thenReturn(user);
   when(() => user.uid).thenReturn('u1');
 
-  // ✅ FIX
   when(() => mockAuth.completeProfileAfterVerification())
       .thenAnswer((_) => Future.error(Exception()));
 
@@ -644,7 +640,7 @@ test('network-request-failed → mapped title', () async {
 
   final r = await controller.login(identifier: 'a@test.com', password: 'b');
 
-  expect(r.errorTitle, 'Network error');
+  expect(r.errorTitle, 'No connection');
 });
 
 test('invalid-credential → mapped title', () async {

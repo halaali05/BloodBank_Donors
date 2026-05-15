@@ -47,7 +47,7 @@ void main() {
       );
 
       expect(result.success, false);
-      expect(result.emailVerified, false); // still default
+      expect(result.emailVerified, false); 
       expect(result.message, null);
       expect(result.errorTitle, 'Error');
       expect(result.errorMessage, 'Something went wrong');

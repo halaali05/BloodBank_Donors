@@ -6,9 +6,7 @@ void main() {
 
   group('PendingApproval.fromMap', () {
 
-    test(
-      'creates model with full valid data',
-      () {
+    test('creates model with full valid data',  () {
 
         final model = PendingApproval.fromMap(
           {
@@ -26,23 +24,18 @@ void main() {
         );
 
         expect(model.uid, 'uid1');
-        expect(model.email,
-            'hospital@test.com');
+        expect(model.email,'hospital@test.com');
         expect(model.role, 'hospital');
-        expect(model.bloodBankName,
-            'Central Blood Bank');
+        expect(model.bloodBankName,'Central Blood Bank');
         expect(model.location, 'Amman');
         expect(model.latitude, 31.95);
         expect(model.longitude, 35.91);
-        expect(model.createdAt,
-            isNotNull);
+        expect(model.createdAt,isNotNull);
         expect(model.status, 'approved');
       },
     );
 
-    test(
-      'uses default values when missing',
-      () {
+    test('uses default values when missing',() {
 
         final model = PendingApproval.fromMap(
           {},
@@ -52,14 +45,11 @@ void main() {
         expect(model.uid, 'uid2');
         expect(model.email, '');
         expect(model.role, 'hospital');
-        expect(model.status,
-            'awaiting_admin_approval');
+        expect(model.status,'awaiting_admin_approval');
       },
     );
 
-    test(
-      'parses int timestamp',
-      () {
+    test('parses int timestamp',() {
 
         final model = PendingApproval.fromMap(
           {
@@ -68,42 +58,19 @@ void main() {
           'uid3',
         );
 
-        expect(
-          model.createdAt,
-          DateTime
-              .fromMillisecondsSinceEpoch(
-            1000,
-          ),
-        );
+        expect(model.createdAt,DateTime.fromMillisecondsSinceEpoch(1000,),);
       },
     );
 
-    test(
-      'parses firestore timestamp map',
-      () {
+    test('parses firestore timestamp map',() {
 
-        final model = PendingApproval.fromMap(
-          {
-            'createdAt': {
-              '_seconds': 100,
-            },
-          },
-          'uid4',
-        );
+        final model = PendingApproval.fromMap( {'createdAt': { '_seconds': 100, },},'uid4',);
 
-        expect(
-          model.createdAt,
-          DateTime
-              .fromMillisecondsSinceEpoch(
-            100 * 1000,
-          ),
-        );
+        expect( model.createdAt, DateTime.fromMillisecondsSinceEpoch(100 * 1000, ),);
       },
     );
 
-    test(
-      'parses latitude and longitude from int',
-      () {
+    test('parses latitude and longitude from int',() {
 
         final model = PendingApproval.fromMap(
           {
@@ -118,9 +85,7 @@ void main() {
       },
     );
 
-    test(
-      'parses latitude and longitude from string',
-      () {
+    test('parses latitude and longitude from string',() {
 
         final model = PendingApproval.fromMap(
           {
@@ -135,9 +100,7 @@ void main() {
       },
     );
 
-    test(
-      'returns null for invalid date',
-      () {
+    test('returns null for invalid date',() {
 
         final model = PendingApproval.fromMap(
           {
@@ -150,11 +113,8 @@ void main() {
       },
     );
 
-    test(
-      'returns null for invalid doubles',
-      () {
-
-        final model = PendingApproval.fromMap(
+    test('returns null for invalid doubles',() {
+       final model = PendingApproval.fromMap(
           {
             'latitude': 'bad',
             'longitude': [],
@@ -167,9 +127,7 @@ void main() {
       },
     );
 
-    test(
-      'handles DateTime createdAt directly',
-      () {
+    test('handles DateTime createdAt directly',() {
 
         final now = DateTime.now();
 

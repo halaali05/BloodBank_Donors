@@ -1,11 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
-
 import 'package:bloodbank_donors/services/notification_service.dart';
 import 'package:bloodbank_donors/services/cloud_functions_service.dart';
 
-/// Mock class for CloudFunctionsService
-/// نستخدمها بدل Cloud Functions الحقيقية أثناء الاختبار
+/// MOCK
+
 class MockCloudFunctionsService extends Mock implements CloudFunctionsService {}
 
 void main() {

@@ -382,6 +382,4 @@ test('reports are sorted by createdAt descending', () async {
   expect(result.first.requestId, 'r2');
 });
 
-
-
 }

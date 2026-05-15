@@ -8,19 +8,15 @@ import 'package:bloodbank_donors/services/local_notif_service.dart';
 
 class MockPlugin extends Mock implements FlutterLocalNotificationsPlugin {}
 
-class MockAndroidPlugin extends Mock
-    implements AndroidFlutterLocalNotificationsPlugin {}
+class MockAndroidPlugin extends Mock implements AndroidFlutterLocalNotificationsPlugin {}
 
 // ================= FAKES =================
 
-class FakeInitializationSettings extends Fake
-    implements InitializationSettings {}
+class FakeInitializationSettings extends Fake implements InitializationSettings {}
 
-class FakeAndroidNotificationChannel extends Fake
-    implements AndroidNotificationChannel {}
+class FakeAndroidNotificationChannel extends Fake implements AndroidNotificationChannel {}
 
-class FakeNotificationDetails extends Fake
-    implements NotificationDetails {}
+class FakeNotificationDetails extends Fake implements NotificationDetails {}
 
 void main() {
   late MockPlugin mockPlugin;
@@ -149,8 +145,7 @@ void main() {
         onDidReceiveNotificationResponse:
             any(named: 'onDidReceiveNotificationResponse'),
       )).thenAnswer((invocation) async {
-    callback =
-        invocation.namedArguments[#onDidReceiveNotificationResponse];
+    callback = invocation.namedArguments[#onDidReceiveNotificationResponse];
     return true;
   });
 

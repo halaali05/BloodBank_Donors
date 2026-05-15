@@ -3,6 +3,8 @@ import 'package:mocktail/mocktail.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:bloodbank_donors/services/password_reset_service.dart';
 
+/// MOCK
+
 class MockFirebaseAuth extends Mock implements FirebaseAuth {}
 
 void main() {
@@ -13,8 +15,6 @@ void main() {
     mockAuth = MockFirebaseAuth();
     service = PasswordResetService(auth: mockAuth);
   });
-
-              //TEST CASES//
 
        
       /// SUCCESS ///
@@ -98,11 +98,9 @@ test('returns default failure message for unknown firebase error', () async {
   expect(result.message, "Failed to send reset email. Please try again.");
 });
 
-/// ===============================
-/// confirmPasswordReset TESTS
-/// ===============================
+// confirmPasswordReset TESTS
 
-/// SUCCESS CASE
+// SUCCESS CASE
 test('confirms password reset successfully', () async {
   // Arrange: mock successful reset
   when(() => mockAuth.confirmPasswordReset(
@@ -204,8 +202,7 @@ test('returns error when action code invalid', () async {
 
 
 /// UNKNOWN FIREBASE ERROR
-test('returns default error for unknown firebase error during confirmation',
-    () async {
+test('returns default error for unknown firebase error during confirmation', () async {
   when(() => mockAuth.confirmPasswordReset(
         code: any(named: 'code'),
         newPassword: any(named: 'newPassword'),

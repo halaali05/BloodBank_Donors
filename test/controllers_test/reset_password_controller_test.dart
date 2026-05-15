@@ -63,8 +63,7 @@ void main() {
   // RESET PASSWORD - SUCCESS
   // =========================================================
 
-  test('resetPassword returns success when service succeeds',
-      () async {
+  test('resetPassword returns success when service succeeds', () async {
     when(() => mockService.confirmPasswordReset(
           code: any(named: 'code'),
           newPassword: any(named: 'newPassword'),
@@ -88,9 +87,7 @@ void main() {
   // RESET PASSWORD - FIREBASE ERRORS
   // =========================================================
 
-  test(
-      'resetPassword maps expired-action-code correctly',
-      () async {
+  test('resetPassword maps expired-action-code correctly', () async {
     when(() => mockService.confirmPasswordReset(
           code: any(named: 'code'),
           newPassword: any(named: 'newPassword'),
@@ -110,9 +107,7 @@ void main() {
     );
   });
 
-  test(
-      'resetPassword maps invalid-action-code correctly',
-      () async {
+  test('resetPassword maps invalid-action-code correctly',() async {
     when(() => mockService.confirmPasswordReset(
           code: any(named: 'code'),
           newPassword: any(named: 'newPassword'),
@@ -132,8 +127,7 @@ void main() {
     );
   });
 
-  test('resetPassword maps weak-password correctly',
-      () async {
+  test('resetPassword maps weak-password correctly', () async {
     when(() => mockService.confirmPasswordReset(
           code: any(named: 'code'),
           newPassword: any(named: 'newPassword'),
@@ -153,8 +147,7 @@ void main() {
     );
   });
 
-  test('resetPassword maps user-disabled correctly',
-      () async {
+  test('resetPassword maps user-disabled correctly', () async {
     when(() => mockService.confirmPasswordReset(
           code: any(named: 'code'),
           newPassword: any(named: 'newPassword'),
@@ -174,8 +167,7 @@ void main() {
     );
   });
 
-  test('resetPassword maps user-not-found correctly',
-      () async {
+  test('resetPassword maps user-not-found correctly', () async {
     when(() => mockService.confirmPasswordReset(
           code: any(named: 'code'),
           newPassword: any(named: 'newPassword'),
@@ -199,8 +191,7 @@ void main() {
   // RESET PASSWORD - GENERIC ERRORS
   // =========================================================
 
-  test('resetPassword returns generic message on unknown error',
-      () async {
+  test('resetPassword returns generic message on unknown error', () async {
     when(() => mockService.confirmPasswordReset(
           code: any(named: 'code'),
           newPassword: any(named: 'newPassword'),

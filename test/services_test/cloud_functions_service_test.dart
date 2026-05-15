@@ -102,21 +102,23 @@ void main() {
 
       expect(result, 'donor');
     });
+test('getUserData returns map', () async {
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
 
-    test('getUserData returns map', () async {
-      when(() => mockFunctions.httpsCallable('getUserData'))
-          .thenReturn(mockCallable);
+  when(() => mockCallable.call(any()))
+      .thenAnswer((_) async => mockResult);
 
-      when(() => mockCallable.call(any()))
-          .thenAnswer((_) async => mockResult);
+  when(() => mockResult.data)
+      .thenReturn({'name': 'test'});
 
-      when(() => mockResult.data)
-          .thenReturn({'name': 'test'});
+  final result = await service.getUserData();
 
-      final result = await service.getUserData();
+  expect(result['name'], 'test');
+});
 
-      expect(result['name'], 'test');
-    });
   });
 
   // =========================================================
@@ -152,22 +154,30 @@ void main() {
   // =========================================================
 
   group('firebase exception handling', () {
-    test('handles FirebaseFunctionsException', () async {
-      when(() => mockFunctions.httpsCallable('getUserData'))
-          .thenReturn(mockCallable);
+  test('handles FirebaseFunctionsException', () async {
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
 
-      when(() => mockCallable.call(any())).thenThrow(
-        FirebaseFunctionsException(
-          code: 'permission-denied',
-          message: 'denied',
-        ),
-      );
+  when(() => mockCallable.call(any())).thenThrow(
+    FirebaseFunctionsException(
+      code: 'permission-denied',
+      message: 'denied',
+    ),
+  );
 
-      expect(
-        () => service.getUserData(),
-        throwsException,
-      );
-    });
+  expect(
+    () => service.getUserData(),
+    throwsA(
+      predicate(
+        (e) =>
+            e is Exception &&
+            e.toString().contains('denied'),
+      ),
+    ),
+  );
+});
   });
 
   // =========================================================
@@ -194,18 +204,26 @@ test('network error path', () async {
 
   expect(() => service.getRequests(), throwsException);
 });
-    test('handles network error', () async {
-      when(() => mockFunctions.httpsCallable('getUserData'))
-          .thenReturn(mockCallable);
+ test('handles network error', () async {
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
 
-      when(() => mockCallable.call(any()))
-          .thenThrow(Exception('socket error'));
+  when(() => mockCallable.call(any()))
+      .thenThrow(Exception('socket error'));
 
-      expect(
-        () => service.getUserData(),
-        throwsException,
-      );
-    });
+  expect(
+    () => service.getUserData(),
+    throwsA(
+      predicate(
+        (e) =>
+            e is Exception &&
+            e.toString().contains('socket error'),
+      ),
+    ),
+  );
+});
   });
 
   // =========================================================
@@ -362,8 +380,6 @@ group('_callFunction core coverage', () {
     );
   });
 });
-
-group('validation coverage', () {
   test('addRequest throws exception', () async {
   when(() => mockFunctions.httpsCallable('addRequest'))
       .thenReturn(mockCallable);
@@ -383,7 +399,7 @@ group('validation coverage', () {
     throwsException,
   );
 });
-});
+
 
 group('success pattern (global)', () {
   setUp(() {
@@ -397,17 +413,43 @@ group('success pattern (global)', () {
         .thenReturn({'ok': true});
   });
 
-  test('covers multiple methods', () async {
-    await service.getRequests();
-    await service.getNotifications();
-    await service.getDonors();
-    await service.getUserData();
-    await service.getUserRole();
-    await service.deleteOldNotifications();
+test('covers multiple methods', () async {
+  when(() => mockFunctions.httpsCallable('getRequests'))
+      .thenReturn(mockCallable);
 
-    expect(true, true);
-  });
-});
+  when(() => mockFunctions.httpsCallable('getNotifications'))
+      .thenReturn(mockCallable);
+
+  when(() => mockFunctions.httpsCallable('getDonors'))
+      .thenReturn(mockCallable);
+
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
+
+  when(() => mockFunctions.httpsCallable('getUserRole'))
+      .thenReturn(mockCallable);
+
+  when(() => mockFunctions.httpsCallable('deleteOldNotifications'))
+      .thenReturn(mockCallable);
+
+  when(() => mockCallable.call(any()))
+      .thenAnswer((_) async => mockResult);
+
+  when(() => mockResult.data)
+      .thenReturn({'ok': true});
+
+  await service.getRequests();
+  await service.getNotifications();
+  await service.getDonors();
+  await service.getUserData();
+  await service.getUserRole();
+  await service.deleteOldNotifications();
+
+  expect(true, true);
+});    
+    });
 
 group('firebase error mapping', () {
   setUp(() {
@@ -519,8 +561,10 @@ test('hospital profile sends proper payload', () async {
 });
 
 test('getUserData includes uid when provided', () async {
-  when(() => mockFunctions.httpsCallable('getUserData'))
-      .thenReturn(mockCallable);
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
 
   when(() => mockCallable.call(any()))
       .thenAnswer((_) async => mockResult);
@@ -534,7 +578,6 @@ test('getUserData includes uid when provided', () async {
         'uid': '123',
       })).called(1);
 });
-
 test('sendMessage includes recipientId when provided', () async {
   when(() => mockFunctions.httpsCallable(
         'sendMessage',
@@ -871,63 +914,80 @@ group('additional coverage tests', () {
     expect(result['saved'], true);
   });
 
-  test('handles invalid-argument exception', () async {
-    when(() => mockFunctions.httpsCallable(any()))
-        .thenReturn(mockCallable);
+ test('handles invalid-argument exception', () async {
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
 
-    when(() => mockCallable.call(any())).thenThrow(
-      FirebaseFunctionsException(
-        code: 'invalid-argument',
-        message: 'bad input',
+  when(() => mockCallable.call(any())).thenThrow(
+    FirebaseFunctionsException(
+      code: 'invalid-argument',
+      message: 'bad input',
+    ),
+  );
+
+  expect(
+    () => service.getUserData(),
+    throwsA(
+      predicate(
+        (e) =>
+            e is Exception &&
+            e.toString().contains('bad input'),
       ),
-    );
+    ),
+  );
+});
 
-    expect(
-      () => service.getUserData(),
-      throwsA(
-        predicate((e) =>
-            e.toString().contains('bad input')),
+test('handles unauthenticated exception', () async {
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
+
+  when(() => mockCallable.call(any())).thenThrow(
+    FirebaseFunctionsException(
+      code: 'unauthenticated',
+      message: 'Please log in first',
+    ),
+  );
+
+  expect(
+    () => service.getUserData(),
+    throwsA(
+      predicate(
+        (e) =>
+            e is Exception &&
+            e.toString().contains('Please log in first'),
       ),
-    );
-  });
+    ),
+  );
+});
 
-  test('handles unauthenticated exception', () async {
-    when(() => mockFunctions.httpsCallable(any()))
-        .thenReturn(mockCallable);
+test('handles generic internal exception', () async {
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
 
-    when(() => mockCallable.call(any())).thenThrow(
-      FirebaseFunctionsException(
-        code: 'unauthenticated',
-        message: 'Please log in first',
+  when(() => mockCallable.call(any())).thenThrow(
+    FirebaseFunctionsException(
+      code: 'internal',
+      message: 'random internal',
+    ),
+  );
+
+  expect(
+    () => service.getUserData(),
+    throwsA(
+      predicate(
+        (e) =>
+            e is Exception &&
+            e.toString().contains('Something went wrong'),
       ),
-    );
-
-    expect(
-      () => service.getUserData(),
-      throwsA(
-        predicate((e) =>
-            e.toString().contains('Please log in first')),
-      ),
-    );
-  });
-
-  test('handles generic internal exception', () async {
-    when(() => mockFunctions.httpsCallable(any()))
-        .thenReturn(mockCallable);
-
-    when(() => mockCallable.call(any())).thenThrow(
-      FirebaseFunctionsException(
-        code: 'internal',
-        message: 'random internal',
-      ),
-    );
-
-    expect(
-      () => service.getUserData(),
-      throwsException,
-    );
-  });
-
+    ),
+  );
+});
   test('handles not found network errors', () async {
     when(() => mockFunctions.httpsCallable(any()))
         .thenReturn(mockCallable);
@@ -1221,82 +1281,104 @@ group('mega coverage boost', () {
   });
 
   test('handles failed-precondition index error', () async {
-    when(() => mockFunctions.httpsCallable(any()))
-        .thenReturn(mockCallable);
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
 
-    when(() => mockCallable.call(any())).thenThrow(
-      FirebaseFunctionsException(
-        code: 'failed-precondition',
-        message: 'index missing',
+  when(() => mockCallable.call(any())).thenThrow(
+    FirebaseFunctionsException(
+      code: 'failed-precondition',
+      message: 'index missing',
+    ),
+  );
+
+  expect(
+    () => service.getUserData(),
+    throwsA(
+      predicate(
+        (e) =>
+            e is Exception &&
+            e.toString().contains('Database index required'),
       ),
-    );
+    ),
+  );
+});
 
-    expect(
-      () => service.getUserData(),
-      throwsA(
-        predicate((e) =>
-            e.toString().contains('Database index required')),
+test('handles failed-precondition generic error', () async {
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
+
+  when(() => mockCallable.call(any())).thenThrow(
+    FirebaseFunctionsException(
+      code: 'failed-precondition',
+      message: 'verify email',
+    ),
+  );
+
+  expect(
+    () => service.getUserData(),
+    throwsA(
+      predicate(
+        (e) =>
+            e is Exception &&
+            e.toString().contains('verify email'),
       ),
-    );
-  });
+    ),
+  );
+});
 
-  test('handles failed-precondition generic error', () async {
-    when(() => mockFunctions.httpsCallable(any()))
-        .thenReturn(mockCallable);
+test('handles internal FAILED_PRECONDITION', () async {
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
 
-    when(() => mockCallable.call(any())).thenThrow(
-      FirebaseFunctionsException(
-        code: 'failed-precondition',
-        message: 'verify email',
+  when(() => mockCallable.call(any())).thenThrow(
+    FirebaseFunctionsException(
+      code: 'internal',
+      message: 'FAILED_PRECONDITION index',
+    ),
+  );
+
+  expect(
+    () => service.getUserData(),
+    throwsA(
+      predicate(
+        (e) =>
+            e is Exception &&
+            e.toString().contains('Database index required'),
       ),
-    );
+    ),
+  );
+});
 
-    expect(
-      () => service.getUserData(),
-      throwsA(
-        predicate((e) =>
-            e.toString().contains('verify email')),
+test('handles internal delete request error', () async {
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
+
+  when(() => mockCallable.call(any())).thenThrow(
+    FirebaseFunctionsException(
+      code: 'internal',
+      message: 'Failed to delete request: denied',
+    ),
+  );
+
+  expect(
+    () => service.getUserData(),
+    throwsA(
+      predicate(
+        (e) =>
+            e is Exception &&
+            e.toString().contains('Failed to delete request'),
       ),
-    );
-  });
-
-  test('handles internal FAILED_PRECONDITION', () async {
-    when(() => mockFunctions.httpsCallable(any()))
-        .thenReturn(mockCallable);
-
-    when(() => mockCallable.call(any())).thenThrow(
-      FirebaseFunctionsException(
-        code: 'internal',
-        message: 'FAILED_PRECONDITION index',
-      ),
-    );
-
-    expect(
-      () => service.getUserData(),
-      throwsA(
-        predicate((e) =>
-            e.toString().contains('Database index required')),
-      ),
-    );
-  });
-
-  test('handles internal delete request error', () async {
-    when(() => mockFunctions.httpsCallable(any()))
-        .thenReturn(mockCallable);
-
-    when(() => mockCallable.call(any())).thenThrow(
-      FirebaseFunctionsException(
-        code: 'internal',
-        message: 'Failed to delete request: denied',
-      ),
-    );
-
-    expect(
-      () => service.getUserData(),
-      throwsException,
-    );
-  });
-
+    ),
+  );
+});
   test('handles ssl certificate errors', () async {
     when(() => mockFunctions.httpsCallable(any()))
         .thenReturn(mockCallable);
@@ -1679,94 +1761,105 @@ group('extreme coverage expansion', () {
     })).called(1);
   });
 
-  test('handles permission denied without message', () async {
-    when(() => mockFunctions.httpsCallable(any()))
-        .thenReturn(mockCallable);
+ test('handles permission denied fallback message', () async {
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
 
-    when(() => mockCallable.call(any())).thenThrow(
-      FirebaseFunctionsException(
-        code: 'permission-denied',
-        message: "You do not have permission",
+  when(() => mockCallable.call(any())).thenThrow(
+    FirebaseFunctionsException(
+      code: 'permission-denied',
+      message: '',
+    ),
+  );
+
+  expect(
+    () => service.getUserData(),
+    throwsA(
+      predicate(
+        (e) =>
+            e is Exception &&
+            e.toString().contains('You do not have permission'),
       ),
-    );
+    ),
+  );
+});
 
-    expect(
-      () => service.getUserData(),
-      throwsA(
-        predicate((e) =>
-            e.toString().contains(
-              'You do not have permission',
-            )),
+test('handles invalid-argument message', () async {
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
+
+  when(() => mockCallable.call(any())).thenThrow(
+    FirebaseFunctionsException(
+      code: 'invalid-argument',
+      message: 'Invalid argument provided',
+    ),
+  );
+
+  expect(
+    () => service.getUserData(),
+    throwsA(
+      predicate(
+        (e) =>
+            e is Exception &&
+            e.toString().contains('Invalid argument provided'),
       ),
-    );
-  });
+    ),
+  );
+});
 
-  test('handles invalid-argument without message', () async {
-    when(() => mockFunctions.httpsCallable(any()))
-        .thenReturn(mockCallable);
+test('handles internal exception message', () async {
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
 
-    when(() => mockCallable.call(any())).thenThrow(
-      FirebaseFunctionsException(
-        code: 'invalid-argument',
-        message: 'Invalid argument provided',
+  when(() => mockCallable.call(any())).thenThrow(
+    FirebaseFunctionsException(
+      code: 'internal',
+      message: 'Something went wrong. Please try again',
+    ),
+  );
+
+  expect(
+    () => service.getUserData(),
+    throwsA(
+      predicate(
+        (e) =>
+            e is Exception &&
+            e.toString().contains('Something went wrong'),
       ),
-    );
+    ),
+  );
+});
 
-    expect(
-      () => service.getUserData(),
-      throwsA(
-        predicate((e) =>
-            e.toString().contains(
-              'Invalid argument provided',
-            )),
+test('handles unknown firebase exception', () async {
+  when(() => mockFunctions.httpsCallable(
+        'getUserData',
+        options: any(named: 'options'),
+      )).thenReturn(mockCallable);
+
+  when(() => mockCallable.call(any())).thenThrow(
+    FirebaseFunctionsException(
+      code: 'unknown',
+      message: 'An unknown error occurred',
+    ),
+  );
+
+  expect(
+    () => service.getUserData(),
+    throwsA(
+      predicate(
+        (e) =>
+            e is Exception &&
+            e.toString().contains('An unknown error occurred'),
       ),
-    );
-  });
-
-  test('handles internal without message', () async {
-    when(() => mockFunctions.httpsCallable(any()))
-        .thenReturn(mockCallable);
-
-    when(() => mockCallable.call(any())).thenThrow(
-      FirebaseFunctionsException(
-        code: 'internal',
-        message: 'Something went wrong. Please try again',
-      ),
-    );
-
-    expect(
-      () => service.getUserData(),
-      throwsA(
-        predicate((e) =>
-            e.toString().contains(
-              'Something went wrong. Please try again',
-            )),
-      ),
-    );
-  });
-
-  test('handles default firebase exception without message', () async {
-    when(() => mockFunctions.httpsCallable(any()))
-        .thenReturn(mockCallable);
-
-    when(() => mockCallable.call(any())).thenThrow(
-      FirebaseFunctionsException(
-        code: 'unknown',
-        message: 'An unknown error occurred',
-      ),
-    );
-
-    expect(
-      () => service.getUserData(),
-      throwsA(
-        predicate((e) =>
-            e.toString().contains(
-              'An unknown error occurred',
-            )),
-      ),
-    );
-  });
-
+    ),
+  );
+});
 });
 
 group('coverage assault', () {

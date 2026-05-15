@@ -145,10 +145,6 @@ void main() {
 
   });
 
-  // =====================================================
-// EXTRA COVERAGE - appointmentStatus
-// =====================================================
-
 test('appointmentStatus is lowercased', () {
   final result = DonorResponseEntry.fromMap({
     'appointmentStatus': 'COMPLETED',
@@ -165,11 +161,6 @@ test('appointmentStatus null when empty', () {
   expect(result.appointmentStatus, null);
 });
 
-
-// =====================================================
-// EXTRA COVERAGE - bloodType
-// =====================================================
-
 test('bloodType trims correctly', () {
   final result = DonorResponseEntry.fromMap({
     'bloodType': '  A+  ',
@@ -185,11 +176,6 @@ test('bloodType null when empty', () {
 
   expect(result.bloodType, null);
 });
-
-
-// =====================================================
-// EXTRA COVERAGE - readMillis()
-// =====================================================
 
 test('appointmentAtMillis null when empty string', () {
   final result = DonorResponseEntry.fromMap({
@@ -215,11 +201,6 @@ test('readMillis handles null correctly', () {
   expect(result.appointmentAtMillis, null);
 });
 
-
-// =====================================================
-// EXTRA COVERAGE - processStatus robustness
-// =====================================================
-
 test('processStatus handles non-string values', () {
   final result = DonorResponseEntry.fromMap({
     'processStatus': 123,
@@ -227,11 +208,6 @@ test('processStatus handles non-string values', () {
 
   expect(result.processStatus, '123');
 });
-
-
-// =====================================================
-// EXTRA COVERAGE - latestMedicalReport
-// =====================================================
 
 test('parses latestMedicalReport correctly', () {
   final result = DonorResponseEntry.fromMap({
@@ -252,11 +228,6 @@ test('latestMedicalReport null when not map', () {
 
   expect(result.latestMedicalReport, null);
 });
-
-
-// =====================================================
-// EXTRA COVERAGE - pick() edge cases
-// =====================================================
 
 test('pick ignores empty and whitespace values', () {
   final result = DonorResponseEntry.fromMap({

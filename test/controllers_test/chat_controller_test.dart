@@ -275,7 +275,7 @@ group('participants', () {
     expect(result.contains('bank1'), false);
   });
 
-  test('getUnreadCountPerUser', () async {
+test('getUnreadCountPerUser', () async {
     when(() => mockCloudFunctions.getMessages(
           requestId: any(named: 'requestId'),
           filterRecipientId: any(named: 'filterRecipientId'),
@@ -292,7 +292,7 @@ group('participants', () {
 
     expect(result['u1'], 2);
     expect(result['u2'], 1);
-  });
+});
   
 test('getUnreadCountPerUser ignores non-bank messages', () async {
   when(() => mockCloudFunctions.getMessages(
