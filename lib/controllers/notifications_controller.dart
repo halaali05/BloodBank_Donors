@@ -97,7 +97,7 @@ class NotificationsController {
     return out;
   }
 
-  /// Live updates when notification documents change (e.g. ticket deleted on server).
+  /// Live updates when notification documents change (e.g. issue deleted on server).
   /// Requires Firestore rules: read on own `notifications/{uid}/user_notifications`.
   static Stream<List<Map<String, dynamic>>> watchMyNotifications(String uid) {
     return FirebaseFirestore.instance

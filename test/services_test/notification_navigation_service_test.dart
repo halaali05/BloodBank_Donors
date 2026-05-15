@@ -356,7 +356,7 @@ void main() {
 
       service.openFromData({
         'type': 'support_reply',
-        'ticketId': 'ticket-abc',
+        'issueId': 'issue-abc',
       });
 
       await tester.pump();

@@ -28,7 +28,7 @@ import '../../services/fcm_service.dart';
 import '../../services/auth_service.dart';
 import '../../main.dart' show navigatorKey;
 import '../support/support_screen.dart';
-import '../../models/support_ticket_model.dart';
+import '../../models/support_issue_model.dart';
 
 class BloodBankDashboardScreen extends StatefulWidget {
   final String bloodBankName;
@@ -318,7 +318,7 @@ class _BloodBankDashboardScreenState extends State<BloodBankDashboardScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => SupportScreen(
-                    senderRole: TicketSenderRole.hospital,
+                    senderRole: IssueSenderRole.hospital,
                     senderName: widget.bloodBankName,
                   ),
                 ),

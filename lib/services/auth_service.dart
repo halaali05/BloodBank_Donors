@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
@@ -185,11 +187,20 @@ class AuthService {
   ///
   /// Security: All database operations go through Cloud Functions
   /// No direct Firestore access from client side
+  static const Duration _signInTimeout = Duration(seconds: 45);
+
   Future<void> login({required String email, required String password}) async {
-    await _auth.signInWithEmailAndPassword(
-      email: email.trim(),
-      password: password,
-    );
+    await _auth
+        .signInWithEmailAndPassword(email: email.trim(), password: password)
+        .timeout(
+          _signInTimeout,
+          onTimeout: () {
+            throw TimeoutException(
+              'Sign-in timed out. Check Wi‑Fi or mobile data and try again.',
+              _signInTimeout,
+            );
+          },
+        );
 
     await refreshLastLoginTelemetry();
   }
@@ -250,11 +261,27 @@ class AuthService {
     }
   }
 
-  /// Checks if current user's email is verified (reloads user)
+  static const Duration _emailReloadTimeout = Duration(seconds: 25);
+
+  /// Checks if current user's email is verified (reloads user).
+  /// Times out so the login UI does not hang on slow or blocked networks.
   Future<bool> isEmailVerified() async {
     final user = _auth.currentUser;
     if (user == null) return false;
-    await user.reload();
+    try {
+      await user.reload().timeout(
+            _emailReloadTimeout,
+            onTimeout: () {
+              throw TimeoutException(
+                'Could not refresh your session. Check Wi‑Fi or mobile data '
+                'and try again.',
+                _emailReloadTimeout,
+              );
+            },
+          );
+    } on FirebaseAuthException {
+      rethrow;
+    }
     return _auth.currentUser?.emailVerified ?? false;
   }
 

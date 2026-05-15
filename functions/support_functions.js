@@ -6,6 +6,11 @@ const { publicCallableOpts } = require("./callable_config");
 
 const db = admin.firestore();
 
+function resolveIssueDocId(data) {
+  const d = data || {};
+  return String(d.issueId ?? d.ticketId ?? "").trim();
+}
+
 // ─── Helper: تأكد أن المستدعي هو أدمن ──────────────────────────
 async function requireAdmin(uid) {
   if (!uid) throw new HttpsError("unauthenticated", "Not signed in.");
@@ -15,9 +20,9 @@ async function requireAdmin(uid) {
   }
 }
 
-// ─── submitSupportTicket ─────────────────────────────────────────
-// يُستدعى من المتبرع أو بنك الدم لإرسال تذكرة جديدة
-exports.submitSupportTicket = onCall(publicCallableOpts, async (request) => {
+// ─── submitSupportIssue ─────────────────────────────────────────
+// يُستدعى من المتبرع أو بنك الدم لإرسال قضية دعم جديدة
+exports.submitSupportIssue = onCall(publicCallableOpts, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Not signed in.");
 
@@ -38,14 +43,13 @@ exports.submitSupportTicket = onCall(publicCallableOpts, async (request) => {
     );
   }
   if (!["complaint", "help"].includes(type)) {
-    throw new HttpsError("invalid-argument", "Invalid ticket type.");
+    throw new HttpsError("invalid-argument", "Invalid issue type.");
   }
 
-  // جلب email من Firebase Auth
   const userRecord = await admin.auth().getUser(uid);
   const senderEmail = userRecord.email || "";
 
-  const ticketRef = await db.collection("supportTickets").add({
+  const issueRef = await db.collection("supportTickets").add({
     senderId: uid,
     senderEmail,
     senderName,
@@ -59,7 +63,8 @@ exports.submitSupportTicket = onCall(publicCallableOpts, async (request) => {
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  // إشعار داخلي للأدمن (يحفظ في notifications collection لأول أدمن يلاقيه)
+  const issueDocId = issueRef.id;
+
   try {
     const adminsSnap = await db
       .collection("users")
@@ -72,24 +77,23 @@ exports.submitSupportTicket = onCall(publicCallableOpts, async (request) => {
       const adminUid = adminDoc.id;
       const adminData = adminDoc.data() || {};
 
-      // حفظ إشعار في Firestore للأدمن
       await db
         .collection("notifications")
         .doc(adminUid)
         .collection("user_notifications")
         .add({
-          type: "support_new_ticket",
+          type: "support_new_issue",
           title:
             type === "complaint" ? "📋 New Complaint" : "🆘 New Help Request",
           body: `${senderName || senderEmail}: ${subject}`,
-          ticketId: ticketRef.id,
+          issueId: issueDocId,
+          ticketId: issueDocId,
           senderId: uid,
           read: false,
           isRead: false,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-      // Push notification للأدمن
       const adminToken =
         typeof adminData.fcmToken === "string" ? adminData.fcmToken.trim() : "";
       if (adminToken) {
@@ -102,8 +106,9 @@ exports.submitSupportTicket = onCall(publicCallableOpts, async (request) => {
             token: adminToken,
             notification: { title, body },
             data: {
-              type: "support_new_ticket",
-              ticketId: ticketRef.id,
+              type: "support_new_issue",
+              issueId: issueDocId,
+              ticketId: issueDocId,
               title,
               body,
             },
@@ -124,36 +129,34 @@ exports.submitSupportTicket = onCall(publicCallableOpts, async (request) => {
           })
           .catch((err) =>
             console.warn(
-              "[submitSupportTicket] Admin push failed:",
+              "[submitSupportIssue] Admin push failed:",
               err.message,
             ),
           );
       }
     }
   } catch (notifErr) {
-    // لا توقف العملية إذا فشل الإشعار
     console.warn(
-      "[submitSupportTicket] Admin notification failed:",
+      "[submitSupportIssue] Admin notification failed:",
       notifErr.message,
     );
   }
 
-  return { ok: true, ticketId: ticketRef.id };
+  return { ok: true, issueId: issueDocId, ticketId: issueDocId };
 });
 
-// ─── replySupportTicket ──────────────────────────────────────────
-// يُستدعى من الأدمن فقط — يرد ويرسل إشعار FCM للمرسل
-exports.replySupportTicket = onCall(publicCallableOpts, async (request) => {
+// ─── replySupportIssue ──────────────────────────────────────────
+exports.replySupportIssue = onCall(publicCallableOpts, async (request) => {
   const adminUid = request.auth?.uid;
   await requireAdmin(adminUid);
 
   const data = request.data || {};
-  const ticketId = String(data.ticketId || "").trim();
+  const issueDocId = resolveIssueDocId(data);
   const reply = String(data.reply || "").trim();
   const newStatus = String(data.status || "inProgress").trim();
 
-  if (!ticketId) {
-    throw new HttpsError("invalid-argument", "ticketId is required.");
+  if (!issueDocId) {
+    throw new HttpsError("invalid-argument", "issueId is required.");
   }
   if (!reply) {
     throw new HttpsError("invalid-argument", "Reply cannot be empty.");
@@ -163,38 +166,28 @@ exports.replySupportTicket = onCall(publicCallableOpts, async (request) => {
     throw new HttpsError("invalid-argument", "Invalid status value.");
   }
 
-  // جلب التذكرة
-  const ticketRef = db.collection("supportTickets").doc(ticketId);
-  const ticketSnap = await ticketRef.get();
-  if (!ticketSnap.exists) {
-    throw new HttpsError("not-found", "Ticket not found.");
+  const issueRef = db.collection("supportTickets").doc(issueDocId);
+  const issueSnap = await issueRef.get();
+  if (!issueSnap.exists) {
+    throw new HttpsError("not-found", "Issue not found.");
   }
 
-  const ticket = ticketSnap.data() || {};
-  const senderId = String(ticket.senderId || "").trim();
-  const subject = String(ticket.subject || "Support Ticket").trim();
+  const issue = issueSnap.data() || {};
+  const senderId = String(issue.senderId || "").trim();
+  const subject = String(issue.subject || "Support Issue").trim();
 
-  // تحديث التذكرة في Firestore
-  await ticketRef.update({
+  await issueRef.update({
     adminReply: reply,
     status: newStatus,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
   if (!senderId) {
-    console.warn("[replySupportTicket] No senderId on ticket, skipping push.");
+    console.warn("[replySupportIssue] No senderId on issue, skipping push.");
     return { ok: true };
   }
 
-  // ─── إشعار Firestore للمستخدم ───────────────────────────────
-  const statusLabels = {
-    open: "Open",
-    inProgress: "In Progress",
-    resolved: "Resolved ✅",
-    closed: "Closed",
-  };
-
-  const notifTitle = "💬 Admin Replied to Your Ticket";
+  const notifTitle = "💬 Admin replied to your issue";
   const notifBody = reply.length > 100 ? `${reply.slice(0, 97)}...` : reply;
 
   await db
@@ -205,7 +198,8 @@ exports.replySupportTicket = onCall(publicCallableOpts, async (request) => {
       type: "support_reply",
       title: notifTitle,
       body: notifBody,
-      ticketId,
+      issueId: issueDocId,
+      ticketId: issueDocId,
       ticketSubject: subject,
       ticketStatus: newStatus,
       read: false,
@@ -213,7 +207,6 @@ exports.replySupportTicket = onCall(publicCallableOpts, async (request) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-  // ─── FCM Push للمستخدم ───────────────────────────────────────
   const userSnap = await db.collection("users").doc(senderId).get();
   const userData = userSnap.exists ? userSnap.data() || {} : {};
   const token =
@@ -226,7 +219,8 @@ exports.replySupportTicket = onCall(publicCallableOpts, async (request) => {
         notification: { title: notifTitle, body: notifBody },
         data: {
           type: "support_reply",
-          ticketId,
+          issueId: issueDocId,
+          ticketId: issueDocId,
           ticketSubject: subject,
           ticketStatus: newStatus,
           title: notifTitle,
@@ -255,11 +249,12 @@ exports.replySupportTicket = onCall(publicCallableOpts, async (request) => {
             title: notifTitle,
             body: notifBody,
             requireInteraction: true,
-            tag: `support_${ticketId}`,
+            tag: `support_${issueDocId}`,
           },
           data: {
             type: "support_reply",
-            ticketId,
+            issueId: issueDocId,
+            ticketId: issueDocId,
             ticketStatus: newStatus,
             title: notifTitle,
             body: notifBody,
@@ -267,23 +262,22 @@ exports.replySupportTicket = onCall(publicCallableOpts, async (request) => {
         },
       });
       console.log(
-        `[replySupportTicket] ✅ Push sent to uid=${senderId} ticket=${ticketId}`,
+        `[replySupportIssue] ✅ Push sent to uid=${senderId} issue=${issueDocId}`,
       );
     } catch (pushErr) {
-      console.warn("[replySupportTicket] Push failed:", pushErr.message);
+      console.warn("[replySupportIssue] Push failed:", pushErr.message);
     }
   } else {
     console.warn(
-      `[replySupportTicket] No fcmToken for uid=${senderId}, skipping push.`,
+      `[replySupportIssue] No fcmToken for uid=${senderId}, skipping push.`,
     );
   }
 
   return { ok: true };
 });
 
-// ─── getMyTickets ─────────────────────────────────────────────────
-// جلب تذاكر المستخدم الحالي
-exports.getMyTickets = onCall(publicCallableOpts, async (request) => {
+// ─── getMyIssues ─────────────────────────────────────────────────
+exports.getMyIssues = onCall(publicCallableOpts, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Not signed in.");
 
@@ -294,7 +288,7 @@ exports.getMyTickets = onCall(publicCallableOpts, async (request) => {
     .limit(50)
     .get();
 
-  const tickets = snap.docs.map((doc) => {
+  const issues = snap.docs.map((doc) => {
     const d = doc.data() || {};
     return {
       id: doc.id,
@@ -304,12 +298,11 @@ exports.getMyTickets = onCall(publicCallableOpts, async (request) => {
     };
   });
 
-  return { tickets };
+  return { issues, tickets: issues };
 });
 
-// ─── getAllTickets ────────────────────────────────────────────────
-// جلب كل التذاكر للأدمن مع فلترة اختيارية
-exports.getAllTickets = onCall(publicCallableOpts, async (request) => {
+// ─── getAllIssues ────────────────────────────────────────────────
+exports.getAllIssues = onCall(publicCallableOpts, async (request) => {
   const uid = request.auth?.uid;
   await requireAdmin(uid);
 
@@ -328,7 +321,7 @@ exports.getAllTickets = onCall(publicCallableOpts, async (request) => {
   if (filterType) query = query.where("type", "==", filterType);
 
   const snap = await query.get();
-  const tickets = snap.docs.map((doc) => {
+  const issues = snap.docs.map((doc) => {
     const d = doc.data() || {};
     return {
       id: doc.id,
@@ -338,21 +331,20 @@ exports.getAllTickets = onCall(publicCallableOpts, async (request) => {
     };
   });
 
-  return { tickets };
+  return { issues, tickets: issues };
 });
 
-// ─── updateTicketStatus ───────────────────────────────────────────
-// تغيير حالة التذكرة (أدمن فقط)
-exports.updateTicketStatus = onCall(publicCallableOpts, async (request) => {
+// ─── updateIssueStatus ───────────────────────────────────────────
+exports.updateIssueStatus = onCall(publicCallableOpts, async (request) => {
   const uid = request.auth?.uid;
   await requireAdmin(uid);
 
   const data = request.data || {};
-  const ticketId = String(data.ticketId || "").trim();
+  const issueDocId = resolveIssueDocId(data);
   const newStatus = String(data.status || "").trim();
 
-  if (!ticketId) {
-    throw new HttpsError("invalid-argument", "ticketId is required.");
+  if (!issueDocId) {
+    throw new HttpsError("invalid-argument", "issueId is required.");
   }
 
   const valid = ["open", "inProgress", "resolved", "closed"];
@@ -361,7 +353,7 @@ exports.updateTicketStatus = onCall(publicCallableOpts, async (request) => {
     throw new HttpsError("invalid-argument", "Invalid status.");
   }
 
-  await db.collection("supportTickets").doc(ticketId).update({
+  await db.collection("supportTickets").doc(issueDocId).update({
     status: newStatus,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -369,46 +361,56 @@ exports.updateTicketStatus = onCall(publicCallableOpts, async (request) => {
   return { ok: true };
 });
 
-// ─── deleteTicket ─────────────────────────────────────────────────
-exports.deleteSupportTicket = onCall(publicCallableOpts, async (request) => {
+// ─── deleteSupportIssue ───────────────────────────────────────────
+exports.deleteSupportIssue = onCall(publicCallableOpts, async (request) => {
   const uid = request.auth?.uid;
   await requireAdmin(uid);
 
-  const ticketId = String(request.data?.ticketId || "").trim();
-  if (!ticketId) {
-    throw new HttpsError("invalid-argument", "ticketId is required.");
+  const issueDocId = resolveIssueDocId(request.data || {});
+  if (!issueDocId) {
+    throw new HttpsError("invalid-argument", "issueId is required.");
   }
 
-  // Remove every in-app notification tied to this ticket (sender + admin, etc.).
-  const notifSnap = await db
-    .collectionGroup("user_notifications")
-    .where("ticketId", "==", ticketId)
-    .get();
+  const [notifByTicket, notifByIssue] = await Promise.all([
+    db
+      .collectionGroup("user_notifications")
+      .where("ticketId", "==", issueDocId)
+      .get(),
+    db
+      .collectionGroup("user_notifications")
+      .where("issueId", "==", issueDocId)
+      .get(),
+  ]);
+
+  const uniqueRefs = new Map();
+  for (const doc of notifByTicket.docs) uniqueRefs.set(doc.ref.path, doc.ref);
+  for (const doc of notifByIssue.docs) uniqueRefs.set(doc.ref.path, doc.ref);
+  const refs = [...uniqueRefs.values()];
 
   const batchSize = 500;
-  if (!notifSnap.empty) {
-    for (let i = 0; i < notifSnap.docs.length; i += batchSize) {
+  if (refs.length > 0) {
+    for (let i = 0; i < refs.length; i += batchSize) {
       const batch = db.batch();
       for (
         let j = i;
-        j < Math.min(i + batchSize, notifSnap.docs.length);
+        j < Math.min(i + batchSize, refs.length);
         j += 1
       ) {
-        batch.delete(notifSnap.docs[j].ref);
+        batch.delete(refs[j]);
       }
       await batch.commit();
     }
   }
 
-  await db.collection("supportTickets").doc(ticketId).delete();
+  await db.collection("supportTickets").doc(issueDocId).delete();
   return {
     ok: true,
-    deletedNotifications: notifSnap.docs.length,
+    deletedNotifications: refs.length,
   };
 });
 
-// ─── countOpenTickets ─────────────────────────────────────────────
-exports.countOpenTickets = onCall(publicCallableOpts, async (request) => {
+// ─── countOpenIssues ─────────────────────────────────────────────
+exports.countOpenIssues = onCall(publicCallableOpts, async (request) => {
   const uid = request.auth?.uid;
   await requireAdmin(uid);
 

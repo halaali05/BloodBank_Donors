@@ -1,29 +1,20 @@
-import '../models/support_ticket_model.dart';
+import '../models/support_issue_model.dart';
 import '../services/support_service.dart';
 
-/// Controller للتحكم في منطق قسم الدعم والشكاوي
 class SupportController {
   final SupportService _service;
 
   SupportController({SupportService? service})
-    : _service = service ?? SupportService();
+      : _service = service ?? SupportService();
 
-  // ── إرسال تذكرة ────────────────────────────────────────────
-
-  Future<String> submitTicket({
-    required TicketType type,
+  Future<String> submitIssue({
+    required IssueType type,
     required String subject,
     required String message,
-    required TicketSenderRole senderRole,
+    required IssueSenderRole senderRole,
     String? senderName,
-  }) async {
-    if (subject.trim().isEmpty) {
-      throw Exception('Please enter a subject.');
-    }
-    if (message.trim().length < 10) {
-      throw Exception('Message must be at least 10 characters.');
-    }
-    return _service.submitTicket(
+  }) {
+    return _service.submitIssue(
       type: type,
       subject: subject,
       message: message,
@@ -32,41 +23,32 @@ class SupportController {
     );
   }
 
-  // ── جلب تذاكر المستخدم ────────────────────────────────────
+  Future<List<SupportIssue>> fetchMyIssues() => _service.fetchMyIssues();
 
-  Future<List<SupportTicket>> fetchMyTickets() => _service.fetchMyTickets();
+  Future<List<SupportIssue>> fetchAllIssues({
+    IssueStatus? filterStatus,
+    IssueType? filterType,
+  }) =>
+      _service.fetchAllIssues(filterStatus: filterStatus, filterType: filterType);
 
-  // ── جلب كل التذاكر (أدمن) ────────────────────────────────
-
-  Future<List<SupportTicket>> fetchAllTickets({
-    TicketStatus? filterStatus,
-    TicketType? filterType,
-  }) => _service.fetchAllTickets(
-    filterStatus: filterStatus,
-    filterType: filterType,
-  );
-
-  // ── رد الأدمن ─────────────────────────────────────────────
-
-  Future<void> replyToTicket({
-    required String ticketId,
+  Future<void> replyToIssue({
+    required String issueId,
     required String reply,
-    required TicketStatus newStatus,
-  }) async {
-    if (reply.trim().isEmpty) throw Exception('Reply cannot be empty.');
-    return _service.replyToTicket(
-      ticketId: ticketId,
+    required IssueStatus newStatus,
+  }) {
+    return _service.replyToIssue(
+      issueId: issueId,
       reply: reply,
       newStatus: newStatus,
     );
   }
 
-  Future<void> updateTicketStatus({
-    required String ticketId,
-    required TicketStatus status,
-  }) => _service.updateTicketStatus(ticketId: ticketId, status: status);
+  Future<void> updateIssueStatus({
+    required String issueId,
+    required IssueStatus status,
+  }) => _service.updateIssueStatus(issueId: issueId, status: status);
 
-  Future<void> deleteTicket(String ticketId) => _service.deleteTicket(ticketId);
+  Future<void> deleteIssue(String issueId) => _service.deleteIssue(issueId);
 
-  Future<int> countOpenTickets() => _service.countOpenTickets();
+  Future<int> countOpenIssues() => _service.countOpenIssues();
 }

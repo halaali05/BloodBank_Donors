@@ -20,10 +20,10 @@ function notificationRequestId(data) {
   return s === "" ? null : s;
 }
 
-/** Support ticket id on notification docs (e.g. support_reply, support_new_ticket). */
-function notificationTicketId(data) {
+/** Support issue id on notification docs (e.g. support_reply, support_new_issue). */
+function notificationIssueId(data) {
   const d = data || {};
-  const v = d.ticketId;
+  const v = d.issueId != null ? d.issueId : d.ticketId;
   if (v == null) return null;
   const s = String(v).trim();
   return s === "" ? null : s;
@@ -317,7 +317,7 @@ exports.getNotifications = onCall(publicCallableOpts, async (request) => {
               : null,
         },
         requestKey: notificationRequestId(d),
-        ticketKey: notificationTicketId(d),
+        issueKey: notificationIssueId(d),
       };
     });
 
@@ -325,8 +325,8 @@ exports.getNotifications = onCall(publicCallableOpts, async (request) => {
       ...new Set(rows.map((r) => r.requestKey).filter(Boolean)),
     ];
 
-    const uniqueTicketIds = [
-      ...new Set(rows.map((r) => r.ticketKey).filter(Boolean)),
+    const uniqueIssueIds = [
+      ...new Set(rows.map((r) => r.issueKey).filter(Boolean)),
     ];
 
     const requestExists = new Map();
@@ -340,21 +340,21 @@ exports.getNotifications = onCall(publicCallableOpts, async (request) => {
       });
     }
 
-    const ticketExists = new Map();
-    for (let i = 0; i < uniqueTicketIds.length; i += GET_ALL_CHUNK) {
-      const chunk = uniqueTicketIds.slice(i, i + GET_ALL_CHUNK);
+    const issueExists = new Map();
+    for (let i = 0; i < uniqueIssueIds.length; i += GET_ALL_CHUNK) {
+      const chunk = uniqueIssueIds.slice(i, i + GET_ALL_CHUNK);
       const refs = chunk.map((id) => db.collection("supportTickets").doc(id));
       const snaps = await db.getAll(...refs);
       snaps.forEach((snap, idx) => {
-        ticketExists.set(chunk[idx], snap.exists);
+        issueExists.set(chunk[idx], snap.exists);
       });
     }
 
     const staleRefs = [];
     const notifications = [];
     for (const row of rows) {
-      if (row.ticketKey != null) {
-        if (ticketExists.get(row.ticketKey) === true) {
+      if (row.issueKey != null) {
+        if (issueExists.get(row.issueKey) === true) {
           notifications.push(row.payload);
         } else {
           staleRefs.push(row.ref);

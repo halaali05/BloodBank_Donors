@@ -176,7 +176,12 @@ class CloudFunctionsService {
 
   Future<Map<String, dynamic>> getUserData({String? uid}) async {
     try {
-      final callable = _functions.httpsCallable('getUserData');
+      final callable = _functions.httpsCallable(
+        'getUserData',
+        options: HttpsCallableOptions(
+          timeout: const Duration(seconds: 35),
+        ),
+      );
       final result = await callable.call({if (uid != null) 'uid': uid});
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {

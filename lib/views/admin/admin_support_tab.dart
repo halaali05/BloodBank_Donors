@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../controllers/support_controller.dart';
-import '../../models/support_ticket_model.dart';
+import '../../models/support_issue_model.dart';
 import '../../shared/app_status/loading_status_messages.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/error_message_helper.dart';
@@ -16,10 +16,10 @@ class AdminSupportTab extends StatefulWidget {
 
 class _AdminSupportTabState extends State<AdminSupportTab> {
   final SupportController _controller = SupportController();
-  List<SupportTicket> _tickets = [];
+  List<SupportIssue> _issues = [];
   bool _isLoading = true;
   String? _loadError;
-  TicketType? _filterType;
+  IssueType? _filterType;
 
   @override
   void initState() {
@@ -33,10 +33,10 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
       _loadError = null;
     });
     try {
-      final list = await _controller.fetchAllTickets(filterType: _filterType);
+      final list = await _controller.fetchAllIssues(filterType: _filterType);
       if (!mounted) return;
       setState(() {
-        _tickets = list;
+        _issues = list;
         _isLoading = false;
         _loadError = null;
       });
@@ -49,15 +49,15 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
     }
   }
 
-  Future<void> _openReplyDialog(SupportTicket ticket) async {
-    final replyCtrl = TextEditingController(text: ticket.adminReply ?? '');
+  Future<void> _openReplyDialog(SupportIssue issue) async {
+    final replyCtrl = TextEditingController(text: issue.adminReply ?? '');
 
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlgState) => AlertDialog(
           title: const Text(
-            'Reply to Ticket',
+            'Reply to issue',
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
           content: SizedBox(
@@ -76,14 +76,14 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        ticket.senderName ?? ticket.senderEmail,
+                        issue.senderName ?? issue.senderEmail,
                         style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 13,
                         ),
                       ),
                       Text(
-                        ticket.senderRole == TicketSenderRole.hospital
+                        issue.senderRole == IssueSenderRole.hospital
                             ? 'Blood Bank'
                             : 'Donor',
                         style: const TextStyle(
@@ -96,7 +96,7 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  ticket.subject,
+                  issue.subject,
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
@@ -104,7 +104,7 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  ticket.message,
+                  issue.message,
                   style: const TextStyle(fontSize: 13, color: Colors.black54),
                 ),
                 const SizedBox(height: 16),
@@ -145,10 +145,10 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
                 }
                 Navigator.pop(ctx);
                 try {
-                  await _controller.replyToTicket(
-                    ticketId: ticket.id,
+                  await _controller.replyToIssue(
+                    issueId: issue.id,
                     reply: replyCtrl.text,
-                    newStatus: TicketStatus.resolved,
+                    newStatus: IssueStatus.resolved,
                   );
                   if (!mounted) return;
                   SnackBarHelper.success(context, 'Reply sent successfully.');
@@ -172,12 +172,12 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
     );
   }
 
-  Future<void> _deleteTicket(SupportTicket ticket) async {
+  Future<void> _deleteIssue(SupportIssue issue) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete Ticket'),
-        content: Text('Delete "${ticket.subject}"?'),
+        title: const Text('Delete issue'),
+        content: Text('Delete "${issue.subject}"?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -192,9 +192,9 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
     );
     if (confirm != true) return;
     try {
-      await _controller.deleteTicket(ticket.id);
+      await _controller.deleteIssue(issue.id);
       if (!mounted) return;
-      SnackBarHelper.success(context, 'Ticket deleted.');
+      SnackBarHelper.success(context, 'Issue deleted.');
       await _load();
     } catch (e) {
       if (!mounted) return;
@@ -226,10 +226,10 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
                 _FilterChip(
                   label: 'Help',
                   icon: Icons.help_outline_rounded,
-                  selected: _filterType == TicketType.help,
+                  selected: _filterType == IssueType.help,
                   color: Colors.blue,
                   onTap: () {
-                    setState(() => _filterType = TicketType.help);
+                    setState(() => _filterType = IssueType.help);
                     _load();
                   },
                 ),
@@ -237,10 +237,10 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
                 _FilterChip(
                   label: 'Complaint',
                   icon: Icons.report_problem_outlined,
-                  selected: _filterType == TicketType.complaint,
+                  selected: _filterType == IssueType.complaint,
                   color: Colors.orange,
                   onTap: () {
-                    setState(() => _filterType = TicketType.complaint);
+                    setState(() => _filterType = IssueType.complaint);
                     _load();
                   },
                 ),
@@ -253,7 +253,7 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
         Expanded(
           child: _isLoading
               ? const LoadingIndicator(
-                  message: LoadingStatusMessages.loadingAdminTickets,
+                  message: LoadingStatusMessages.loadingAdminIssues,
                   color: AppTheme.deepRed,
                 )
               : _loadError != null
@@ -278,7 +278,7 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
                       ),
                   onRetry: _load,
                 )
-              : _tickets.isEmpty
+              : _issues.isEmpty
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -290,7 +290,7 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
                       ),
                       const SizedBox(height: 16),
                       const Text(
-                        'No tickets found',
+                        'No issues found',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
@@ -311,12 +311,12 @@ class _AdminSupportTabState extends State<AdminSupportTab> {
                   color: AppTheme.deepRed,
                   child: ListView.separated(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _tickets.length,
+                    itemCount: _issues.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (_, i) => _AdminTicketCard(
-                      ticket: _tickets[i],
-                      onReply: () => _openReplyDialog(_tickets[i]),
-                      onDelete: () => _deleteTicket(_tickets[i]),
+                    itemBuilder: (_, i) => _AdminIssueCard(
+                      issue: _issues[i],
+                      onReply: () => _openReplyDialog(_issues[i]),
+                      onDelete: () => _deleteIssue(_issues[i]),
                     ),
                   ),
                 ),
@@ -376,13 +376,13 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-class _AdminTicketCard extends StatelessWidget {
-  final SupportTicket ticket;
+class _AdminIssueCard extends StatelessWidget {
+  final SupportIssue issue;
   final VoidCallback onReply;
   final VoidCallback onDelete;
 
-  const _AdminTicketCard({
-    required this.ticket,
+  const _AdminIssueCard({
+    required this.issue,
     required this.onReply,
     required this.onDelete,
   });
@@ -399,12 +399,12 @@ class _AdminTicketCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                _RoleBadge(role: ticket.senderRole),
+                _RoleBadge(role: issue.senderRole),
                 const SizedBox(width: 6),
-                _TypeBadgeSmall(type: ticket.type),
+                _TypeBadgeSmall(type: issue.type),
                 const Spacer(),
                 Text(
-                  '${ticket.createdAt.day}/${ticket.createdAt.month}/${ticket.createdAt.year}',
+                  '${issue.createdAt.day}/${issue.createdAt.month}/${issue.createdAt.year}',
                   style: const TextStyle(fontSize: 11, color: Colors.black38),
                 ),
                 const SizedBox(width: 8),
@@ -438,7 +438,7 @@ class _AdminTicketCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              ticket.senderName ?? ticket.senderEmail,
+              issue.senderName ?? issue.senderEmail,
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -447,12 +447,12 @@ class _AdminTicketCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              ticket.subject,
+              issue.subject,
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 6),
             Text(
-              ticket.message,
+              issue.message,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 13, color: Colors.black54),
@@ -460,7 +460,7 @@ class _AdminTicketCard extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                _StatusBadgeSmall(status: ticket.status),
+                _StatusBadgeSmall(status: issue.status),
                 const Spacer(),
                 ElevatedButton.icon(
                   onPressed: onReply,
@@ -470,7 +470,7 @@ class _AdminTicketCard extends StatelessWidget {
                     color: Colors.white,
                   ),
                   label: Text(
-                    ticket.adminReply != null ? 'Edit Reply' : 'Reply',
+                    issue.adminReply != null ? 'Edit Reply' : 'Reply',
                     style: const TextStyle(color: Colors.white, fontSize: 13),
                   ),
                   style: ElevatedButton.styleFrom(
@@ -486,7 +486,7 @@ class _AdminTicketCard extends StatelessWidget {
                 ),
               ],
             ),
-            if (ticket.adminReply != null && ticket.adminReply!.isNotEmpty) ...[
+            if (issue.adminReply != null && issue.adminReply!.isNotEmpty) ...[
               const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.all(10),
@@ -506,7 +506,7 @@ class _AdminTicketCard extends StatelessWidget {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        ticket.adminReply!,
+                        issue.adminReply!,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -527,12 +527,12 @@ class _AdminTicketCard extends StatelessWidget {
 }
 
 class _RoleBadge extends StatelessWidget {
-  final TicketSenderRole role;
+  final IssueSenderRole role;
   const _RoleBadge({required this.role});
 
   @override
   Widget build(BuildContext context) {
-    final isHospital = role == TicketSenderRole.hospital;
+    final isHospital = role == IssueSenderRole.hospital;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
@@ -568,12 +568,12 @@ class _RoleBadge extends StatelessWidget {
 }
 
 class _TypeBadgeSmall extends StatelessWidget {
-  final TicketType type;
+  final IssueType type;
   const _TypeBadgeSmall({required this.type});
 
   @override
   Widget build(BuildContext context) {
-    final isComplaint = type == TicketType.complaint;
+    final isComplaint = type == IssueType.complaint;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
@@ -596,7 +596,7 @@ class _TypeBadgeSmall extends StatelessWidget {
 }
 
 class _StatusBadgeSmall extends StatelessWidget {
-  final TicketStatus status;
+  final IssueStatus status;
   const _StatusBadgeSmall({required this.status});
 
   @override
@@ -604,19 +604,19 @@ class _StatusBadgeSmall extends StatelessWidget {
     Color color;
     String label;
     switch (status) {
-      case TicketStatus.open:
+      case IssueStatus.open:
         color = Colors.red;
         label = 'Open';
         break;
-      case TicketStatus.inProgress:
+      case IssueStatus.inProgress:
         color = Colors.purple;
         label = 'In Progress';
         break;
-      case TicketStatus.resolved:
+      case IssueStatus.resolved:
         color = Colors.green;
         label = 'Resolved';
         break;
-      case TicketStatus.closed:
+      case IssueStatus.closed:
         color = Colors.grey;
         label = 'Closed';
         break;

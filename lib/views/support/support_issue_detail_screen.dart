@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../controllers/support_controller.dart';
-import '../../models/support_ticket_model.dart';
+import '../../models/support_issue_model.dart';
 import '../../shared/app_status/loading_status_messages.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/error_message_helper.dart';
@@ -9,33 +9,33 @@ import '../../shared/widgets/common/app_bar_with_logo.dart';
 import '../../shared/widgets/common/loading_indicator.dart';
 import 'support_screen.dart';
 
-/// Full-screen view for one support ticket (e.g. deep link from admin-reply push).
+/// Full-screen view for one support issue (e.g. deep link from admin-reply push).
 /// After load, scrolls the admin reply section into view when present.
-class SupportTicketDetailScreen extends StatefulWidget {
-  final String ticketId;
-  final TicketSenderRole senderRole;
+class SupportIssueDetailScreen extends StatefulWidget {
+  final String issueId;
+  final IssueSenderRole senderRole;
   final String? senderName;
 
-  const SupportTicketDetailScreen({
+  const SupportIssueDetailScreen({
     super.key,
-    required this.ticketId,
+    required this.issueId,
     required this.senderRole,
     this.senderName,
   });
 
   @override
-  State<SupportTicketDetailScreen> createState() =>
-      _SupportTicketDetailScreenState();
+  State<SupportIssueDetailScreen> createState() =>
+      _SupportIssueDetailScreenState();
 }
 
-class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> {
+class _SupportIssueDetailScreenState extends State<SupportIssueDetailScreen> {
   final SupportController _controller = SupportController();
   final GlobalKey _adminReplyKey = GlobalKey();
 
   bool _loading = true;
   String? _error;
   bool _missingInList = false;
-  SupportTicket? _ticket;
+  SupportIssue? _issue;
 
   @override
   void initState() {
@@ -48,20 +48,20 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> {
       _loading = true;
       _error = null;
       _missingInList = false;
-      _ticket = null;
+      _issue = null;
     });
     try {
-      final list = await _controller.fetchMyTickets();
+      final list = await _controller.fetchMyIssues();
       if (!mounted) return;
-      SupportTicket? found;
+      SupportIssue? found;
       for (final t in list) {
-        if (t.id == widget.ticketId) {
+        if (t.id == widget.issueId) {
           found = t;
           break;
         }
       }
       setState(() {
-        _ticket = found;
+        _issue = found;
         _loading = false;
         _missingInList = found == null;
         _error = null;
@@ -92,21 +92,21 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> {
     }
   }
 
-  String _statusLabel(TicketStatus s) {
+  String _statusLabel(IssueStatus s) {
     switch (s) {
-      case TicketStatus.inProgress:
+      case IssueStatus.inProgress:
         return 'In Progress';
-      case TicketStatus.resolved:
+      case IssueStatus.resolved:
         return 'Resolved';
-      case TicketStatus.closed:
+      case IssueStatus.closed:
         return 'Closed';
-      case TicketStatus.open:
+      case IssueStatus.open:
         return 'Open';
     }
   }
 
-  String _typeLabel(TicketType t) =>
-      t == TicketType.complaint ? 'Complaint' : 'Help';
+  String _typeLabel(IssueType t) =>
+      t == IssueType.complaint ? 'Complaint' : 'Help';
 
   String _formatDate(DateTime dt) => '${dt.day}/${dt.month}/${dt.year}';
 
@@ -114,7 +114,7 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.softBg,
-      appBar: const AppBarWithLogo(title: 'Ticket'),
+      appBar: const AppBarWithLogo(title: 'Issue'),
       body: _loading
           ? const LoadingIndicator(message: LoadingStatusMessages.loadingData)
           : _error != null
@@ -132,7 +132,7 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
-                      'This ticket is not in your recent list. It may be older than the items we show, or the link may be outdated.',
+                      'This issue is not in your recent list. It may be older than the items we show, or the link may be outdated.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 15,
@@ -160,8 +160,8 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> {
             )
           : SingleChildScrollView(
               padding: const EdgeInsets.all(20),
-              child: _TicketDetailBody(
-                ticket: _ticket!,
+              child: _IssueDetailBody(
+                issue: _issue!,
                 adminReplyKey: _adminReplyKey,
                 statusLabel: _statusLabel,
                 typeLabel: _typeLabel,
@@ -172,15 +172,15 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> {
   }
 }
 
-class _TicketDetailBody extends StatelessWidget {
-  final SupportTicket ticket;
+class _IssueDetailBody extends StatelessWidget {
+  final SupportIssue issue;
   final GlobalKey adminReplyKey;
-  final String Function(TicketStatus) statusLabel;
-  final String Function(TicketType) typeLabel;
+  final String Function(IssueStatus) statusLabel;
+  final String Function(IssueType) typeLabel;
   final String Function(DateTime) formatDate;
 
-  const _TicketDetailBody({
-    required this.ticket,
+  const _IssueDetailBody({
+    required this.issue,
     required this.adminReplyKey,
     required this.statusLabel,
     required this.typeLabel,
@@ -190,7 +190,7 @@ class _TicketDetailBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasReply =
-        ticket.adminReply != null && ticket.adminReply!.trim().isNotEmpty;
+        issue.adminReply != null && issue.adminReply!.trim().isNotEmpty;
 
     return Card(
       elevation: 2,
@@ -212,7 +212,7 @@ class _TicketDetailBody extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    typeLabel(ticket.type),
+                    typeLabel(issue.type),
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -231,7 +231,7 @@ class _TicketDetailBody extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    statusLabel(ticket.status),
+                    statusLabel(issue.status),
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -241,14 +241,14 @@ class _TicketDetailBody extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  formatDate(ticket.createdAt),
+                  formatDate(issue.createdAt),
                   style: const TextStyle(fontSize: 11, color: Colors.black38),
                 ),
               ],
             ),
             const SizedBox(height: 14),
             Text(
-              ticket.subject,
+              issue.subject,
               style: const TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
@@ -257,7 +257,7 @@ class _TicketDetailBody extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              ticket.message,
+              issue.message,
               style: const TextStyle(
                 fontSize: 14,
                 height: 1.45,
@@ -301,7 +301,7 @@ class _TicketDetailBody extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
                       SelectableText(
-                        ticket.adminReply!.trim(),
+                        issue.adminReply!.trim(),
                         style: TextStyle(
                           fontSize: 14,
                           height: 1.45,
@@ -315,7 +315,7 @@ class _TicketDetailBody extends StatelessWidget {
             ] else ...[
               const SizedBox(height: 20),
               Text(
-                'No admin reply on this ticket yet.',
+                'No admin reply on this issue yet.',
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
               ),
             ],

@@ -75,10 +75,10 @@ exports.rejectPendingUser = approvalFunctions.rejectPendingUser;
 
 const supportFunctions = require("./support_functions");
 
-exports.submitSupportTicket = supportFunctions.submitSupportTicket;
-exports.replySupportTicket = supportFunctions.replySupportTicket;
-exports.getMyTickets = supportFunctions.getMyTickets;
-exports.getAllTickets = supportFunctions.getAllTickets;
-exports.updateTicketStatus = supportFunctions.updateTicketStatus;
-exports.deleteSupportTicket = supportFunctions.deleteSupportTicket;
-exports.countOpenTickets = supportFunctions.countOpenTickets;
+exports.submitSupportIssue = supportFunctions.submitSupportIssue;
+exports.replySupportIssue = supportFunctions.replySupportIssue;
+exports.getMyIssues = supportFunctions.getMyIssues;
+exports.getAllIssues = supportFunctions.getAllIssues;
+exports.updateIssueStatus = supportFunctions.updateIssueStatus;
+exports.deleteSupportIssue = supportFunctions.deleteSupportIssue;
+exports.countOpenIssues = supportFunctions.countOpenIssues;

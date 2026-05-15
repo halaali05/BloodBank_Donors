@@ -19,7 +19,7 @@ import '../../shared/widgets/dashboard/donor_request_card.dart';
 import '../../shared/widgets/common/donor_cooldown_blocked_message.dart';
 import '../../shared/utils/donor_eligibility.dart';
 import '../support/support_screen.dart';
-import '../../models/support_ticket_model.dart';
+import '../../models/support_issue_model.dart';
 import '../../shared/utils/error_message_helper.dart';
 import '../../shared/utils/snack_bar_helper.dart';
 import '../donor_map_screen.dart';
@@ -518,7 +518,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen>
                 context,
                 MaterialPageRoute(
                   builder: (_) => SupportScreen(
-                    senderRole: TicketSenderRole.donor,
+                    senderRole: IssueSenderRole.donor,
                     senderName: user?.displayName,
                   ),
                 ),

@@ -37,7 +37,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   // عدد الحسابات المعلقة لعرضه على الـ badge
   int _pendingCount = 0;
-  int _openTicketsCount = 0;
+  int _openIssuesCount = 0;
 
   bool _isLoading = true;
   String? _loadError;
@@ -70,11 +70,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       // جلب عدد الحسابات المعلقة
       final pending = await _controller.fetchPendingApprovals();
 
-      // جلب عدد تذاكر الدعم المفتوحة
-      int openTickets = 0;
+      // جلب عدد قضايا الدعم المفتوحة
+      int openIssues = 0;
       try {
         final SupportController supportCtrl = SupportController();
-        openTickets = await supportCtrl.countOpenTickets();
+        openIssues = await supportCtrl.countOpenIssues();
       } catch (_) {}
 
       if (!mounted) return;
@@ -83,7 +83,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         _donors = donors;
         _stats = stats;
         _pendingCount = pending.length;
-        _openTicketsCount = openTickets;
+        _openIssuesCount = openIssues;
         _applyRequestFilter(_requestFilter);
         _applyDonorFilter(_donorFilter);
         _isLoading = false;
@@ -336,7 +336,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     clipBehavior: Clip.none,
                     children: [
                       const Icon(Icons.support_agent_rounded, size: 16),
-                      if (_openTicketsCount > 0)
+                      if (_openIssuesCount > 0)
                         Positioned(
                           top: -6,
                           right: -6,
@@ -351,7 +351,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                               minHeight: 14,
                             ),
                             child: Text(
-                              '$_openTicketsCount',
+                              '$_openIssuesCount',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 9,

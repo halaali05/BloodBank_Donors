@@ -1,88 +1,97 @@
 import 'package:cloud_functions/cloud_functions.dart';
-import '../models/support_ticket_model.dart';
 
-/// خدمة الدعم والشكاوي — تستدعي Cloud Functions بشكل آمن
+import '../models/support_issue_model.dart';
+
+/// خدمة الدعم والشكاوى — تستدعي Cloud Functions بشكل آمن
 class SupportService {
   final FirebaseFunctions _functions;
 
   SupportService({FirebaseFunctions? functions})
-    : _functions =
-          functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+      : _functions =
+            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
 
-  Future<String> submitTicket({
-    required TicketType type,
+  List<Map<String, dynamic>> _issuesPayload(Map<String, dynamic> data) {
+    final raw = data['issues'] ?? data['tickets'];
+    if (raw is! List) return [];
+    return raw.whereType<Map>().map(Map<String, dynamic>.from).toList();
+  }
+
+  String _parseSubmittedId(Map<String, dynamic> data) {
+    final a = data['issueId']?.toString().trim();
+    final b = data['ticketId']?.toString().trim();
+    if (a != null && a.isNotEmpty) return a;
+    if (b != null && b.isNotEmpty) return b;
+    return '';
+  }
+
+  Future<String> submitIssue({
+    required IssueType type,
     required String subject,
     required String message,
-    required TicketSenderRole senderRole,
+    required IssueSenderRole senderRole,
     String? senderName,
   }) async {
     try {
-      final callable = _functions.httpsCallable('submitSupportTicket');
+      final callable = _functions.httpsCallable('submitSupportIssue');
       final result = await callable.call({
-        'type': type == TicketType.complaint ? 'complaint' : 'help',
+        'type': type == IssueType.complaint ? 'complaint' : 'help',
         'subject': subject.trim(),
         'message': message.trim(),
-        'senderRole': senderRole == TicketSenderRole.hospital
+        'senderRole': senderRole == IssueSenderRole.hospital
             ? 'hospital'
             : 'donor',
         if (senderName != null && senderName.trim().isNotEmpty)
           'senderName': senderName.trim(),
       });
       final data = Map<String, dynamic>.from(result.data);
-      return data['ticketId']?.toString() ?? '';
+      return _parseSubmittedId(data);
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?? 'Failed to submit ticket.');
+      throw Exception(e.message ?? 'Failed to submit issue.');
     }
   }
 
-  Future<List<SupportTicket>> fetchMyTickets() async {
+  Future<List<SupportIssue>> fetchMyIssues() async {
     try {
-      final callable = _functions.httpsCallable('getMyTickets');
+      final callable = _functions.httpsCallable('getMyIssues');
       final result = await callable.call({});
       final data = Map<String, dynamic>.from(result.data);
-      final raw = data['tickets'];
-      if (raw is! List) return [];
-      return raw.whereType<Map>().map((d) {
-        final m = Map<String, dynamic>.from(d);
-        return SupportTicket.fromMap(m, m['id']?.toString() ?? '');
+      return _issuesPayload(data).map((d) {
+        return SupportIssue.fromMap(d, d['id']?.toString() ?? '');
       }).toList();
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?? 'Failed to load tickets.');
+      throw Exception(e.message ?? 'Failed to load issues.');
     }
   }
 
-  Future<List<SupportTicket>> fetchAllTickets({
-    TicketStatus? filterStatus,
-    TicketType? filterType,
+  Future<List<SupportIssue>> fetchAllIssues({
+    IssueStatus? filterStatus,
+    IssueType? filterType,
   }) async {
     try {
-      final callable = _functions.httpsCallable('getAllTickets');
+      final callable = _functions.httpsCallable('getAllIssues');
       final result = await callable.call({
         if (filterStatus != null) 'status': _statusString(filterStatus),
         if (filterType != null)
-          'type': filterType == TicketType.complaint ? 'complaint' : 'help',
+          'type': filterType == IssueType.complaint ? 'complaint' : 'help',
       });
       final data = Map<String, dynamic>.from(result.data);
-      final raw = data['tickets'];
-      if (raw is! List) return [];
-      return raw.whereType<Map>().map((d) {
-        final m = Map<String, dynamic>.from(d);
-        return SupportTicket.fromMap(m, m['id']?.toString() ?? '');
+      return _issuesPayload(data).map((d) {
+        return SupportIssue.fromMap(d, d['id']?.toString() ?? '');
       }).toList();
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?? 'Failed to load tickets.');
+      throw Exception(e.message ?? 'Failed to load issues.');
     }
   }
 
-  Future<void> replyToTicket({
-    required String ticketId,
+  Future<void> replyToIssue({
+    required String issueId,
     required String reply,
-    required TicketStatus newStatus,
+    required IssueStatus newStatus,
   }) async {
     try {
-      final callable = _functions.httpsCallable('replySupportTicket');
+      final callable = _functions.httpsCallable('replySupportIssue');
       await callable.call({
-        'ticketId': ticketId,
+        'issueId': issueId,
         'reply': reply.trim(),
         'status': _statusString(newStatus),
       });
@@ -91,14 +100,14 @@ class SupportService {
     }
   }
 
-  Future<void> updateTicketStatus({
-    required String ticketId,
-    required TicketStatus status,
+  Future<void> updateIssueStatus({
+    required String issueId,
+    required IssueStatus status,
   }) async {
     try {
-      final callable = _functions.httpsCallable('updateTicketStatus');
+      final callable = _functions.httpsCallable('updateIssueStatus');
       await callable.call({
-        'ticketId': ticketId,
+        'issueId': issueId,
         'status': _statusString(status),
       });
     } on FirebaseFunctionsException catch (e) {
@@ -106,18 +115,18 @@ class SupportService {
     }
   }
 
-  Future<void> deleteTicket(String ticketId) async {
+  Future<void> deleteIssue(String issueId) async {
     try {
-      final callable = _functions.httpsCallable('deleteSupportTicket');
-      await callable.call({'ticketId': ticketId});
+      final callable = _functions.httpsCallable('deleteSupportIssue');
+      await callable.call({'issueId': issueId});
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?? 'Failed to delete ticket.');
+      throw Exception(e.message ?? 'Failed to delete issue.');
     }
   }
 
-  Future<int> countOpenTickets() async {
+  Future<int> countOpenIssues() async {
     try {
-      final callable = _functions.httpsCallable('countOpenTickets');
+      final callable = _functions.httpsCallable('countOpenIssues');
       final result = await callable.call({});
       final data = Map<String, dynamic>.from(result.data);
       final count = data['count'];
@@ -125,19 +134,19 @@ class SupportService {
       if (count is num) return count.toInt();
       return 0;
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?? 'Failed to count tickets.');
+      throw Exception(e.message ?? 'Failed to count open issues.');
     }
   }
 
-  static String _statusString(TicketStatus s) {
+  static String _statusString(IssueStatus s) {
     switch (s) {
-      case TicketStatus.inProgress:
+      case IssueStatus.inProgress:
         return 'inProgress';
-      case TicketStatus.resolved:
+      case IssueStatus.resolved:
         return 'resolved';
-      case TicketStatus.closed:
+      case IssueStatus.closed:
         return 'closed';
-      case TicketStatus.open:
+      case IssueStatus.open:
         return 'open';
     }
   }

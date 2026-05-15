@@ -4,7 +4,7 @@ class LoadingStatusMessages {
 
   static const String loadingData = 'Loading data…';
   static const String loadingPendingApprovals = 'Loading pending approvals…';
-  static const String loadingAdminTickets = 'Loading tickets…';
+  static const String loadingAdminIssues = 'Loading issues…';
   static const String fetchingReports = 'Fetching reports…';
   static const String signingIn = 'Signing in…';
   static const String lookingUpAccount = 'Looking up your account…';
@@ -16,8 +16,8 @@ class LoadingStatusMessages {
   static const String submittingReport = 'Submitting report…';
   static const String failedSubmitReport =
       'Failed to submit report, please try again';
-  static const String ticketSubmittedBrief =
-      'Your ticket was sent. Thank you.';
+  static const String issueSubmittedBrief =
+      'Your issue was sent. Thank you.';
 
   /// Uses [ErrorMessageHelper]-style copy to guess offline vs generic failures.
   static bool looksLikeConnectivityIssue(String message) {

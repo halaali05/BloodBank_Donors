@@ -17,8 +17,8 @@ import '../views/donor_profile/donor_profile_reports_page.dart';
 import '../views/notifications_screen.dart';
 import '../views/onboarding/welcome_screen.dart';
 import '../views/request_details_screen.dart';
-import '../views/support/support_ticket_detail_screen.dart';
-import '../models/support_ticket_model.dart';
+import '../views/support/support_issue_detail_screen.dart';
+import '../models/support_issue_model.dart';
 import 'requests_service.dart';
 
 /// Routes the user after a push or local notification is opened.
@@ -150,7 +150,8 @@ BuildContext? Function() contextFactory =  () => navigatorKey.currentContext;
       final notificationType =
           (data['type']?.toString() ?? 'request').trim().toLowerCase();
       final requestId = data['requestId']?.toString() ?? '';
-      final ticketId = data['ticketId']?.toString() ?? '';
+      final issueId =
+          (data['issueId'] ?? data['ticketId'])?.toString().trim() ?? '';
       final recipientId = data['recipientId']?.toString() ?? '';
       final senderId = data['senderId']?.toString() ?? '';
 
@@ -226,16 +227,16 @@ BuildContext? Function() contextFactory =  () => navigatorKey.currentContext;
         return;
       }
 
-      if (notificationType == 'support_reply' && ticketId.isNotEmpty) {
+      if (notificationType == 'support_reply' && issueId.isNotEmpty) {
         final senderRole = userData.role == models.UserRole.hospital
-            ? TicketSenderRole.hospital
-            : TicketSenderRole.donor;
+            ? IssueSenderRole.hospital
+            : IssueSenderRole.donor;
         final senderName = userData.role == models.UserRole.hospital
             ? (userData.bloodBankName ?? userData.fullName)
             : userData.fullName;
         await openTarget(
-          (_) => SupportTicketDetailScreen(
-            ticketId: ticketId,
+          (_) => SupportIssueDetailScreen(
+            issueId: issueId,
             senderRole: senderRole,
             senderName: senderName,
           ),

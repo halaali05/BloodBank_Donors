@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../controllers/support_controller.dart';
-import '../../models/support_ticket_model.dart';
+import '../../models/support_issue_model.dart';
 import '../../shared/app_status/loading_status_messages.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/error_message_helper.dart';
@@ -9,7 +9,7 @@ import '../../shared/widgets/common/loading_indicator.dart';
 
 /// شاشة الدعم والشكاوي — للمتبرعين وبنوك الدم
 class SupportScreen extends StatefulWidget {
-  final TicketSenderRole senderRole;
+  final IssueSenderRole senderRole;
   final String? senderName;
 
   const SupportScreen({super.key, required this.senderRole, this.senderName});
@@ -68,7 +68,7 @@ class _SupportScreenState extends State<SupportScreen>
                 children: [
                   Icon(Icons.add_comment_outlined, size: 16),
                   SizedBox(width: 6),
-                  Text('New Ticket'),
+                  Text('New Issue'),
                 ],
               ),
             ),
@@ -78,7 +78,7 @@ class _SupportScreenState extends State<SupportScreen>
                 children: [
                   Icon(Icons.list_alt_outlined, size: 16),
                   SizedBox(width: 6),
-                  Text('My Tickets'),
+                  Text('My Issues'),
                 ],
               ),
             ),
@@ -88,28 +88,28 @@ class _SupportScreenState extends State<SupportScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          _NewTicketTab(
+          _NewIssueTab(
             controller: _controller,
             senderRole: widget.senderRole,
             senderName: widget.senderName,
             onSubmitted: () => _tabController.animateTo(1),
           ),
-          _MyTicketsTab(controller: _controller),
+          _MyIssuesTab(controller: _controller),
         ],
       ),
     );
   }
 }
 
-// ─────────────────── تاب: إرسال تذكرة جديدة ───────────────────
+// ─────────────────── تاب: إنشاء وتقديم ─────────────────────────
 
-class _NewTicketTab extends StatefulWidget {
+class _NewIssueTab extends StatefulWidget {
   final SupportController controller;
-  final TicketSenderRole senderRole;
+  final IssueSenderRole senderRole;
   final String? senderName;
   final VoidCallback onSubmitted;
 
-  const _NewTicketTab({
+  const _NewIssueTab({
     required this.controller,
     required this.senderRole,
     required this.senderName,
@@ -117,14 +117,14 @@ class _NewTicketTab extends StatefulWidget {
   });
 
   @override
-  State<_NewTicketTab> createState() => _NewTicketTabState();
+  State<_NewIssueTab> createState() => _NewIssueTabState();
 }
 
-class _NewTicketTabState extends State<_NewTicketTab> {
+class _NewIssueTabState extends State<_NewIssueTab> {
   final _formKey = GlobalKey<FormState>();
   final _subjectCtrl = TextEditingController();
   final _messageCtrl = TextEditingController();
-  TicketType _selectedType = TicketType.help;
+  IssueType _selectedType = IssueType.help;
   bool _isSubmitting = false;
   bool _submitSuccessFlash = false;
   String? _submitOverlayMessage;
@@ -145,7 +145,7 @@ class _NewTicketTabState extends State<_NewTicketTab> {
       _submitOverlayIsError = false;
     });
     try {
-      await widget.controller.submitTicket(
+      await widget.controller.submitIssue(
         type: _selectedType,
         subject: _subjectCtrl.text,
         message: _messageCtrl.text,
@@ -156,7 +156,7 @@ class _NewTicketTabState extends State<_NewTicketTab> {
       setState(() {
         _isSubmitting = false;
         _submitSuccessFlash = true;
-        _submitOverlayMessage = LoadingStatusMessages.ticketSubmittedBrief;
+        _submitOverlayMessage = LoadingStatusMessages.issueSubmittedBrief;
         _submitOverlayIsError = false;
       });
       await Future<void>.delayed(const Duration(milliseconds: 1600));
@@ -166,7 +166,7 @@ class _NewTicketTabState extends State<_NewTicketTab> {
       setState(() {
         _submitOverlayMessage = null;
         _submitSuccessFlash = false;
-        _selectedType = TicketType.help;
+        _selectedType = IssueType.help;
       });
       widget.onSubmitted();
     } catch (e) {
@@ -220,7 +220,7 @@ class _NewTicketTabState extends State<_NewTicketTab> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          widget.senderRole == TicketSenderRole.donor
+                          widget.senderRole == IssueSenderRole.donor
                               ? 'Submit your request and our team will review it.'
                               : 'As a blood bank, your feedback helps us improve the system.',
                           style: const TextStyle(
@@ -237,9 +237,8 @@ class _NewTicketTabState extends State<_NewTicketTab> {
 
             const SizedBox(height: 24),
 
-            // نوع التذكرة
             const Text(
-              'Ticket Type',
+              'Issue type',
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
@@ -252,18 +251,18 @@ class _NewTicketTabState extends State<_NewTicketTab> {
                 _TypeChip(
                   label: 'Help Request',
                   icon: Icons.help_outline_rounded,
-                  selected: _selectedType == TicketType.help,
+                  selected: _selectedType == IssueType.help,
                   color: Colors.blue,
-                  onTap: () => setState(() => _selectedType = TicketType.help),
+                  onTap: () => setState(() => _selectedType = IssueType.help),
                 ),
                 const SizedBox(width: 12),
                 _TypeChip(
                   label: 'Complaint',
                   icon: Icons.report_problem_outlined,
-                  selected: _selectedType == TicketType.complaint,
+                  selected: _selectedType == IssueType.complaint,
                   color: Colors.orange,
                   onTap: () =>
-                      setState(() => _selectedType = TicketType.complaint),
+                      setState(() => _selectedType = IssueType.complaint),
                 ),
               ],
             ),
@@ -339,7 +338,7 @@ class _NewTicketTabState extends State<_NewTicketTab> {
                       )
                     : const Icon(Icons.send_rounded, color: Colors.white),
                 label: Text(
-                  _isSubmitting ? 'Submitting...' : 'Submit Ticket',
+                  _isSubmitting ? 'Submitting…' : 'Submit issue',
                   style: const TextStyle(color: Colors.white, fontSize: 15),
                 ),
                 style: ElevatedButton.styleFrom(
@@ -397,19 +396,19 @@ class _NewTicketTabState extends State<_NewTicketTab> {
   }
 }
 
-// ─────────────────── تاب: تذاكري ──────────────────────────────
+// ─────────────────── تاب: قائمة المستخدم ─────────────────────
 
-class _MyTicketsTab extends StatefulWidget {
+class _MyIssuesTab extends StatefulWidget {
   final SupportController controller;
 
-  const _MyTicketsTab({required this.controller});
+  const _MyIssuesTab({required this.controller});
 
   @override
-  State<_MyTicketsTab> createState() => _MyTicketsTabState();
+  State<_MyIssuesTab> createState() => _MyIssuesTabState();
 }
 
-class _MyTicketsTabState extends State<_MyTicketsTab> {
-  List<SupportTicket> _tickets = [];
+class _MyIssuesTabState extends State<_MyIssuesTab> {
+  List<SupportIssue> _issues = [];
   bool _isLoading = true;
   String? _loadError;
 
@@ -425,10 +424,10 @@ class _MyTicketsTabState extends State<_MyTicketsTab> {
       _loadError = null;
     });
     try {
-      final list = await widget.controller.fetchMyTickets();
+      final list = await widget.controller.fetchMyIssues();
       if (!mounted) return;
       setState(() {
-        _tickets = list;
+        _issues = list;
         _isLoading = false;
       });
     } catch (e) {
@@ -467,7 +466,7 @@ class _MyTicketsTabState extends State<_MyTicketsTab> {
       );
     }
 
-    if (_tickets.isEmpty) {
+    if (_issues.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -475,7 +474,7 @@ class _MyTicketsTabState extends State<_MyTicketsTab> {
             Icon(Icons.inbox_outlined, size: 64, color: Colors.grey.shade300),
             const SizedBox(height: 16),
             const Text(
-              'No tickets yet',
+              'No issues yet',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -504,20 +503,18 @@ class _MyTicketsTabState extends State<_MyTicketsTab> {
       color: AppTheme.deepRed,
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
-        itemCount: _tickets.length,
+        itemCount: _issues.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (_, i) => _TicketCard(ticket: _tickets[i]),
+        itemBuilder: (_, i) => _IssueCard(issue: _issues[i]),
       ),
     );
   }
 }
 
-// ─────────────────── بطاقة التذكرة ────────────────────────────
+class _IssueCard extends StatelessWidget {
+  final SupportIssue issue;
 
-class _TicketCard extends StatelessWidget {
-  final SupportTicket ticket;
-
-  const _TicketCard({required this.ticket});
+  const _IssueCard({required this.issue});
 
   @override
   Widget build(BuildContext context) {
@@ -529,24 +526,22 @@ class _TicketCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header: نوع + حالة + تاريخ
             Row(
               children: [
-                _TypeBadge(type: ticket.type),
+                _TypeBadge(type: issue.type),
                 const SizedBox(width: 8),
-                _StatusBadge(status: ticket.status),
+                _StatusBadge(status: issue.status),
                 const Spacer(),
                 Text(
-                  _formatDate(ticket.createdAt),
+                  _formatDate(issue.createdAt),
                   style: const TextStyle(fontSize: 11, color: Colors.black38),
                 ),
               ],
             ),
             const SizedBox(height: 12),
 
-            // الموضوع
             Text(
-              ticket.subject,
+              issue.subject,
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
@@ -555,16 +550,14 @@ class _TicketCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
 
-            // الرسالة
             Text(
-              ticket.message,
+              issue.message,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 13, color: Colors.black54),
             ),
 
-            // رد الأدمن
-            if (ticket.adminReply != null && ticket.adminReply!.isNotEmpty) ...[
+            if (issue.adminReply != null && issue.adminReply!.isNotEmpty) ...[
               const SizedBox(height: 12),
               const Divider(height: 1),
               const SizedBox(height: 12),
@@ -598,7 +591,7 @@ class _TicketCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      ticket.adminReply!,
+                      issue.adminReply!,
                       style: TextStyle(
                         fontSize: 13,
                         color: Colors.green.shade900,
@@ -672,12 +665,12 @@ class _TypeChip extends StatelessWidget {
 }
 
 class _TypeBadge extends StatelessWidget {
-  final TicketType type;
+  final IssueType type;
   const _TypeBadge({required this.type});
 
   @override
   Widget build(BuildContext context) {
-    final isComplaint = type == TicketType.complaint;
+    final isComplaint = type == IssueType.complaint;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -715,7 +708,7 @@ class _TypeBadge extends StatelessWidget {
 }
 
 class _StatusBadge extends StatelessWidget {
-  final TicketStatus status;
+  final IssueStatus status;
   const _StatusBadge({required this.status});
 
   @override
@@ -725,28 +718,28 @@ class _StatusBadge extends StatelessWidget {
     String label;
 
     switch (status) {
-      case TicketStatus.open:
+      case IssueStatus.open:
         bg = Colors.red.shade50;
         border = Colors.red.shade200;
         text = Colors.red.shade700;
         icon = Icons.fiber_new_rounded;
         label = 'Open';
         break;
-      case TicketStatus.inProgress:
+      case IssueStatus.inProgress:
         bg = Colors.purple.shade50;
         border = Colors.purple.shade200;
         text = Colors.purple.shade700;
         icon = Icons.hourglass_top_rounded;
         label = 'In Progress';
         break;
-      case TicketStatus.resolved:
+      case IssueStatus.resolved:
         bg = Colors.green.shade50;
         border = Colors.green.shade200;
         text = Colors.green.shade700;
         icon = Icons.check_circle_outline_rounded;
         label = 'Resolved';
         break;
-      case TicketStatus.closed:
+      case IssueStatus.closed:
         bg = Colors.grey.shade100;
         border = Colors.grey.shade300;
         text = Colors.grey.shade600;

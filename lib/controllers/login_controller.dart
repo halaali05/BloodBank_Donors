@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/login_models.dart';
@@ -136,9 +138,20 @@ class LoginController {
           .then((_) => <String, dynamic>{})
           .catchError((_) => <String, dynamic>{});
 
+      /// Extra guard besides [HttpsCallableOptions] — avoids stuck overlay.
+      const profileTimeout = Duration(seconds: 38);
+
       models.User? userData;
       for (var i = 0; i < 2; i++) {
-        userData = await _authService.getUserData(user.uid);
+        userData = await _authService
+            .getUserData(user.uid)
+            .timeout(
+              profileTimeout,
+              onTimeout: () => throw TimeoutException(
+                'Loading your profile timed out.',
+                profileTimeout,
+              ),
+            );
         if (userData != null) break;
         if (i < 1) {
           await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -321,6 +334,18 @@ class LoginController {
   }
 
   LoginResult _loginResultFromUnhandled(Object e) {
+    if (e is TimeoutException) {
+      return LoginResult(
+        success: false,
+        errorType: LoginErrorType.networkOffline,
+        errorTitle: 'Connection timed out',
+        errorMessage:
+            e.message ??
+            'The request took too long. Check Wi‑Fi or mobile data and try '
+            'again.',
+      );
+    }
+
     var errorStr = e.toString();
     var msg = 'Something went wrong while logging you in. Please try again.';
     var title = 'Login failed';

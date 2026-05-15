@@ -144,6 +144,32 @@ async function deleteRequestCascade(requestRef, requestId) {
   const trimmedRequestId = String(requestId ?? "").trim();
   const responsesSnapshot = await requestRef.collection("donorResponses").get();
 
+  // Drop this request from donor profiles (see setDonorRequestResponse donorAcceptedRequestIds).
+  if (!responsesSnapshot.empty && trimmedRequestId) {
+    const toStrip = [];
+    for (const d of responsesSnapshot.docs) {
+      const st = (d.data() || {}).status;
+      if (st === "accepted") {
+        toStrip.push(db.collection("users").doc(d.id));
+      }
+    }
+    const userBatchSize = 500;
+    for (let i = 0; i < toStrip.length; i += userBatchSize) {
+      const batch = db.batch();
+      toStrip.slice(i, i + userBatchSize).forEach((userRef) => {
+        batch.set(
+          userRef,
+          {
+            donorAcceptedRequestIds:
+              admin.firestore.FieldValue.arrayRemove(trimmedRequestId),
+          },
+          { merge: true },
+        );
+      });
+      await batch.commit();
+    }
+  }
+
   const requestIdVariants = [trimmedRequestId];
   const asNumber = Number(trimmedRequestId);
   if (
@@ -1194,7 +1220,9 @@ exports.getRequestDonorResponses = onCall(
 );
 
 /**
- * deleteRequest - delete a blood request (hospitals only, must own the request).
+ * deleteRequest - delete a blood request.
+ * Hospitals: must own the request (bloodBankId === uid).
+ * Admins: may delete any request (same cascade: donorResponses, messages, notifications).
  */
 exports.deleteRequest = onCall(publicCallableOpts, async (request) => {
   try {
@@ -1211,10 +1239,18 @@ exports.deleteRequest = onCall(publicCallableOpts, async (request) => {
 
     const userSnap = await db.collection("users").doc(uid).get();
     const userData = userSnap.exists ? userSnap.data() || {} : {};
-    if (!userSnap.exists || userData.role !== "hospital") {
+    if (!userSnap.exists) {
+      throw new HttpsError("not-found", "User profile not found.");
+    }
+
+    const role = userData.role;
+    const isAdmin = role === "admin";
+    const isHospital = role === "hospital";
+
+    if (!isAdmin && !isHospital) {
       throw new HttpsError(
         "permission-denied",
-        "Only hospitals can delete requests.",
+        "Only hospitals or admins can delete requests.",
       );
     }
 
@@ -1224,12 +1260,14 @@ exports.deleteRequest = onCall(publicCallableOpts, async (request) => {
       throw new HttpsError("not-found", "Request not found.");
     }
 
-    const requestData = requestSnap.data() || {};
-    if (requestData.bloodBankId !== uid) {
-      throw new HttpsError(
-        "permission-denied",
-        "You can only delete your own requests.",
-      );
+    if (isHospital) {
+      const requestData = requestSnap.data() || {};
+      if (requestData.bloodBankId !== uid) {
+        throw new HttpsError(
+          "permission-denied",
+          "You can only delete your own requests.",
+        );
+      }
     }
 
     const { notificationsDeleted } = await deleteRequestCascade(

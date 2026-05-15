@@ -1,28 +1,28 @@
-/// نوع التذكرة: شكوى أو طلب مساعدة
-enum TicketType { complaint, help }
+/// Issue type: complaint or help request
+enum IssueType { complaint, help }
 
-/// حالة التذكرة
-enum TicketStatus { open, inProgress, resolved, closed }
+/// Issue workflow status
+enum IssueStatus { open, inProgress, resolved, closed }
 
-/// من هو المرسل
-enum TicketSenderRole { donor, hospital }
+/// Who submitted the issue
+enum IssueSenderRole { donor, hospital }
 
-/// نموذج تذكرة الدعم والشكاوي
-class SupportTicket {
+/// Support / complaint issue model
+class SupportIssue {
   final String id;
   final String senderId;
   final String senderEmail;
-  final String? senderName; // اسم المتبرع أو اسم البنك
-  final TicketSenderRole senderRole;
-  final TicketType type;
+  final String? senderName;
+  final IssueSenderRole senderRole;
+  final IssueType type;
   final String subject;
   final String message;
-  final TicketStatus status;
+  final IssueStatus status;
   final String? adminReply;
   final DateTime createdAt;
   final DateTime? updatedAt;
 
-  const SupportTicket({
+  const SupportIssue({
     required this.id,
     required this.senderId,
     required this.senderEmail,
@@ -37,18 +37,18 @@ class SupportTicket {
     this.updatedAt,
   });
 
-  factory SupportTicket.fromMap(Map<String, dynamic> data, String id) {
-    return SupportTicket(
+  factory SupportIssue.fromMap(Map<String, dynamic> data, String id) {
+    return SupportIssue(
       id: id,
       senderId: data['senderId']?.toString() ?? '',
       senderEmail: data['senderEmail']?.toString() ?? '',
       senderName: data['senderName']?.toString(),
       senderRole: data['senderRole'] == 'hospital'
-          ? TicketSenderRole.hospital
-          : TicketSenderRole.donor,
+          ? IssueSenderRole.hospital
+          : IssueSenderRole.donor,
       type: data['type'] == 'complaint'
-          ? TicketType.complaint
-          : TicketType.help,
+          ? IssueType.complaint
+          : IssueType.help,
       subject: data['subject']?.toString() ?? '',
       message: data['message']?.toString() ?? '',
       status: _parseStatus(data['status']?.toString()),
@@ -63,10 +63,10 @@ class SupportTicket {
       'senderId': senderId,
       'senderEmail': senderEmail,
       if (senderName != null) 'senderName': senderName,
-      'senderRole': senderRole == TicketSenderRole.hospital
+      'senderRole': senderRole == IssueSenderRole.hospital
           ? 'hospital'
           : 'donor',
-      'type': type == TicketType.complaint ? 'complaint' : 'help',
+      'type': type == IssueType.complaint ? 'complaint' : 'help',
       'subject': subject,
       'message': message,
       'status': _statusToString(status),
@@ -76,28 +76,28 @@ class SupportTicket {
     };
   }
 
-  static TicketStatus _parseStatus(String? s) {
+  static IssueStatus _parseStatus(String? s) {
     switch (s) {
       case 'inProgress':
-        return TicketStatus.inProgress;
+        return IssueStatus.inProgress;
       case 'resolved':
-        return TicketStatus.resolved;
+        return IssueStatus.resolved;
       case 'closed':
-        return TicketStatus.closed;
+        return IssueStatus.closed;
       default:
-        return TicketStatus.open;
+        return IssueStatus.open;
     }
   }
 
-  static String _statusToString(TicketStatus s) {
+  static String _statusToString(IssueStatus s) {
     switch (s) {
-      case TicketStatus.inProgress:
+      case IssueStatus.inProgress:
         return 'inProgress';
-      case TicketStatus.resolved:
+      case IssueStatus.resolved:
         return 'resolved';
-      case TicketStatus.closed:
+      case IssueStatus.closed:
         return 'closed';
-      case TicketStatus.open:
+      case IssueStatus.open:
         return 'open';
     }
   }

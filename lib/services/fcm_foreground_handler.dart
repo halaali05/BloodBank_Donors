@@ -136,9 +136,11 @@ CloudFunctionsService Function() cloudFactory = () => CloudFunctionsService();
       'senderId': message.data['senderId']?.toString() ?? '',
       'recipientId': message.data['recipientId']?.toString() ?? '',
     };
-    final ticketId = message.data['ticketId']?.toString().trim() ?? '';
-    if (ticketId.isNotEmpty) {
-      payload['ticketId'] = ticketId;
+    final rawSupportId = message.data['issueId'] ?? message.data['ticketId'];
+    final supportIssueId = rawSupportId?.toString().trim() ?? '';
+    if (supportIssueId.isNotEmpty) {
+      payload['issueId'] = supportIssueId;
+      payload['ticketId'] = supportIssueId;
     }
 
     if (kIsWeb) {
